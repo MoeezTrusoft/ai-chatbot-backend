@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke
+.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -50,3 +50,9 @@ pricing-verify:
 
 pricing-smoke:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/pricing_smoke.py
+
+portfolio-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_portfolio_registry.py
+
+portfolio-smoke:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/portfolio_smoke.py

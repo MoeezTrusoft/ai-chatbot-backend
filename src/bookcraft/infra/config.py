@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     pricing_engine_version: Literal["v1", "v2"] = "v2"
     pricing_v2_config_dir: str = "data/pricing/v2"
     pricing_v2_values_approved: bool = False
+    portfolio_samples_registry_path: str = "data/portfolio/samples.registry.js"
+    portfolio_genre_hierarchy_path: str = "data/portfolio/genre_hierarchy_links.json"
+    portfolio_samples_docx_path: str = "data/portfolio/portfolio_samples.docx"
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
     intent_ensemble_timeout_seconds: float = 2.5
