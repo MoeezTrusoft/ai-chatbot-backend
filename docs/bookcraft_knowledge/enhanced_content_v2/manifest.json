@@ -1,0 +1,174 @@
+{
+  "project": "BookCraft AI Chatbot — Decoupled Domain Knowledge Layer",
+  "version": "1.5.0",
+  "purpose": "Comprehensive service brochures for chatbot RAG, with pricing/timeline specifics removed and routed to the centralized Pricing & Timeline engine.",
+  "design_principle": "Single source of truth for prices and timelines — they live in the engine, not in the corpus. Marketing content owns names, descriptions, and processes.",
+  "n_documents": 10,
+  "total_chars": 144034,
+  "documents": [
+    {
+      "filename": "about-book-craft.md",
+      "title": "About BookCraft Publishers",
+      "char_count": 17786,
+      "n_sections": 11,
+      "sections": [
+        "Why Choose BookCraft",
+        "Our Full-Service Solutions",
+        "Who We Are",
+        "What We Do",
+        "Our Vision",
+        "Our Mission",
+        "Our Core Values",
+        "Our Code of Ethics",
+        "Engagement & Pricing Approach",
+        "Common Questions",
+        "Contact & Next Steps"
+      ]
+    },
+    {
+      "filename": "audiobook-production.md",
+      "title": "Audiobook Production",
+      "char_count": 13769,
+      "n_sections": 8,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Production Process",
+        "Technical Specifications",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "authors-website.md",
+      "title": "Author's Website",
+      "char_count": 16101,
+      "n_sections": 9,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "Pages Included by Tier",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Design Process",
+        "Technical Specifications",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "cover-design-illustration.md",
+      "title": "Cover Design & Illustration",
+      "char_count": 14279,
+      "n_sections": 8,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Design Process",
+        "Technical Specifications",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "editing-proofreading.md",
+      "title": "Editing & Proofreading",
+      "char_count": 12249,
+      "n_sections": 8,
+      "sections": [
+        "Editing Levels",
+        "Genre Categories",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Editing Process",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "formatting.md",
+      "title": "Interior Book Formatting",
+      "char_count": 13061,
+      "n_sections": 8,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Formatting Process",
+        "Technical Specifications",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "ghostwriting.md",
+      "title": "Ghostwriting at BookCraft",
+      "char_count": 15547,
+      "n_sections": 9,
+      "sections": [
+        "Engagement Models",
+        "Genre Categories",
+        "What We Offer — Specialties",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "The BookCraft Ghostwriting Process",
+        "Confidentiality & Authorship",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "marketing-promotion.md",
+      "title": "Marketing & Promotion",
+      "char_count": 13552,
+      "n_sections": 7,
+      "sections": [
+        "Campaign Tiers",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Marketing Process",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "publishing-distribution.md",
+      "title": "Publishing & Distribution",
+      "char_count": 14481,
+      "n_sections": 8,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "Distribution Channels by Tier",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Publishing Process",
+        "Common Questions",
+        "Related Services"
+      ]
+    },
+    {
+      "filename": "video-trailers.md",
+      "title": "Video Book Trailer",
+      "char_count": 13209,
+      "n_sections": 8,
+      "sections": [
+        "Service Tiers",
+        "What We Offer",
+        "What Influences Cost & Timeline",
+        "Add-On Options",
+        "Our Production Process",
+        "Technical Specifications",
+        "Common Questions",
+        "Related Services"
+      ]
+    }
+  ]
+}
