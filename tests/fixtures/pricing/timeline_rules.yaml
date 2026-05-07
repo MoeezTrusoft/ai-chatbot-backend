@@ -1,0 +1,13 @@
+version: timeline_test
+unit: business_days
+rules:
+  ghostwriting: {formula: word_count_days, base_days: {basic: 10, standard: 20, premium: 30}}
+  editing_proofreading: {formula: word_count_days, base_days: {manuscript_assessment: 5, developmental_editing: 10, copyediting: 8, proofreading: 5}}
+  cover_design_illustration: {formula: flat_days, base_days: {basic: 5, standard: 10, premium: 15}}
+  interior_formatting: {formula: page_count_days, base_days: {basic: 5, standard: 10, premium: 15}}
+  audiobook_production: {formula: word_count_days, base_days: {basic: 10, standard: 20, premium: 30}}
+  publishing_distribution: {formula: flat_days, base_days: {basic: 5, standard: 10, premium: 15}}
+  marketing_promotion: {formula: flat_days, base_days: {basic: 5, standard: 10, premium: 15}}
+  author_website: {formula: flat_days, base_days: {basic: 5, standard: 10, premium: 15}}
+  video_trailer: {formula: flat_days, base_days: {basic: 5, standard: 10, premium: 15}}
+range_padding_days: {low: 0, high: 5}

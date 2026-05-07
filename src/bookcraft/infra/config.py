@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     rag_source_dir: str = "data/rag-corpus/source_markdown"
     rag_build_dir: str = "data/rag-corpus/build"
     rag_strict_verifier: bool = True
+    pricing_rule_dir: str = "data/pricing"
+    pricing_strict_verifier: bool = True
+    pricing_allow_placeholder_rules: bool = False
+    pricing_quote_valid_days: int = 14
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
     intent_ensemble_timeout_seconds: float = 2.5

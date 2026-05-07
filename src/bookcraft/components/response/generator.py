@@ -6,6 +6,7 @@ from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.pricing.schemas import PricingQuoteResponse, TimelineEstimateResponse
 from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.domain.enums import QueryIntentType
@@ -28,6 +29,9 @@ class SonnetResponseGenerator:
         intent: IntentVote,
         extraction: CombinedExtraction,
         rag_chunks: list[RetrievedChunk] | None = None,
+        pricing_quote: PricingQuoteResponse | None = None,
+        timeline_estimate: TimelineEstimateResponse | None = None,
+        pricing_missing_question: str | None = None,
     ) -> ResponseDraft:
         del state, extraction
         with RESPONSE_SECONDS.time():
@@ -37,6 +41,15 @@ class SonnetResponseGenerator:
                 and message.normalized.lower() in {"hi", "hello", "hey"}
             ):
                 return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
+            if pricing_missing_question:
+                return ResponseDraft(text=pricing_missing_question, source="pricing_engine")
+            if pricing_quote is not None:
+                return ResponseDraft(text=pricing_quote.suggested_phrasing, source="pricing_engine")
+            if timeline_estimate is not None:
+                return ResponseDraft(
+                    text=timeline_estimate.suggested_phrasing,
+                    source="pricing_engine",
+                )
             LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
             return ResponseDraft(
                 text=self._mock_response(intent, rag_chunks or []),

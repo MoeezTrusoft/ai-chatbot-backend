@@ -1,0 +1,5 @@
+version: policy_test
+quote_valid_days: 14
+human_review: {low_confidence_threshold: 0.65, high_value_threshold: 100000}
+assumptions: ["Test fixture assumption."]
+exclusions: ["Test fixture exclusion."]

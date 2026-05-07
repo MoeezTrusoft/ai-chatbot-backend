@@ -1,0 +1,10 @@
+version: policy_v1
+quote_valid_days: 14
+human_review:
+  low_confidence_threshold: 0.65
+  high_value_threshold: REPLACE_WITH_APPROVED_VALUE
+assumptions:
+  - "Quote ranges depend on approved pricing rules and structured project facts."
+  - "Client delays, missing materials, or scope changes can require a revised quote."
+exclusions:
+  - "Third-party platform fees, advertising spend, and external production costs are excluded unless stated in an approved quote."

@@ -1,0 +1,13 @@
+version: pricing_test
+currency: USD
+rules:
+  ghostwriting: {formula: word_count_rate, rates: {basic: 0.10, standard: 0.20, premium: 0.30}}
+  editing_proofreading: {formula: word_count_rate, rates: {manuscript_assessment: 0.01, developmental_editing: 0.04, copyediting: 0.02, proofreading: 0.01}}
+  cover_design_illustration: {formula: flat_project, rates: {basic: 100, standard: 200, premium: 300}}
+  interior_formatting: {formula: page_count_rate, rates: {basic: 1, standard: 2, premium: 3}}
+  audiobook_production: {formula: word_count_rate, rates: {basic: 0.05, standard: 0.08, premium: 0.10}}
+  publishing_distribution: {formula: flat_project, rates: {basic: 100, standard: 200, premium: 300}}
+  marketing_promotion: {formula: flat_project, rates: {basic: 100, standard: 200, premium: 300}}
+  author_website: {formula: flat_project, rates: {basic: 100, standard: 200, premium: 300}}
+  video_trailer: {formula: flat_project, rates: {basic: 100, standard: 200, premium: 300}}
+range_multiplier: {low: 0.9, high: 1.1}

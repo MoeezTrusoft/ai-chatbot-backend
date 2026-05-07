@@ -1,0 +1,61 @@
+version: pricing_v1
+currency: USD
+rules:
+  ghostwriting:
+    formula: word_count_rate
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  editing_proofreading:
+    formula: word_count_rate
+    rates:
+      manuscript_assessment: REPLACE_WITH_APPROVED_VALUE
+      developmental_editing: REPLACE_WITH_APPROVED_VALUE
+      copyediting: REPLACE_WITH_APPROVED_VALUE
+      proofreading: REPLACE_WITH_APPROVED_VALUE
+  cover_design_illustration:
+    formula: flat_project
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  interior_formatting:
+    formula: page_count_rate
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  audiobook_production:
+    formula: word_count_rate
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  publishing_distribution:
+    formula: flat_project
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  marketing_promotion:
+    formula: flat_project
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  author_website:
+    formula: flat_project
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+  video_trailer:
+    formula: flat_project
+    rates:
+      basic: REPLACE_WITH_APPROVED_VALUE
+      standard: REPLACE_WITH_APPROVED_VALUE
+      premium: REPLACE_WITH_APPROVED_VALUE
+range_multiplier:
+  low: REPLACE_WITH_APPROVED_VALUE
+  high: REPLACE_WITH_APPROVED_VALUE

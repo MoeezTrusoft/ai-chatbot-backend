@@ -1,0 +1,47 @@
+version: service_catalog_v1
+services:
+  ghostwriting:
+    display_name: "Ghostwriting"
+    required_inputs: ["word_count", "genre"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  editing_proofreading:
+    display_name: "Editing & Proofreading"
+    required_inputs: ["word_count", "tier", "genre"]
+    default_tier: "standard"
+    tiers: ["manuscript_assessment", "developmental_editing", "copyediting", "proofreading"]
+  cover_design_illustration:
+    display_name: "Cover Design & Illustration"
+    required_inputs: ["tier"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  interior_formatting:
+    display_name: "Interior Formatting"
+    required_inputs: ["page_count"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  audiobook_production:
+    display_name: "Audiobook Production"
+    required_inputs: ["word_count", "tier"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  publishing_distribution:
+    display_name: "Publishing & Distribution"
+    required_inputs: ["tier"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  marketing_promotion:
+    display_name: "Marketing & Promotion"
+    required_inputs: ["tier", "genre"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  author_website:
+    display_name: "Author Website"
+    required_inputs: ["tier"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]
+  video_trailer:
+    display_name: "Video Trailer"
+    required_inputs: ["tier"]
+    default_tier: "standard"
+    tiers: ["basic", "standard", "premium"]

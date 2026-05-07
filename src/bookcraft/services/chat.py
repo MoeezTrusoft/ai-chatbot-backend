@@ -7,12 +7,21 @@ from uuid import UUID, uuid4
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
+from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import HaikuIntentClassifier
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import SharedPreprocessor
+from bookcraft.components.pricing import (
+    PricingQuoteRequest,
+    PricingQuoteResponse,
+    PricingTimelineEngine,
+    TimelineEstimateRequest,
+    TimelineEstimateResponse,
+)
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
+from bookcraft.domain.enums import QueryIntentType, Source
 from bookcraft.domain.state import ThreadState
 
 if TYPE_CHECKING:
@@ -39,6 +48,7 @@ class ChatService:
     response_generator: SonnetResponseGenerator
     formatter: ResponseFormatter
     rag_retriever: RagRetriever | None = None
+    pricing_engine: PricingTimelineEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
@@ -94,12 +104,45 @@ class ChatService:
             rag_chunks = []
             if self.rag_retriever is not None:
                 rag_chunks = await self.rag_retriever.retrieve(processed, intent)
+            pricing_quote: PricingQuoteResponse | None = None
+            timeline_estimate: TimelineEstimateResponse | None = None
+            pricing_missing_question: str | None = None
+            if intent.query_primary in {
+                QueryIntentType.PRICING_QUESTION,
+                QueryIntentType.TIMELINE_QUESTION,
+            }:
+                pricing_quote, timeline_estimate, pricing_missing_question = self._price_turn(
+                    thread_id=thread_id,
+                    state=memory.state,
+                    intent_service=intent.service_primary,
+                    message=payload.message,
+                    confidence=intent.confidence,
+                )
+                if pricing_quote is not None:
+                    memory.state = self.state_applier.apply(
+                        memory.state,
+                        CombinedExtraction(
+                            state_deltas=[
+                                StateDelta(
+                                    path="commercial.latest_quote_id",
+                                    value=str(pricing_quote.quote_id),
+                                    confidence=1.0,
+                                    source=Source.SYSTEM,
+                                    extracted_by="pricing_engine.v1",
+                                    raw_excerpt=None,
+                                )
+                            ]
+                        ),
+                    )
             draft = await self.response_generator.generate(
                 message=processed,
                 state=memory.state,
                 intent=intent,
                 extraction=extraction,
                 rag_chunks=rag_chunks,
+                pricing_quote=pricing_quote,
+                timeline_estimate=timeline_estimate,
+                pricing_missing_question=pricing_missing_question,
             )
             bubbles = self.formatter.format(draft.text)
             event_ids.append(
@@ -148,3 +191,65 @@ class ChatService:
             }
         )
         return event_hash
+
+    def _price_turn(
+        self,
+        *,
+        thread_id: UUID,
+        state: ThreadState,
+        intent_service: object,
+        message: str,
+        confidence: float,
+    ) -> tuple[PricingQuoteResponse | None, TimelineEstimateResponse | None, str | None]:
+        if self.pricing_engine is None:
+            return None, None, None
+        service = intent_service or (
+            state.project.services_discussed[0].service.value
+            if state.project.services_discussed
+            and state.project.services_discussed[0].service.value is not None
+            else None
+        )
+        if service is None:
+            return None, None, "Which BookCraft service should I price?"
+        tier = "standard"
+        word_count = state.project.word_count.value
+        page_count = state.project.page_count.value
+        genre = state.project.genre.value or _genre_from_text(message)
+        request = PricingQuoteRequest(
+            service=service,
+            tier=tier,
+            word_count=word_count,
+            page_count=page_count,
+            genre=genre,
+            urgency=state.commercial.timeline_expectation.value,
+            thread_id=thread_id,
+            confidence=confidence,
+            raw_user_request=message,
+        )
+        if "timeline" in message.lower() or "how long" in message.lower():
+            timeline = self.pricing_engine.timeline(TimelineEstimateRequest.model_validate(request))
+            if timeline.missing_inputs:
+                return None, None, timeline.suggested_phrasing
+            return None, timeline, None
+        quote = self.pricing_engine.quote(request)
+        if quote.missing_inputs:
+            return None, None, quote.suggested_phrasing
+        return quote, None, None
+
+
+def _genre_from_text(text: str) -> str | None:
+    lowered = text.lower()
+    for genre in [
+        "fantasy",
+        "romance",
+        "thriller",
+        "memoir",
+        "business",
+        "children",
+        "nonfiction",
+        "non-fiction",
+        "fiction",
+    ]:
+        if genre in lowered:
+            return genre
+    return None

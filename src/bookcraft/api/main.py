@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import sentry_sdk
@@ -13,6 +14,7 @@ from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.intent import HaikuIntentClassifier
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
+from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_client
 from bookcraft.infra.config import Settings, get_settings
@@ -119,6 +121,10 @@ def build_chat_service(settings: Settings) -> ChatService:
         state_applier=StateApplier(),
         response_generator=SonnetResponseGenerator(),
         formatter=ResponseFormatter(),
+        pricing_engine=PricingTimelineEngine.from_rule_dir(
+            Path(settings.pricing_rule_dir),
+            allow_placeholder_rules=settings.pricing_allow_placeholder_rules,
+        ),
     )
 
 
