@@ -52,7 +52,7 @@ def calculate_service_line_item(
     complexity_duration_days = q2((base_duration_days * complexity_factor) + addon_days)
     schedule_multiplier, final_duration_days, schedule_class, review_for_timeline, schedule_warnings, schedule_trace = (
         compute_schedule_multiplier(
-            service_config, complexity_duration_days, request.requested_timeline
+            service_config, complexity_duration_days, service_inputs, request.requested_timeline
         )
     )
     rush_surcharge = complexity_price * (schedule_multiplier - Decimal("1"))
@@ -152,6 +152,8 @@ def _calculate_base(
         tier = str(service_inputs.get("tier"))
         dimension = str(service_inputs.get("package_dimension") or service_inputs.get("format") or service_inputs.get("website_type"))
         amount = d(nested_lookup(service_config.package_grid.rates, [tier, dimension]))  # type: ignore[union-attr]
+        printing_cost = _printing_cost(service_config, service_inputs, trace)
+        amount += printing_cost
         base_duration = _duration_from_config(service_config, [tier, dimension])
         return money(amount, service_config.currency), UnitType.PROJECT.value, Decimal("1"), f"{tier}/{dimension}", base_duration, trace
     if model == "package_plus_recurring":
@@ -175,7 +177,19 @@ def _calculate_base(
     if model == "campaign_package":
         tier = str(service_inputs.get("tier"))
         duration = str(service_inputs.get("campaign_duration"))
-        amount = d(nested_lookup(service_config.package_grid.rates, [tier, duration]))  # type: ignore[union-attr]
+        if tier not in (service_config.package_grid.rates if service_config.package_grid else {}):
+            if service_config.enterprise_rollout_policy.get("pricing_mode") == "quote_only":
+                trace.update(
+                    {
+                        "quote_only_tier": tier,
+                        "quote_only_reason": service_config.enterprise_rollout_policy.get("reason"),
+                    }
+                )
+                amount = Decimal("0")
+            else:
+                raise KeyError(f"Campaign tier {tier!r} not found")
+        else:
+            amount = d(nested_lookup(service_config.package_grid.rates, [tier, duration]))  # type: ignore[union-attr]
         setup_days = _duration_from_config(service_config, [tier])
         active_days = _campaign_duration_days(duration)
         trace.update({"campaign_active_calendar_days": str(active_days)})
@@ -183,6 +197,40 @@ def _calculate_base(
     if model == "cover_illustration":
         return _cover_base(service_config, service_inputs, trace)
     raise ValueError(f"Unsupported calculation_model: {model}")
+
+
+def _printing_cost(
+    service_config: ServiceConfig,
+    service_inputs: dict[str, Any],
+    trace: dict[str, Any],
+) -> Decimal:
+    if not service_config.printing_cost_grid:
+        return Decimal("0")
+    trim_size = service_inputs.get("trim_size")
+    print_type = service_inputs.get("print_type")
+    if trim_size is None or print_type is None:
+        return Decimal("0")
+    grid_value = nested_lookup(service_config.printing_cost_grid, [str(trim_size), str(print_type)])
+    if isinstance(grid_value, str) and grid_value.strip().lower() == "quote_only":
+        trace.update(
+            {
+                "printing_cost_requires_review": True,
+                "printing_trim_size": str(trim_size),
+                "printing_print_type": str(print_type),
+            }
+        )
+        return Decimal("0")
+    quantity = d(service_inputs.get("print_quantity") or 1)
+    unit_cost = d(grid_value)
+    total = unit_cost * quantity
+    trace.update(
+        {
+            "printing_cost_unit": str(unit_cost),
+            "printing_cost_quantity": str(quantity),
+            "printing_cost_total": str(total),
+        }
+    )
+    return total
 
 
 def _pace_duration(
@@ -290,6 +338,16 @@ def _custom_value_warnings(service_config: ServiceConfig, service_inputs: dict[s
                     )
                 )
     if service_config.service.value == "marketing_promotion":
+        tier = str(service_inputs.get("tier", "")).strip().lower()
+        if tier == "enterprise_rollout" and service_config.enterprise_rollout_policy:
+            warnings.append(
+                QuoteWarning(
+                    code="ENTERPRISE_ROLLOUT_REQUIRES_REVIEW",
+                    message="Enterprise rollout pricing is configured as quote-only and requires human review.",
+                    service=service_config.service,
+                    requires_human_review=True,
+                )
+            )
         ad_budget = service_inputs.get("ad_budget")
         if ad_budget is not None and d(ad_budget) >= service_config.human_review.marketing_ad_budget_threshold:
             warnings.append(
@@ -300,4 +358,18 @@ def _custom_value_warnings(service_config: ServiceConfig, service_inputs: dict[s
                     requires_human_review=True,
                 )
             )
+    if service_config.printing_cost_grid:
+        trim_size = service_inputs.get("trim_size")
+        print_type = service_inputs.get("print_type")
+        if trim_size is not None and print_type is not None:
+            grid_value = nested_lookup(service_config.printing_cost_grid, [str(trim_size), str(print_type)])
+            if isinstance(grid_value, str) and grid_value.strip().lower() == "quote_only":
+                warnings.append(
+                    QuoteWarning(
+                        code="PRINTING_COST_REQUIRES_REVIEW",
+                        message="Selected print production cost is quote-only and requires human review.",
+                        service=service_config.service,
+                        requires_human_review=True,
+                    )
+                )
     return warnings

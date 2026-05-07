@@ -78,9 +78,28 @@ class ComplexityModelConfig(BaseModel):
     factor_name: str
     mode: Literal["points", "ghostwriting_weighted"] = "points"
     point_multiplier: Decimal = Decimal("0.05")
+    service_specific_point_multipliers: dict[str, Decimal] = Field(default_factory=dict)
     max_factor: Decimal = Decimal("1.60")
     weighted_coefficients: dict[str, Decimal] = Field(default_factory=dict)
     drivers: list[ComplexityDriver] = Field(default_factory=list)
+
+
+class TimelineServiceMultiplierConfig(BaseModel):
+    beta: Decimal = Decimal("1.00")
+    min_tlf: Decimal | None = None
+    max_tlf: Decimal | None = None
+
+
+class TimelineTuningConfig(BaseModel):
+    factor_name: str | None = None
+    rush_slope: Decimal | None = None
+    relax_slope: Decimal | None = None
+    accelerated_slope: Decimal | None = None
+    intensive_slope: Decimal | None = None
+    min_tlf: Decimal | None = None
+    max_tlf: Decimal | None = None
+    service_multipliers: dict[str, TimelineServiceMultiplierConfig] = Field(default_factory=dict)
+    campaign_duration_multipliers: dict[str, Decimal] = Field(default_factory=dict)
 
 
 class TimelinePolicyConfig(BaseModel):
@@ -137,9 +156,12 @@ class ServiceConfig(BaseModel):
     base_duration_days: dict[str, Any] | Decimal | None = None
     complexity: ComplexityModelConfig
     timeline_policy: TimelinePolicyConfig = Field(default_factory=TimelinePolicyConfig)
+    timeline_tuning: TimelineTuningConfig | None = None
     range_policy: RangePolicyConfig = Field(default_factory=RangePolicyConfig)
     human_review: HumanReviewPolicyConfig = Field(default_factory=HumanReviewPolicyConfig)
     add_ons: list[AddOnConfig] = Field(default_factory=list)
+    printing_cost_grid: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    enterprise_rollout_policy: dict[str, Any] = Field(default_factory=dict)
     assumptions: list[str] = Field(default_factory=list)
     exclusions: list[str] = Field(default_factory=list)
     source_reference: str | None = None

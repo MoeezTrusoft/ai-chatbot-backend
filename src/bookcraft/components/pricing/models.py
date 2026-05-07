@@ -267,7 +267,7 @@ class PaymentScheduleOption(BaseModel):
 
 class PricingTimelineQuote(BaseModel):
     quote_id: UUID = Field(default_factory=uuid4)
-    quote_version: str = "2.1"
+    quote_version: str = "2.2"
     config_versions: dict[str, str]
     status: QuoteStatus
     requested_services: list[ServiceCategory]

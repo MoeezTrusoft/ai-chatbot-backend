@@ -13,6 +13,16 @@ from .models import (
     RequestedTimeline,
 )
 
+SERVICE_OPTION_FIELDS = (
+    "service_type",
+    "tier",
+    "package_dimension",
+    "output_format",
+    "format",
+    "website_type",
+    "schedule_class",
+)
+
 
 def d(value: Any) -> Decimal:
     return Decimal(str(value))
@@ -42,6 +52,14 @@ def nested_lookup(mapping: Any, path: list[str]) -> Any:
 
 def money(amount: Decimal | int | str | float, currency: str = "USD") -> Money:
     return Money(amount=amount, currency=currency)
+
+
+def service_option_key(service_inputs: dict[str, Any]) -> str | None:
+    for field in SERVICE_OPTION_FIELDS:
+        value = service_inputs.get(field)
+        if value is not None and value != "":
+            return str(value).strip().lower()
+    return None
 
 
 def compute_complexity(
@@ -74,7 +92,13 @@ def compute_complexity(
         for group, points in group_points.items():
             factor += coefficients.get(group, Decimal("0.005")) * points
     else:
-        factor = Decimal("1") + total_points * service_config.complexity.point_multiplier
+        point_multiplier = service_config.complexity.point_multiplier
+        option_key = service_option_key(service_inputs)
+        if option_key is not None:
+            point_multiplier = service_config.complexity.service_specific_point_multipliers.get(
+                option_key, point_multiplier
+            )
+        factor = Decimal("1") + total_points * point_multiplier
     factor = min(factor, service_config.complexity.max_factor)
     factor = max(factor, Decimal("1"))
     return q2(factor), contributions, group_points
@@ -168,11 +192,39 @@ def _calculate_addon_amounts(
 def compute_schedule_multiplier(
     service_config: ServiceConfig,
     complexity_duration_days: Decimal,
+    service_inputs: dict[str, Any],
     requested_timeline: RequestedTimeline | None,
 ) -> tuple[Decimal, Decimal, str, bool, list[QuoteWarning], dict[str, Any]]:
     policy = service_config.timeline_policy
     warnings: list[QuoteWarning] = []
     trace: dict[str, Any] = {}
+    tuning = service_config.timeline_tuning
+    rush_slope = tuning.rush_slope if tuning and tuning.rush_slope is not None else policy.rush_slope
+    relax_slope = tuning.relax_slope if tuning and tuning.relax_slope is not None else policy.relax_slope
+    min_schedule_multiplier = (
+        tuning.min_tlf if tuning and tuning.min_tlf is not None else policy.min_schedule_multiplier
+    )
+    max_schedule_multiplier = (
+        tuning.max_tlf if tuning and tuning.max_tlf is not None else policy.max_schedule_multiplier
+    )
+    service_beta = policy.service_beta
+    option_key = service_option_key(service_inputs)
+    if tuning is not None:
+        trace["timeline_tuning_factor"] = tuning.factor_name
+        if option_key is not None and option_key in tuning.service_multipliers:
+            service_tuning = tuning.service_multipliers[option_key]
+            trace["timeline_tuning_key"] = option_key
+            service_beta = service_tuning.beta
+            min_schedule_multiplier = service_tuning.min_tlf or min_schedule_multiplier
+            max_schedule_multiplier = service_tuning.max_tlf or max_schedule_multiplier
+        campaign_duration = service_inputs.get("campaign_duration")
+        if campaign_duration is not None:
+            campaign_key = str(campaign_duration).strip().lower()
+            duration_multiplier = tuning.campaign_duration_multipliers.get(campaign_key)
+            if duration_multiplier is not None:
+                complexity_duration_days = q2(complexity_duration_days * duration_multiplier)
+                trace["campaign_duration_multiplier"] = str(duration_multiplier)
+                trace["adjusted_complexity_duration_days"] = str(complexity_duration_days)
     if requested_timeline is None:
         return Decimal("1.00"), ceil_days(complexity_duration_days), "standard", False, warnings, trace
     requested_days = requested_timeline.to_business_days()
@@ -182,16 +234,16 @@ def compute_schedule_multiplier(
     if schedule_ratio <= Decimal("0.85"):
         schedule_class = "relaxed"
         multiplier = max(
-            policy.min_schedule_multiplier,
-            Decimal("1") - policy.relax_slope * (Decimal("0.85") - schedule_ratio),
+            min_schedule_multiplier,
+            Decimal("1") - relax_slope * (Decimal("0.85") - schedule_ratio),
         )
         return q2(multiplier), ceil_days(requested_days), schedule_class, False, warnings, trace
     if schedule_ratio <= Decimal("1.00"):
         return Decimal("1.00"), ceil_days(requested_days), "standard", False, warnings, trace
     if schedule_ratio <= policy.max_compression_ratio:
         multiplier = min(
-            policy.max_schedule_multiplier,
-            Decimal("1") + policy.rush_slope * (schedule_ratio - Decimal("1")) * policy.service_beta,
+            max_schedule_multiplier,
+            Decimal("1") + rush_slope * (schedule_ratio - Decimal("1")) * service_beta,
         )
         warnings.append(
             QuoteWarning(
@@ -211,7 +263,7 @@ def compute_schedule_multiplier(
         )
     )
     return (
-        q2(policy.max_schedule_multiplier),
+        q2(max_schedule_multiplier),
         ceil_days(min_feasible),
         "not_feasible_without_review",
         True,

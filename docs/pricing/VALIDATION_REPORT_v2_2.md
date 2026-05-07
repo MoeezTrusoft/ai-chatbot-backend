@@ -36,8 +36,10 @@
 
 ## Runtime smoke test
 
-Loaded the configs through the existing v2.1 Python engine and generated a sample multi-service quote successfully using Editing, Marketing, and Cover Design. This confirms the configs are syntactically valid and compatible with the current loader.
+Loaded the configs through the v2.2 Python engine and generated a sample multi-service quote successfully using Editing, Marketing, and Cover Design. This confirms the configs are syntactically valid and compatible with the current loader.
 
 ## Remaining implementation note
 
-These configs include workbook-parity metadata fields that current v2.1 code may ignore unless the engine has been updated to consume them: `timeline_tuning`, `printing_cost_grid`, and `complexity.service_specific_point_multipliers`. The files still load safely under the existing Pydantic models because extra keys are ignored by default.
+The engine now consumes the workbook-parity metadata fields for `timeline_tuning`,
+`printing_cost_grid`, `enterprise_rollout_policy`, and
+`complexity.service_specific_point_multipliers`.

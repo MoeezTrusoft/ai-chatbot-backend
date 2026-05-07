@@ -17,4 +17,6 @@ This folder is intended to replace the current `data/pricing` or `v2` configurat
 
 ## Compatibility note
 
-The existing v2.1 Python config models should load these files because Pydantic ignores unknown extra fields by default. New metadata fields such as `timeline_tuning`, `printing_cost_grid`, `enterprise_rollout_policy`, and `service_specific_point_multipliers` are included so the project can fully implement workbook parity. If the production engine forbids extra keys, either enable extra-ignore or add these fields to the schema before replacing configs.
+The Python config models now type and consume the v2.2 workbook-parity metadata fields:
+`timeline_tuning`, `printing_cost_grid`, `enterprise_rollout_policy`, and
+`complexity.service_specific_point_multipliers`.

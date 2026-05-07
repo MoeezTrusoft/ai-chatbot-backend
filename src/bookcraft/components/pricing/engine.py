@@ -146,7 +146,7 @@ class PricingTimelineEngine:
             confidence=confidence,
             human_review_required=human_review,
             audit_trace={
-                "engine_version": "2.1.0",
+                "engine_version": "2.2.0",
                 "rule": "All commercial numbers produced deterministically by PricingTimelineEngine.",
             },
         )
@@ -178,7 +178,7 @@ class PricingTimelineEngine:
                 QuoteWarning(
                     code="VALUES_NOT_APPROVED",
                     message=(
-                        "Pricing v2.1 values are installed but not approved for "
+                        "Pricing v2.2 values are installed but not approved for "
                         "customer-facing contractual use."
                     ),
                     requires_human_review=True,
@@ -187,7 +187,7 @@ class PricingTimelineEngine:
             confidence=0.0,
             human_review_required=True,
             audit_trace={
-                "engine_version": "2.1.0",
+                "engine_version": "2.2.0",
                 "blocked_reason": "pricing_values_not_approved",
                 "quote_mode": request.quote_mode,
             },
@@ -254,7 +254,7 @@ class PricingTimelineEngine:
             ],
             confidence=0.0,
             human_review_required=False,
-            audit_trace={"engine_version": "2.1.0", "blocked_reason": "missing_required_inputs"},
+            audit_trace={"engine_version": "2.2.0", "blocked_reason": "missing_required_inputs"},
         )
 
     @staticmethod

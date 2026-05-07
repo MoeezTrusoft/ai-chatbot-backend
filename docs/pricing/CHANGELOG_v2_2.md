@@ -27,4 +27,6 @@ For exact workbook parity, the engine should consume:
 - `printing_cost_grid`
 - `complexity.service_specific_point_multipliers` for Editing & Proofreading
 
-The current v2.1 engine can still load the configs and use the supported fields.
+The current v2.2 engine loads these configs and consumes the workbook-parity metadata
+fields needed for service-specific complexity, timeline tuning, printing-cost grid
+handling, and enterprise rollout review gating.

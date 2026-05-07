@@ -296,7 +296,7 @@ def _legacy_quote_response(
         confidence=quote.confidence,
         risk_flags=[warning.code for warning in quote.warnings],
         human_review_required=quote.human_review_required,
-        suggested_phrasing="Deterministic pricing range returned by PricingTimelineEngine v2.1.",
+        suggested_phrasing="Deterministic pricing range returned by PricingTimelineEngine v2.2.",
     )
 
 
@@ -328,5 +328,5 @@ def _legacy_timeline_response(
         confidence=quote.confidence,
         risk_flags=[warning.code for warning in quote.warnings],
         human_review_required=quote.human_review_required,
-        suggested_phrasing="Deterministic timeline range returned by PricingTimelineEngine v2.1.",
+        suggested_phrasing="Deterministic timeline range returned by PricingTimelineEngine v2.2.",
     )

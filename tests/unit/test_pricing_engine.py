@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from bookcraft.components.pricing import PricingQuoteRequest, PricingTimelineEngine, QuoteStatus
 from bookcraft.components.pricing.config import load_engine_config, validate_engine_config
+from bookcraft.components.pricing.kernel import compute_complexity
 from bookcraft.components.pricing.models import ServiceCategory
 from bookcraft.components.pricing.verifier import PricingVerifier
 
@@ -94,3 +95,120 @@ def test_required_inputs_are_available_for_all_services() -> None:
 
     assert set(required) == set(ServiceCategory)
     assert all(items for items in required.values())
+
+
+def test_v2_2_editing_service_specific_complexity_multipliers_apply() -> None:
+    config = load_engine_config(V2_DIR)
+    service_config = config.service_configs[ServiceCategory.EDITING_PROOFREADING]
+
+    developmental_factor, _, _ = compute_complexity(
+        service_config,
+        {"service_type": "developmental_editing", "manuscript_condition": "very_rough"},
+    )
+    copy_factor, _, _ = compute_complexity(
+        service_config,
+        {"service_type": "copy_editing", "manuscript_condition": "very_rough"},
+    )
+
+    assert developmental_factor > copy_factor
+
+
+def test_v2_2_publishing_printing_cost_grid_adds_to_base_price() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    base_request = {
+        "requested_services": ["publishing_distribution"],
+        "service_inputs": {
+            "publishing_distribution": {
+                "tier": "essential",
+                "package_dimension": "print_only",
+                "distribution_channels": "print_only",
+            }
+        },
+    }
+    quote_without_printing = engine.quote(PricingQuoteRequest.model_validate(base_request))
+
+    with_printing = base_request | {
+        "service_inputs": {
+            "publishing_distribution": {
+                "tier": "essential",
+                "package_dimension": "print_only",
+                "distribution_channels": "print_only",
+                "trim_size": "6x9",
+                "print_type": "paperback_bw",
+                "print_quantity": 10,
+            }
+        }
+    }
+    quote_with_printing = engine.quote(PricingQuoteRequest.model_validate(with_printing))
+    item = quote_with_printing.line_items[0]
+
+    assert item.base_price.amount > quote_without_printing.line_items[0].base_price.amount
+    assert item.calculation_trace["printing_cost_total"] == "42.50"
+
+
+def test_v2_2_publishing_quote_only_printing_cost_requires_review() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(
+        PricingQuoteRequest.model_validate(
+            {
+                "requested_services": ["publishing_distribution"],
+                "service_inputs": {
+                    "publishing_distribution": {
+                        "tier": "essential",
+                        "package_dimension": "print_only",
+                        "distribution_channels": "print_only",
+                        "trim_size": "custom_size",
+                        "print_type": "paperback_bw",
+                    }
+                },
+            }
+        )
+    )
+
+    assert quote.status == QuoteStatus.HUMAN_REVIEW_REQUIRED
+    assert any(warning.code == "PRINTING_COST_REQUIRES_REVIEW" for warning in quote.warnings)
+
+
+def test_v2_2_marketing_enterprise_rollout_is_quote_only_review() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(
+        PricingQuoteRequest.model_validate(
+            {
+                "requested_services": ["marketing_promotion"],
+                "service_inputs": {
+                    "marketing_promotion": {
+                        "tier": "enterprise_rollout",
+                        "campaign_duration": "3_months",
+                        "primary_goal": "launch_support",
+                    }
+                },
+            }
+        )
+    )
+
+    assert quote.status == QuoteStatus.HUMAN_REVIEW_REQUIRED
+    assert quote.line_items[0].calculation_trace["quote_only_tier"] == "enterprise_rollout"
+    assert any(warning.code == "ENTERPRISE_ROLLOUT_REQUIRES_REVIEW" for warning in quote.warnings)
+
+
+def test_v2_2_marketing_campaign_duration_tuning_is_traced() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(
+        PricingQuoteRequest.model_validate(
+            {
+                "requested_services": ["marketing_promotion"],
+                "service_inputs": {
+                    "marketing_promotion": {
+                        "tier": "professional_campaign",
+                        "campaign_duration": "1_month",
+                        "primary_goal": "awareness",
+                    }
+                },
+            }
+        )
+    )
+
+    schedule_trace = quote.line_items[0].calculation_trace["schedule_trace"]
+    assert schedule_trace["timeline_tuning_factor"] == "MTLF"
+    assert schedule_trace["timeline_tuning_key"] == "professional_campaign"
+    assert schedule_trace["campaign_duration_multiplier"] == "1.2"
