@@ -1,0 +1,121 @@
+service: interior_formatting
+version: "2.1.0"
+display_name: "Interior Formatting"
+currency: USD
+calculation_model: page_rate
+required_inputs:
+  - field: output_format
+    question: "Which formatting output do you need: print, ebook, or print_ebook?"
+  - field: category
+    question: "What book category should formatting use: fiction, non_fiction, poetry, academic, childrens_illustrated, cookbook, or graphic_novel?"
+  - field: page_count
+    fallback_global_field: page_count
+    question: "Approximately how many formatted pages will the book have?"
+rate_grid:
+  unit_type: pages
+  minimum_fee: 199
+  rates:
+    fiction:
+      print: 1.25
+      ebook: 0.90
+      print_ebook: 1.90
+    non_fiction:
+      print: 1.50
+      ebook: 1.00
+      print_ebook: 2.25
+    poetry:
+      print: 1.75
+      ebook: 1.25
+      print_ebook: 2.50
+    academic:
+      print: 2.00
+      ebook: 1.25
+      print_ebook: 2.90
+    childrens_illustrated:
+      print: 2.50
+      ebook: 1.50
+      print_ebook: 3.60
+    cookbook:
+      print: 3.00
+      ebook: 1.75
+      print_ebook: 4.25
+    graphic_novel:
+      print: 4.00
+      ebook: 2.25
+      print_ebook: 5.50
+pace_grid:
+  unit_type: pages
+  pace:
+    fiction:
+      print: 20
+      ebook: 30
+      print_ebook: 15
+    non_fiction:
+      print: 17
+      ebook: 26
+      print_ebook: 13
+    poetry:
+      print: 14
+      ebook: 22
+      print_ebook: 11
+    academic:
+      print: 12
+      ebook: 20
+      print_ebook: 10
+    childrens_illustrated:
+      print: 10
+      ebook: 18
+      print_ebook: 8
+    cookbook:
+      print: 8
+      ebook: 16
+      print_ebook: 7
+    graphic_novel:
+      print: 6
+      ebook: 14
+      print_ebook: 5
+  quality_buffer_percent: 10
+complexity:
+  factor_name: FCF
+  mode: points
+  point_multiplier: 0.05
+  max_factor: 1.6
+  drivers:
+    - field: content_complexity
+      label: "Content complexity"
+      options:
+        - value: text_only
+          points: 0
+        - value: images_tables
+          points: 2
+        - value: complex_layout
+          points: 4
+    - field: design_style
+      label: "Design style"
+      options:
+        - value: standard
+          points: 0
+        - value: custom
+          points: 2
+        - value: highly_designed
+          points: 4
+add_ons:
+  - code: clickable_toc
+    title: "Clickable Table of Contents"
+    price_type: fixed
+    price: 75
+    duration_type: fixed_days
+    duration_days: 1
+    complexity_points: 0.10
+  - code: image_optimization
+    title: "Image Optimization"
+    price_type: fixed
+    price: 150
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.30
+assumptions:
+  - "Formatting estimate assumes final edited manuscript is available before formatting begins."
+exclusions:
+  - "Print proofing costs and platform fees are excluded unless separately listed."
+source_reference: "Formatting_Price&TimeEngine.xlsx, normalized into v2.1 config."

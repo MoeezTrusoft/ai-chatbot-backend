@@ -1,0 +1,31 @@
+version: "2.1"
+dependencies:
+  ghostwriting:
+    after: []
+    can_overlap_with: []
+  editing_proofreading:
+    after: [ghostwriting]
+    can_overlap_with: []
+    can_start_if_manuscript_available: true
+  cover_design_illustration:
+    after: []
+    can_overlap_with: [editing_proofreading, interior_formatting]
+  interior_formatting:
+    after: [editing_proofreading]
+    can_overlap_with: []
+  publishing_distribution:
+    after: [interior_formatting, cover_design_illustration]
+    can_overlap_with: []
+  audiobook_production:
+    after: [editing_proofreading]
+    can_overlap_with: [cover_design_illustration]
+  video_trailer:
+    after: []
+    can_overlap_with: [cover_design_illustration, marketing_promotion]
+  author_website:
+    after: []
+    can_overlap_with: [cover_design_illustration, marketing_promotion]
+  marketing_promotion:
+    after: [cover_design_illustration]
+    can_overlap_with: [author_website, video_trailer]
+    can_start_before_publication: true

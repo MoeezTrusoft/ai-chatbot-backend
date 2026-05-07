@@ -1,0 +1,107 @@
+service: cover_design_illustration
+version: "2.1.0"
+display_name: "Cover Design & Illustration"
+currency: USD
+calculation_model: cover_illustration
+required_inputs:
+  - field: format
+    question: "What format is needed: ebook, print, or ebook_print?"
+  - field: cover_type
+    question: "Which cover type is needed: front_only, front_back, or full_wrap? If this is illustrations only, provide illustration_count instead."
+package_grid:
+  unit_type: assets
+  rates:
+    covers:
+      front_only:
+        simple: 50
+        standard: 75
+        complex: 100
+        premium: 150
+      front_back:
+        simple: 75
+        standard: 125
+        complex: 175
+        premium: 250
+      full_wrap:
+        simple: 100
+        standard: 150
+        complex: 200
+        premium: 300
+    illustrations:
+      black_white:
+        spot_art: 30
+        half_page: 50
+        full_page: 75
+        full_spread: 100
+      color:
+        spot_art: 50
+        half_page: 75
+        full_page: 100
+        full_spread: 125
+base_duration_days:
+  covers:
+    front_only:
+      simple: 3
+      standard: 5
+      complex: 7
+      premium: 10
+    front_back:
+      simple: 4
+      standard: 6
+      complex: 8
+      premium: 12
+    full_wrap:
+      simple: 5
+      standard: 7
+      complex: 10
+      premium: 14
+complexity:
+  factor_name: CCF
+  mode: points
+  point_multiplier: 0.08
+  max_factor: 1.6
+  drivers:
+    - field: art_direction_complexity
+      label: "Art direction complexity"
+      options:
+        - value: simple
+          points: 0
+        - value: detailed
+          points: 2
+        - value: cinematic_or_symbolic
+          points: 4
+    - field: illustration_style
+      label: "Illustration style"
+      options:
+        - value: stock_based
+          points: 0
+        - value: custom_digital
+          points: 2
+        - value: painterly_or_handdrawn
+          points: 3
+add_ons:
+  - code: source_files
+    title: "Source Files Package"
+    price_type: fixed
+    price: 150
+    duration_type: none
+    complexity_points: 0
+  - code: additional_concept
+    title: "Additional Cover Concept"
+    price_type: fixed
+    price: 100
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.25
+  - code: social_mockups
+    title: "Social Media Mockups"
+    price_type: fixed
+    price: 75
+    duration_type: fixed_days
+    duration_days: 1
+    complexity_points: 0.10
+assumptions:
+  - "Cover estimate assumes title, subtitle, author name, trim size, and genre direction are available."
+exclusions:
+  - "Licensed stock, paid fonts, and third-party art assets are excluded unless pre-approved."
+source_reference: "CoverDesign_Price&TimeEngine.xlsx, normalized into v2.1 config."

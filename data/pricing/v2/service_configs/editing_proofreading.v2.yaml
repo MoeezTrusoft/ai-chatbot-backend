@@ -1,0 +1,145 @@
+service: editing_proofreading
+version: "2.1.0"
+display_name: "Editing & Proofreading"
+currency: USD
+calculation_model: word_rate
+required_inputs:
+  - field: service_type
+    question: "Which editing service do you need: developmental_editing, line_editing, copy_editing, proofreading, or manuscript_assessment?"
+  - field: category
+    question: "What category best fits the manuscript: standard_fiction, complex_fiction, standard_nonfiction, complex_nonfiction, academic_technical, poetry, comics_graphic, or anthologies?"
+  - field: word_count
+    fallback_global_field: word_count
+    question: "Approximately how many words is the manuscript?"
+  - field: manuscript_condition
+    question: "What condition is the manuscript in: clean, average, rough, or heavy_rewrite_needed?"
+rate_grid:
+  unit_type: words
+  minimum_fee: 250
+  rates:
+    standard_fiction:
+      developmental_editing: 0.010
+      line_editing: 0.007
+      copy_editing: 0.005
+      proofreading: 0.004
+      manuscript_assessment: 0.003
+    complex_fiction:
+      developmental_editing: 0.015
+      line_editing: 0.012
+      copy_editing: 0.008
+      proofreading: 0.006
+      manuscript_assessment: 0.005
+    standard_nonfiction:
+      developmental_editing: 0.015
+      line_editing: 0.012
+      copy_editing: 0.008
+      proofreading: 0.006
+      manuscript_assessment: 0.005
+    complex_nonfiction:
+      developmental_editing: 0.020
+      line_editing: 0.015
+      copy_editing: 0.012
+      proofreading: 0.008
+      manuscript_assessment: 0.006
+    academic_technical:
+      developmental_editing: 0.025
+      line_editing: 0.018
+      copy_editing: 0.014
+      proofreading: 0.010
+      manuscript_assessment: 0.0085
+    poetry:
+      developmental_editing: 0.020
+      line_editing: 0.015
+      copy_editing: 0.012
+      proofreading: 0.008
+      manuscript_assessment: 0.006
+    comics_graphic:
+      developmental_editing: 0.010
+      line_editing: 0.007
+      copy_editing: 0.005
+      proofreading: 0.004
+      manuscript_assessment: 0.003
+    anthologies:
+      developmental_editing: 0.010
+      line_editing: 0.007
+      copy_editing: 0.005
+      proofreading: 0.004
+      manuscript_assessment: 0.003
+pace_grid:
+  unit_type: words
+  pace:
+    developmental_editing: 4000
+    line_editing: 7000
+    copy_editing: 10000
+    proofreading: 14000
+    manuscript_assessment: 18000
+  quality_buffer_percent:
+    developmental_editing: 20
+    line_editing: 15
+    copy_editing: 10
+    proofreading: 5
+    manuscript_assessment: 10
+complexity:
+  factor_name: ECF
+  mode: points
+  point_multiplier: 0.035
+  max_factor: 1.6
+  drivers:
+    - field: manuscript_condition
+      label: "Manuscript condition"
+      options:
+        - value: clean
+          points: 0
+        - value: average
+          points: 1
+        - value: rough
+          points: 3
+        - value: heavy_rewrite_needed
+          points: 5
+          reason: "Substantial restructuring or rewrite-level intervention may be required."
+    - field: citation_density
+      label: "Citation density"
+      options:
+        - value: none
+          points: 0
+        - value: moderate
+          points: 1
+        - value: heavy
+          points: 3
+    - field: language_complexity
+      label: "Language/style complexity"
+      options:
+        - value: standard
+          points: 0
+        - value: technical
+          points: 2
+        - value: multilingual_or_dialect
+          points: 3
+add_ons:
+  - code: style_sheet
+    title: "Editorial Style Sheet"
+    price_type: fixed
+    price: 150
+    duration_type: fixed_days
+    duration_days: 1
+    complexity_points: 0.20
+  - code: references_check
+    title: "Reference and Citation Check"
+    price_type: per_unit
+    price: 0.004
+    unit_field: word_count
+    duration_type: per_unit_pace
+    pace_per_day: 12000
+    complexity_points: 0.40
+  - code: expedited_editor_review
+    title: "Senior Editor Review"
+    price_type: fixed
+    price: 500
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.30
+assumptions:
+  - "Editing estimate assumes manuscript is provided in a standard editable document format."
+exclusions:
+  - "Fact-checking, permissions clearance, and legal review are excluded unless approved separately."
+source_reference: "Editing_Price&TimeEngine.xlsx, normalized into v2.1 config."

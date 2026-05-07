@@ -1,0 +1,89 @@
+service: author_website
+version: "2.1.0"
+display_name: "Author Website"
+currency: USD
+calculation_model: package_plus_recurring
+required_inputs:
+  - field: tier
+    question: "Which author website tier is needed: starter, professional, premium, or enterprise?"
+  - field: website_type
+    question: "What type of website is needed: portfolio, book_launch, ecommerce, blog, or custom?"
+package_grid:
+  unit_type: project
+  rates:
+    starter:
+      setup: 999
+      monthly_recurring: 29
+      additional_page: 150
+      pages_included: 5
+    professional:
+      setup: 2499
+      monthly_recurring: 49
+      additional_page: 250
+      pages_included: 8
+    premium:
+      setup: 4999
+      monthly_recurring: 79
+      additional_page: 400
+      pages_included: 12
+    enterprise:
+      setup: 9999
+      monthly_recurring: 149
+      additional_page: 0
+      pages_included: 20
+base_duration_days:
+  starter: 20
+  professional: 30
+  premium: 40
+  enterprise: 60
+complexity:
+  factor_name: WCF
+  mode: points
+  point_multiplier: 0.06
+  max_factor: 1.8
+  drivers:
+    - field: integrations
+      label: "Website integrations"
+      options:
+        - value: none
+          points: 0
+        - value: newsletter_or_contact
+          points: 1
+        - value: ecommerce_or_booking
+          points: 3
+    - field: design_style
+      label: "Design style"
+      options:
+        - value: template_based
+          points: 0
+        - value: custom_brand
+          points: 2
+        - value: premium_interactive
+          points: 4
+add_ons:
+  - code: ecommerce_setup
+    title: "eCommerce Setup"
+    price_type: fixed
+    price: 750
+    duration_type: fixed_days
+    duration_days: 5
+    complexity_points: 0.50
+  - code: newsletter_integration
+    title: "Newsletter Integration"
+    price_type: fixed
+    price: 250
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.20
+  - code: advanced_seo
+    title: "Advanced SEO Setup"
+    price_type: fixed
+    price: 600
+    duration_type: fixed_days
+    duration_days: 4
+    complexity_points: 0.30
+assumptions:
+  - "Author website setup is quoted separately from monthly hosting or maintenance."
+exclusions:
+  - "Domain purchase, premium plugins, paid themes, and third-party subscriptions are excluded unless approved."
+source_reference: "AuthorWeb_Price&TimeEngine.xlsx, normalized into v2.1 config."

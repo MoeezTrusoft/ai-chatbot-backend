@@ -21,10 +21,7 @@ def _dispatcher() -> tuple[ToolDispatcher, MemoryAuditSink]:
     registry = ToolRegistry()
     register_pricing_tools(
         registry,
-        PricingTimelineEngine.from_rule_dir(
-            Path("tests/fixtures/pricing"),
-            allow_placeholder_rules=True,
-        ),
+        PricingTimelineEngine.from_config_dir(Path("data/pricing/v2"), values_approved=True),
     )
     audit = MemoryAuditSink()
     return (
@@ -80,6 +77,33 @@ async def test_pricing_tool_validates_and_replays_idempotent_call() -> None:
 
     assert first.result == second.result
     assert second.replayed is True
+    assert audit.records[0]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_v2_pricing_tool_returns_engine_quote() -> None:
+    dispatcher, audit = _dispatcher()
+    context = _context("pricing-v2")
+
+    result = await dispatcher.invoke(
+        tool_name="pricing.quote.estimate.v2",
+        raw_input={
+            "requested_services": ["ghostwriting"],
+            "service_inputs": {
+                "ghostwriting": {
+                    "service_type": "full_ghostwriting",
+                    "category": "fiction_standard",
+                    "word_count": 60000,
+                    "manuscript_status": "outline_ready",
+                }
+            },
+            "global_inputs": {"word_count": 60000},
+        },
+        context=context,
+    )
+
+    assert result.result["status"] == "estimated"
+    assert result.result["line_items"]
     assert audit.records[0]["status"] == "succeeded"
 
 

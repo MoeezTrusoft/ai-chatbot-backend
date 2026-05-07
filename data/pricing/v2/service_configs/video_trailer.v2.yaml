@@ -1,0 +1,89 @@
+service: video_trailer
+version: "2.1.0"
+display_name: "Video Trailer"
+currency: USD
+calculation_model: video_length_grid
+required_inputs:
+  - field: tier
+    question: "Which trailer tier is needed: essential, professional, premium, or cinematic?"
+  - field: video_length_seconds
+    question: "What video length is needed: 30, 60, 90, or 120 seconds?"
+  - field: production_style
+    question: "What production style is needed: simple_motion, cinematic_stock, animated, or custom?"
+package_grid:
+  unit_type: video_seconds
+  rates:
+    essential:
+      "30": 500
+      "60": 750
+      "90": 1000
+      "120": 1250
+    professional:
+      "30": 700
+      "60": 1000
+      "90": 1350
+      "120": 1700
+    premium:
+      "30": 1400
+      "60": 2100
+      "90": 2800
+      "120": 3500
+    cinematic:
+      "30": 2500
+      "60": 3750
+      "90": 5000
+      "120": 6250
+base_duration_days:
+  essential: 20
+  professional: 30
+  premium: 40
+  cinematic: 60
+complexity:
+  factor_name: VCF
+  mode: points
+  point_multiplier: 0.08
+  max_factor: 2.0
+  drivers:
+    - field: production_style
+      label: "Production style"
+      options:
+        - value: simple_motion
+          points: 0
+        - value: cinematic_stock
+          points: 2
+        - value: animated
+          points: 4
+        - value: custom
+          points: 6
+    - field: aspect_ratios
+      label: "Aspect ratio variants"
+      options:
+        - value: one
+          points: 0
+        - value: multiple
+          points: 2
+add_ons:
+  - code: voiceover
+    title: "Voiceover"
+    price_type: fixed
+    price: 250
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.20
+  - code: platform_cutdowns
+    title: "Platform Cutdowns"
+    price_type: fixed
+    price: 300
+    duration_type: fixed_days
+    duration_days: 3
+    complexity_points: 0.30
+  - code: original_music
+    title: "Original Music"
+    price_type: quote_only
+    duration_type: quote_only
+    complexity_points: 0.50
+assumptions:
+  - "Video trailer estimate assumes client supplies approved book assets, synopsis, and brand direction."
+exclusions:
+  - "Licensed footage, talent, and original music are excluded unless separately approved."
+source_reference: "VideoTrailer_Price&TimeEngine.xlsx, normalized into v2.1 config."

@@ -1,0 +1,93 @@
+service: publishing_distribution
+version: "2.1.0"
+display_name: "Publishing & Distribution"
+currency: USD
+calculation_model: package_grid
+required_inputs:
+  - field: tier
+    question: "Which publishing tier is needed: essential, professional, or premium?"
+  - field: package_dimension
+    question: "Which distribution format is needed: ebook_only, print_only, or ebook_print?"
+  - field: distribution_channels
+    question: "Which channels/platforms should be prepared for distribution?"
+package_grid:
+  unit_type: project
+  rates:
+    essential:
+      ebook_only: 299
+      print_only: 499
+      ebook_print: 699
+    professional:
+      ebook_only: 799
+      print_only: 1199
+      ebook_print: 1699
+    premium:
+      ebook_only: 1999
+      print_only: 2999
+      ebook_print: 3999
+base_duration_days:
+  essential:
+    ebook_only: 20
+    print_only: 30
+    ebook_print: 30
+  professional:
+    ebook_only: 30
+    print_only: 40
+    ebook_print: 40
+  premium:
+    ebook_only: 40
+    print_only: 50
+    ebook_print: 50
+  enterprise:
+    ebook_only: 60
+    print_only: 70
+    ebook_print: 70
+complexity:
+  factor_name: PCF
+  mode: points
+  point_multiplier: 0.06
+  max_factor: 1.8
+  drivers:
+    - field: platform_count
+      label: "Distribution platform count"
+      options:
+        - value: few
+          points: 0
+        - value: multiple
+          points: 2
+        - value: global_multi_market
+          points: 4
+    - field: accessibility_level
+      label: "Accessibility level"
+      options:
+        - value: standard
+          points: 0
+        - value: enhanced
+          points: 2
+        - value: advanced
+          points: 4
+add_ons:
+  - code: isbn_registration
+    title: "ISBN/Registration Support"
+    price_type: fixed
+    price: 150
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.15
+  - code: metadata_optimization
+    title: "Metadata Optimization"
+    price_type: fixed
+    price: 250
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.20
+  - code: custom_printing_cost
+    title: "Custom Printing Cost"
+    price_type: quote_only
+    duration_type: quote_only
+    complexity_points: 0
+assumptions:
+  - "Publishing estimate assumes final cover and print-ready interior files are approved before upload."
+exclusions:
+  - "Platform fees, print proof fees, ISBN purchase fees, and advertising spend are excluded unless separately approved."
+source_reference: "Publishing_Price&TimeEngine.xlsx, normalized into v2.1 config."

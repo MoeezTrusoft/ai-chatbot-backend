@@ -1,0 +1,25 @@
+version: "2.1"
+options:
+  standard_50_50:
+    label: "Standard 50/50"
+    description: "50% to begin, 50% before final delivery. Subject to BookCraft approval."
+    payments:
+      - label: "Deposit"
+        percent: 50
+        trigger: "quote_acceptance"
+      - label: "Final Balance"
+        percent: 50
+        trigger: "before_final_delivery"
+  milestone_40_30_30:
+    label: "Milestone 40/30/30"
+    description: "Common milestone schedule for larger multi-phase projects."
+    payments:
+      - label: "Deposit"
+        percent: 40
+        trigger: "quote_acceptance"
+      - label: "Midpoint Milestone"
+        percent: 30
+        trigger: "midpoint_approval"
+      - label: "Final Balance"
+        percent: 30
+        trigger: "before_final_delivery"

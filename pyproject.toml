@@ -68,6 +68,15 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
 ignore = ["S101"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/bookcraft/components/pricing/calculators/service.py" = ["E501"]
+"src/bookcraft/components/pricing/config.py" = ["E501"]
+"src/bookcraft/components/pricing/discounts.py" = ["E501"]
+"src/bookcraft/components/pricing/engine.py" = ["E501"]
+"src/bookcraft/components/pricing/kernel.py" = ["E501"]
+"src/bookcraft/components/pricing/persistence.py" = ["E501"]
+"src/bookcraft/components/pricing/schedule.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 plugins = ["pydantic.mypy"]

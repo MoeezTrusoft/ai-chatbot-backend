@@ -1,0 +1,5 @@
+version: "2.1"
+bundle_discounts:
+  editing_formatting: 5
+  production_bundle: 10
+max_auto_discount_percent: 20

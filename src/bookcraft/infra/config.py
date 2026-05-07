@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     pricing_strict_verifier: bool = True
     pricing_allow_placeholder_rules: bool = False
     pricing_quote_valid_days: int = 14
+    pricing_engine_version: Literal["v1", "v2"] = "v2"
+    pricing_v2_config_dir: str = "data/pricing/v2"
+    pricing_v2_values_approved: bool = False
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
     intent_ensemble_timeout_seconds: float = 2.5

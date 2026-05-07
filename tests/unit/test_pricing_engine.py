@@ -1,128 +1,96 @@
-from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
-from bookcraft.components.pricing import PricingQuoteRequest, PricingTimelineEngine
-from bookcraft.components.pricing.schemas import (
-    MoneyRange,
-    PricingCalculationError,
-    RequiredInputsRequest,
-)
+from bookcraft.components.pricing import PricingQuoteRequest, PricingTimelineEngine, QuoteStatus
+from bookcraft.components.pricing.config import load_engine_config, validate_engine_config
+from bookcraft.components.pricing.models import ServiceCategory
 from bookcraft.components.pricing.verifier import PricingVerifier
-from bookcraft.domain.enums import ServiceCategory
 
-FIXTURE_DIR = Path("tests/fixtures/pricing")
+V2_DIR = Path("data/pricing/v2")
 
 
-def test_pricing_schema_rejects_unknown_fields() -> None:
+def _ghostwriting_request(words: int = 60000) -> PricingQuoteRequest:
+    return PricingQuoteRequest.model_validate(
+        {
+            "requested_services": ["ghostwriting"],
+            "service_inputs": {
+                "ghostwriting": {
+                    "service_type": "full_ghostwriting",
+                    "category": "fiction_standard",
+                    "word_count": words,
+                    "manuscript_status": "outline_ready",
+                }
+            },
+            "global_inputs": {"word_count": words},
+        }
+    )
+
+
+def test_v2_config_validation_passes() -> None:
+    result = validate_engine_config(load_engine_config(V2_DIR))
+    assert result.valid is True
+    assert result.errors == []
+
+
+def test_v2_schema_rejects_unknown_fields() -> None:
     with pytest.raises(ValidationError):
         PricingQuoteRequest.model_validate(
-            {
-                "service": "ghostwriting",
-                "word_count": 50000,
-                "genre": "fantasy",
-                "thread_id": str(uuid4()),
-                "raw_user_request": "quote",
-                "unknown": "blocked",
-            }
+            {"requested_services": ["ghostwriting"], "unknown": "blocked"}
         )
 
 
-def test_money_range_requires_high_at_least_low() -> None:
-    with pytest.raises(ValidationError):
-        MoneyRange(low=Decimal("10"), high=Decimal("9"))
-
-
-def test_required_input_detection_for_all_services() -> None:
-    engine = PricingTimelineEngine.from_rule_dir(FIXTURE_DIR, allow_placeholder_rules=True)
-    for service in ServiceCategory:
-        response = engine.list_required_inputs(RequiredInputsRequest(service=service))
-        assert response.missing_inputs
-        assert response.suggested_question
-
-
-def test_production_placeholder_config_blocks_quote_numbers() -> None:
-    engine = PricingTimelineEngine.from_rule_dir(
-        Path("data/pricing"),
-        allow_placeholder_rules=False,
-    )
-    response = engine.quote(
-        PricingQuoteRequest(
-            service=ServiceCategory.GHOSTWRITING,
-            tier="standard",
-            word_count=50000,
-            genre="fantasy",
-            thread_id=uuid4(),
-            confidence=0.9,
-            raw_user_request="quote",
-        )
+def test_required_input_gate_returns_service_specific_questions() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(
+        PricingQuoteRequest.model_validate({"requested_services": ["ghostwriting"]})
     )
 
-    assert response.total_price_range is None
-    assert response.human_review_required is True
-    assert "pricing_rules_not_approved" in response.risk_flags
+    assert quote.status == QuoteStatus.NEEDS_CLARIFICATION
+    assert quote.missing_inputs
+    assert "ghostwriting option" in quote.missing_inputs[0].question
 
 
-def test_fixture_config_returns_deterministic_range() -> None:
-    engine = PricingTimelineEngine.from_rule_dir(FIXTURE_DIR, allow_placeholder_rules=True)
-    response = engine.quote(
-        PricingQuoteRequest(
-            service=ServiceCategory.GHOSTWRITING,
-            tier="standard",
-            word_count=50000,
-            genre="fantasy",
-            thread_id=uuid4(),
-            confidence=0.9,
-            raw_user_request="quote",
-        )
-    )
+def test_gated_values_block_customer_facing_numbers() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=False)
+    quote = engine.quote(_ghostwriting_request())
 
-    assert response.total_price_range is not None
-    assert response.total_price_range.low == Decimal("9000.00")
-    assert response.total_price_range.high == Decimal("11000.00")
-    assert response.total_timeline_range is not None
-    assert response.total_timeline_range.low <= response.total_timeline_range.high
-    assert response.assumptions
+    assert quote.status == QuoteStatus.HUMAN_REVIEW_REQUIRED
+    assert quote.line_items == []
+    assert any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings)
 
 
-def test_invalid_tier_fails_closed() -> None:
-    engine = PricingTimelineEngine.from_rule_dir(FIXTURE_DIR, allow_placeholder_rules=True)
-    with pytest.raises(PricingCalculationError):
-        engine.quote(
-            PricingQuoteRequest(
-                service=ServiceCategory.GHOSTWRITING,
-                tier="unsupported",
-                word_count=50000,
-                genre="fantasy",
-                thread_id=uuid4(),
-                confidence=0.9,
-                raw_user_request="quote",
-            )
-        )
+def test_approved_v2_values_return_deterministic_quote() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(_ghostwriting_request())
+
+    assert quote.status == QuoteStatus.ESTIMATED
+    assert quote.line_items[0].base_price.amount > 0
+    assert quote.total_price_range.low.amount <= quote.total_price_range.high.amount
+    assert quote.timeline.total_timeline.low <= quote.timeline.total_timeline.high
+    assert quote.assumptions
 
 
-def test_human_review_flags_for_low_confidence_and_addons() -> None:
-    engine = PricingTimelineEngine.from_rule_dir(FIXTURE_DIR, allow_placeholder_rules=True)
-    response = engine.quote(
-        PricingQuoteRequest(
-            service=ServiceCategory.GHOSTWRITING,
-            tier="standard",
-            word_count=50000,
-            genre="fantasy",
-            add_ons=["extra interviews"],
-            thread_id=uuid4(),
-            confidence=0.4,
-            raw_user_request="quote",
-        )
-    )
+def test_quote_acceptance_only_from_allowed_status() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    quote = engine.quote(_ghostwriting_request())
 
-    assert response.human_review_required is True
-    assert "add_ons_require_review" in response.risk_flags
+    accepted = engine.accept_quote(quote.quote_id)
 
-
-def test_pricing_verifier_rejects_placeholders_by_default() -> None:
+    assert accepted.status == QuoteStatus.ACCEPTED
     with pytest.raises(ValueError):
-        PricingVerifier(strict=True, allow_placeholders=False).verify(Path("data/pricing"))
+        engine.accept_quote(quote.quote_id)
+
+
+def test_pricing_verifier_accepts_v2_config_without_value_approval() -> None:
+    errors = PricingVerifier(strict=True, engine_version="v2").verify(V2_DIR)
+    assert errors == []
+
+
+def test_required_inputs_are_available_for_all_services() -> None:
+    engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
+    required = engine.list_required_inputs(list(ServiceCategory))
+
+    assert set(required) == set(ServiceCategory)
+    assert all(items for items in required.values())

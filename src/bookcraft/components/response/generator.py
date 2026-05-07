@@ -6,7 +6,7 @@ from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
-from bookcraft.components.pricing.schemas import PricingQuoteResponse, TimelineEstimateResponse
+from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
 from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.domain.enums import QueryIntentType
@@ -29,8 +29,8 @@ class SonnetResponseGenerator:
         intent: IntentVote,
         extraction: CombinedExtraction,
         rag_chunks: list[RetrievedChunk] | None = None,
-        pricing_quote: PricingQuoteResponse | None = None,
-        timeline_estimate: TimelineEstimateResponse | None = None,
+        pricing_quote: PricingTimelineQuote | None = None,
+        timeline_estimate: PricingTimelineQuote | None = None,
         pricing_missing_question: str | None = None,
     ) -> ResponseDraft:
         del state, extraction
@@ -44,10 +44,13 @@ class SonnetResponseGenerator:
             if pricing_missing_question:
                 return ResponseDraft(text=pricing_missing_question, source="pricing_engine")
             if pricing_quote is not None:
-                return ResponseDraft(text=pricing_quote.suggested_phrasing, source="pricing_engine")
+                return ResponseDraft(
+                    text=_pricing_quote_text(pricing_quote),
+                    source="pricing_engine",
+                )
             if timeline_estimate is not None:
                 return ResponseDraft(
-                    text=timeline_estimate.suggested_phrasing,
+                    text=_timeline_quote_text(timeline_estimate),
                     source="pricing_engine",
                 )
             LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
@@ -88,3 +91,33 @@ class SonnetResponseGenerator:
             "production, publishing, marketing, author websites, and video trailers. Tell me "
             "which service you are considering and what stage your manuscript is in."
         )
+
+
+def _pricing_quote_text(quote: PricingTimelineQuote) -> str:
+    if quote.status == QuoteStatus.NEEDS_CLARIFICATION and quote.missing_inputs:
+        return quote.missing_inputs[0].question
+    if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
+        return (
+            "I can scope this, but BookCraft's v2.1 pricing values are not approved for "
+            "customer-facing use yet. I won't guess at numbers."
+        )
+    return (
+        f"The deterministic engine returned a {quote.total_price_range.low.currency} "
+        f"{quote.total_price_range.low.amount}-{quote.total_price_range.high.amount} range "
+        f"and {quote.timeline.total_timeline.low}-{quote.timeline.total_timeline.high} "
+        "business days, subject to assumptions."
+    )
+
+
+def _timeline_quote_text(quote: PricingTimelineQuote) -> str:
+    if quote.status == QuoteStatus.NEEDS_CLARIFICATION and quote.missing_inputs:
+        return quote.missing_inputs[0].question
+    if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
+        return (
+            "I can scope this, but BookCraft's v2.1 timeline values are not approved for "
+            "customer-facing use yet. I won't guess at timing."
+        )
+    return (
+        f"The deterministic engine returned a {quote.timeline.total_timeline.low}-"
+        f"{quote.timeline.total_timeline.high} business day range, subject to assumptions."
+    )

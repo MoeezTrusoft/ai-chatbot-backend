@@ -13,10 +13,8 @@ from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import SharedPreprocessor
 from bookcraft.components.pricing import (
     PricingQuoteRequest,
-    PricingQuoteResponse,
     PricingTimelineEngine,
-    TimelineEstimateRequest,
-    TimelineEstimateResponse,
+    PricingTimelineQuote,
 )
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
@@ -104,8 +102,8 @@ class ChatService:
             rag_chunks = []
             if self.rag_retriever is not None:
                 rag_chunks = await self.rag_retriever.retrieve(processed, intent)
-            pricing_quote: PricingQuoteResponse | None = None
-            timeline_estimate: TimelineEstimateResponse | None = None
+            pricing_quote: PricingTimelineQuote | None = None
+            timeline_estimate: PricingTimelineQuote | None = None
             pricing_missing_question: str | None = None
             if intent.query_primary in {
                 QueryIntentType.PRICING_QUESTION,
@@ -200,7 +198,8 @@ class ChatService:
         intent_service: object,
         message: str,
         confidence: float,
-    ) -> tuple[PricingQuoteResponse | None, TimelineEstimateResponse | None, str | None]:
+    ) -> tuple[PricingTimelineQuote | None, PricingTimelineQuote | None, str | None]:
+        del confidence
         if self.pricing_engine is None:
             return None, None, None
         service = intent_service or (
@@ -211,29 +210,44 @@ class ChatService:
         )
         if service is None:
             return None, None, "Which BookCraft service should I price?"
-        tier = "standard"
         word_count = state.project.word_count.value
         page_count = state.project.page_count.value
         genre = state.project.genre.value or _genre_from_text(message)
-        request = PricingQuoteRequest(
-            service=service,
-            tier=tier,
-            word_count=word_count,
-            page_count=page_count,
-            genre=genre,
-            urgency=state.commercial.timeline_expectation.value,
-            thread_id=thread_id,
-            confidence=confidence,
-            raw_user_request=message,
+        if word_count is None and page_count is None:
+            return (
+                None,
+                None,
+                "To use the deterministic quote engine, approximately how many words "
+                "or pages is your manuscript?",
+            )
+        request = PricingQuoteRequest.model_validate(
+            {
+                "thread_id": str(thread_id),
+                "requested_services": [str(service)],
+                "service_inputs": {
+                    str(service): _default_service_inputs(
+                        service=str(service),
+                        word_count=word_count,
+                        page_count=page_count,
+                        genre=genre,
+                    )
+                },
+                "global_inputs": {
+                    "genre": genre,
+                    "word_count": word_count,
+                    "page_count": page_count,
+                    "manuscript_status": state.project.manuscript_status.value,
+                },
+            }
         )
         if "timeline" in message.lower() or "how long" in message.lower():
-            timeline = self.pricing_engine.timeline(TimelineEstimateRequest.model_validate(request))
+            timeline = self.pricing_engine.quote(request)
             if timeline.missing_inputs:
-                return None, None, timeline.suggested_phrasing
+                return None, None, timeline.missing_inputs[0].question
             return None, timeline, None
         quote = self.pricing_engine.quote(request)
         if quote.missing_inputs:
-            return None, None, quote.suggested_phrasing
+            return None, None, quote.missing_inputs[0].question
         return quote, None, None
 
 
@@ -253,3 +267,73 @@ def _genre_from_text(text: str) -> str | None:
         if genre in lowered:
             return genre
     return None
+
+
+def _default_service_inputs(
+    *,
+    service: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> dict[str, object]:
+    genre_category = _genre_category(genre)
+    if service == "ghostwriting":
+        return {
+            "service_type": "full_ghostwriting",
+            "category": genre_category,
+            "word_count": word_count,
+            "manuscript_status": "outline_ready",
+        }
+    if service == "editing_proofreading":
+        return {
+            "service_type": "copy_editing",
+            "category": "standard_fiction",
+            "word_count": word_count,
+            "manuscript_condition": "average",
+        }
+    if service == "interior_formatting":
+        return {
+            "output_format": "print_ebook",
+            "category": "fiction",
+            "page_count": page_count or max(1, int((word_count or 25000) / 250)),
+        }
+    if service == "cover_design_illustration":
+        return {
+            "format": "ebook_print",
+            "cover_type": "front_cover",
+            "complexity_level": "standard",
+        }
+    if service == "audiobook_production":
+        return {
+            "tier": "professional",
+            "word_count": word_count,
+            "narration_model": "single_narrator",
+        }
+    if service == "publishing_distribution":
+        return {"tier": "professional", "package_dimension": "ebook_print"}
+    if service == "marketing_promotion":
+        return {
+            "tier": "professional_campaign",
+            "campaign_duration": "3_months",
+            "primary_goal": "launch_support",
+        }
+    if service == "author_website":
+        return {"tier": "professional", "website_type": "book_launch"}
+    if service == "video_trailer":
+        return {
+            "tier": "professional",
+            "video_length_seconds": 60,
+            "production_style": "simple_motion",
+        }
+    return {}
+
+
+def _genre_category(genre: str | None) -> str:
+    lowered = (genre or "").lower()
+    if "non" in lowered or "business" in lowered or "memoir" in lowered:
+        return "nonfiction_standard"
+    if "children" in lowered:
+        return "childrens_standard"
+    if "young" in lowered:
+        return "young_adult"
+    return "fiction_standard"

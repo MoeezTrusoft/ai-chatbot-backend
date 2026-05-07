@@ -1,0 +1,4 @@
+version: "2.1"
+quote_expiration_days: 14
+confidence_complete: 0.90
+confidence_with_warnings: 0.75

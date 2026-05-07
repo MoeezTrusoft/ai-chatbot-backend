@@ -121,9 +121,9 @@ def build_chat_service(settings: Settings) -> ChatService:
         state_applier=StateApplier(),
         response_generator=SonnetResponseGenerator(),
         formatter=ResponseFormatter(),
-        pricing_engine=PricingTimelineEngine.from_rule_dir(
-            Path(settings.pricing_rule_dir),
-            allow_placeholder_rules=settings.pricing_allow_placeholder_rules,
+        pricing_engine=PricingTimelineEngine.from_config_dir(
+            Path(settings.pricing_v2_config_dir),
+            values_approved=settings.pricing_v2_values_approved,
         ),
     )
 

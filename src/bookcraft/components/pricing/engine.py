@@ -1,386 +1,300 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
-import structlog
-from prometheus_client import Counter, Histogram
-
-from bookcraft.components.pricing.rules import PricingRuleSet, load_pricing_rules
-from bookcraft.components.pricing.schemas import (
+from .calculators import calculate_service_line_item
+from .config import EngineConfig, load_engine_config, validate_engine_config
+from .discounts import apply_discounts
+from .metrics import PricingMetrics
+from .models import (
+    DiscountLine,
+    DurationRange,
+    MissingInput,
+    Money,
     MoneyRange,
-    PricingCalculationError,
-    PricingConfigurationError,
+    PaymentScheduleOption,
     PricingQuoteRequest,
-    PricingQuoteResponse,
+    PricingTimelineQuote,
+    ProjectTimeline,
     QuoteLineItem,
-    RequiredInputsRequest,
-    RequiredInputsResponse,
-    TimelineEstimateRequest,
-    TimelineEstimateResponse,
-    TimelineRange,
-    ensure_decimal,
+    QuoteStatus,
+    QuoteWarning,
+    ServiceCategory,
 )
-from bookcraft.domain.enums import ServiceCategory
-
-PRICING_QUOTES_TOTAL = Counter(
-    "pricing_quotes_total",
-    "Pricing quote attempts.",
-    ["service", "status"],
-)
-PRICING_QUOTE_FAILURES = Counter(
-    "pricing_quote_failures_total",
-    "Pricing quote failures.",
-    ["service", "reason"],
-)
-PRICING_QUOTE_SECONDS = Histogram("pricing_quote_latency_seconds", "Pricing quote latency.")
-PRICING_MISSING_INPUTS = Counter(
-    "pricing_missing_inputs_total",
-    "Missing pricing inputs.",
-    ["service", "field"],
-)
-PRICING_HUMAN_REVIEW = Counter(
-    "pricing_human_review_total",
-    "Pricing quotes requiring human review.",
-    ["service", "reason"],
-)
+from .persistence import InMemoryQuoteRepository
+from .schedule import build_project_timeline
 
 
-@dataclass(frozen=True, slots=True)
 class PricingTimelineEngine:
-    rule_set: PricingRuleSet
-    allow_placeholder_rules: bool = False
+    def __init__(
+        self,
+        config: EngineConfig,
+        repository: InMemoryQuoteRepository | None = None,
+        metrics: PricingMetrics | None = None,
+        values_approved: bool = False,
+    ) -> None:
+        validation = validate_engine_config(config)
+        if not validation.valid:
+            raise ValueError("Invalid pricing config: " + "; ".join(validation.errors))
+        self.config = config
+        self.repository = repository or InMemoryQuoteRepository()
+        self.metrics = metrics or PricingMetrics()
+        self.values_approved = values_approved
 
     @classmethod
-    def from_rule_dir(
+    def from_config_dir(
         cls,
-        rule_dir: Path,
+        config_dir: str | Path,
         *,
-        allow_placeholder_rules: bool = False,
+        values_approved: bool = False,
     ) -> PricingTimelineEngine:
-        return cls(
-            rule_set=load_pricing_rules(rule_dir),
-            allow_placeholder_rules=allow_placeholder_rules,
-        )
+        return cls(load_engine_config(config_dir), values_approved=values_approved)
 
-    def list_required_inputs(self, request: RequiredInputsRequest) -> RequiredInputsResponse:
-        missing = self.missing_inputs_for(
-            service=request.service,
-            tier=request.tier,
-            word_count=request.word_count,
-            page_count=request.page_count,
-            genre=request.genre,
-        )
-        return RequiredInputsResponse(
-            service=request.service,
-            missing_inputs=missing,
-            suggested_question=suggested_question(missing),
-        )
+    def list_required_inputs(
+        self, services: list[ServiceCategory]
+    ) -> dict[ServiceCategory, list[MissingInput]]:
+        result: dict[ServiceCategory, list[MissingInput]] = {}
+        for service in services:
+            cfg = self.config.service_configs[ServiceCategory(service)]
+            result[ServiceCategory(service)] = [
+                MissingInput(service=cfg.service, field=field.field, question=field.question)
+                for field in cfg.required_inputs
+            ]
+        return result
 
-    def quote(self, request: PricingQuoteRequest) -> PricingQuoteResponse:
-        with PRICING_QUOTE_SECONDS.time():
-            missing = self.missing_inputs_for(
-                service=request.service,
-                tier=request.tier,
-                word_count=request.word_count,
-                page_count=request.page_count,
-                genre=request.genre,
-            )
-            if missing:
-                for field in missing:
-                    PRICING_MISSING_INPUTS.labels(service=request.service.value, field=field).inc()
-                PRICING_QUOTES_TOTAL.labels(
-                    service=request.service.value,
-                    status="needs_clarification",
-                ).inc()
-                return PricingQuoteResponse(
-                    service=request.service,
-                    missing_inputs=missing,
-                    confidence=0.0,
-                    human_review_required=False,
-                    suggested_phrasing=suggested_question(missing),
-                )
-            if self.rule_set.has_placeholders and not self.allow_placeholder_rules:
-                PRICING_QUOTE_FAILURES.labels(
-                    service=request.service.value,
-                    reason="placeholder_rules",
-                ).inc()
-                PRICING_QUOTES_TOTAL.labels(service=request.service.value, status="blocked").inc()
-                return PricingQuoteResponse(
-                    service=request.service,
-                    risk_flags=["pricing_rules_not_approved"],
-                    human_review_required=True,
-                    confidence=0.0,
-                    suggested_phrasing=(
-                        "I can scope this, but BookCraft's approved pricing rules are not "
-                        "available in this environment yet. I won't guess at numbers."
-                    ),
-                )
-            try:
-                response = self._calculate_quote(request)
-            except Exception as exc:
-                PRICING_QUOTE_FAILURES.labels(
-                    service=request.service.value,
-                    reason="calculation",
-                ).inc()
-                raise PricingCalculationError(str(exc)) from exc
-            status = "human_review" if response.human_review_required else "quoted"
-            PRICING_QUOTES_TOTAL.labels(service=request.service.value, status=status).inc()
-            structlog.get_logger(__name__).info(
-                "pricing_quote_created",
-                service=request.service.value,
-                quote_id=str(response.quote_id),
-                rule_checksum=self.rule_set.checksum,
-                status=status,
-            )
-            return response
-
-    def timeline(self, request: TimelineEstimateRequest) -> TimelineEstimateResponse:
-        missing = self.missing_inputs_for(
-            service=request.service,
-            tier=request.tier,
-            word_count=request.word_count,
-            page_count=request.page_count,
-            genre=request.genre,
-        )
+    def quote(self, request: PricingQuoteRequest) -> PricingTimelineQuote:
+        requested_services = [ServiceCategory(service) for service in request.requested_services]
+        missing = self._missing_inputs(request, requested_services)
+        for miss in missing:
+            self.metrics.record_missing(miss.service.value, miss.field)
         if missing:
-            for field in missing:
-                PRICING_MISSING_INPUTS.labels(service=request.service.value, field=field).inc()
-            return TimelineEstimateResponse(
-                service=request.service,
-                missing_inputs=missing,
-                confidence=0.0,
-                suggested_phrasing=suggested_question(missing),
+            quote = self._clarification_quote(request, requested_services, missing)
+            self.repository.save_quote(quote)
+            for service in requested_services:
+                self.metrics.record_status(service.value, str(quote.status))
+            return quote
+        if not self.values_approved:
+            quote = self._values_not_approved_quote(request, requested_services)
+            self.repository.save_quote(quote)
+            for service in requested_services:
+                self.metrics.record_status(service.value, str(quote.status))
+                self.metrics.record_review(service.value, "VALUES_NOT_APPROVED")
+            return quote
+
+        line_items: list[QuoteLineItem] = []
+        all_warnings: list[QuoteWarning] = []
+        assumptions: list[str] = []
+        exclusions: list[str] = []
+        for service in requested_services:
+            service_inputs = request.service_inputs.get(service.value, {})
+            cfg = self.config.service_configs[service]
+            with self.metrics.latency(service.value):
+                item = calculate_service_line_item(cfg, request, service_inputs)
+            line_items.append(item)
+            all_warnings.extend(item.warnings)
+            assumptions.extend(item.assumptions)
+            exclusions.extend(cfg.exclusions)
+            midpoint = float((item.final_price_range.low.amount + item.final_price_range.high.amount) / 2)
+            self.metrics.record_value(service.value, request.quote_mode, midpoint)
+            width = (item.final_price_range.high.amount - item.final_price_range.low.amount) / max(
+                Decimal("1"), midpoint and Decimal(str(midpoint)) or Decimal("1")
             )
-        if self.rule_set.has_placeholders and not self.allow_placeholder_rules:
-            return TimelineEstimateResponse(
-                service=request.service,
-                risk_flags=["pricing_rules_not_approved"],
-                human_review_required=True,
-                confidence=0.0,
-                suggested_phrasing=(
-                    "I can scope this, but BookCraft's approved timeline rules are not "
-                    "available in this environment yet. I won't guess at timing."
-                ),
-            )
-        quote = self._calculate_quote(request)
-        return TimelineEstimateResponse(
-            service=request.service,
-            timeline_range=quote.total_timeline_range,
-            assumptions=quote.assumptions,
-            exclusions=quote.exclusions,
-            confidence=quote.confidence,
-            risk_flags=quote.risk_flags,
-            human_review_required=quote.human_review_required,
-            suggested_phrasing=_timeline_phrase(quote),
+            self.metrics.record_range_width(service.value, float(width))
+
+        currency = line_items[0].base_price.currency if line_items else "USD"
+        subtotal_range = self._sum_ranges([item.final_price_range for item in line_items], currency)
+        discount_lines = apply_discounts(request, line_items, self.config.discount_policy, currency)
+        discount_low, discount_high = self._discount_totals(discount_lines, currency)
+        total_range = MoneyRange(
+            low=subtotal_range.low - discount_high,
+            high=subtotal_range.high - discount_low,
+        )
+        timeline = build_project_timeline(line_items, self.config.dependency_graph)
+        human_review = any(item.human_review_required for item in line_items) or any(
+            warning.requires_human_review for warning in all_warnings
+        ) or any(discount.requires_human_review for discount in discount_lines)
+        for warning in all_warnings:
+            if warning.requires_human_review:
+                self.metrics.record_review(str(warning.service or requested_services[0]), warning.code)
+        for discount in discount_lines:
+            if discount.requires_human_review:
+                self.metrics.record_review(str(requested_services[0]), discount.code)
+        status = (
+            QuoteStatus.HUMAN_REVIEW_REQUIRED
+            if human_review
+            else QuoteStatus.FORMAL_QUOTE_READY
+            if request.quote_mode in {"formal_quote", "agreement_ready"}
+            else QuoteStatus.ESTIMATED
+        )
+        confidence = self.config.quote_policy.confidence_with_warnings if all_warnings else self.config.quote_policy.confidence_complete
+        quote = PricingTimelineQuote(
+            config_versions=self.config.versions,
+            status=status,
+            requested_services=requested_services,
+            line_items=line_items,
+            subtotal_range=subtotal_range,
+            discount_lines=discount_lines,
+            total_price_range=total_range,
+            timeline=timeline,
+            payment_schedule_options=self._payment_options(total_range),
+            assumptions=sorted(set(assumptions)),
+            exclusions=sorted(set(exclusions)),
+            missing_inputs=[],
+            warnings=all_warnings,
+            confidence=confidence,
+            human_review_required=human_review,
+            audit_trace={
+                "engine_version": "2.1.0",
+                "rule": "All commercial numbers produced deterministically by PricingTimelineEngine.",
+            },
+        )
+        self.repository.save_quote(quote)
+        for service in requested_services:
+            self.metrics.record_status(service.value, str(quote.status))
+        return quote
+
+    def _values_not_approved_quote(
+        self,
+        request: PricingQuoteRequest,
+        services: list[ServiceCategory],
+    ) -> PricingTimelineQuote:
+        zero = Money(amount=0, currency="USD")
+        return PricingTimelineQuote(
+            config_versions=self.config.versions,
+            status=QuoteStatus.HUMAN_REVIEW_REQUIRED,
+            requested_services=services,
+            line_items=[],
+            subtotal_range=MoneyRange(low=zero, high=zero),
+            discount_lines=[],
+            total_price_range=MoneyRange(low=zero, high=zero),
+            timeline=build_empty_timeline(),
+            payment_schedule_options=[],
+            assumptions=[],
+            exclusions=[],
+            missing_inputs=[],
+            warnings=[
+                QuoteWarning(
+                    code="VALUES_NOT_APPROVED",
+                    message=(
+                        "Pricing v2.1 values are installed but not approved for "
+                        "customer-facing contractual use."
+                    ),
+                    requires_human_review=True,
+                )
+            ],
+            confidence=0.0,
+            human_review_required=True,
+            audit_trace={
+                "engine_version": "2.1.0",
+                "blocked_reason": "pricing_values_not_approved",
+                "quote_mode": request.quote_mode,
+            },
         )
 
-    def missing_inputs_for(
-        self,
-        *,
-        service: ServiceCategory,
-        tier: str | None,
-        word_count: int | None,
-        page_count: int | None,
-        genre: str | None,
-    ) -> list[str]:
-        entry = self.rule_set.catalog.services[service]
-        missing: list[str] = []
-        facts: dict[str, object | None] = {
-            "tier": tier,
-            "word_count": word_count,
-            "page_count": page_count,
-            "genre": genre,
-        }
-        for required in entry.required_inputs:
-            fact = facts.get(required)
-            if fact is None or fact == "":
-                missing.append(required)
+    def accept_quote(self, quote_id: Any, confirmed_by: str = "user") -> PricingTimelineQuote:
+        quote = self.repository.get_quote(quote_id)
+        if quote is None:
+            raise KeyError(f"Quote not found: {quote_id}")
+        if quote.status not in {QuoteStatus.ESTIMATED, QuoteStatus.FORMAL_QUOTE_READY}:
+            raise ValueError(f"Quote cannot be accepted from status {quote.status}")
+        quote.status = QuoteStatus.ACCEPTED
+        self.repository.append_event(str(quote.quote_id), "quote.accepted", {"confirmed_by": confirmed_by})  # type: ignore[arg-type]
+        return quote
+
+    def _missing_inputs(
+        self, request: PricingQuoteRequest, services: list[ServiceCategory]
+    ) -> list[MissingInput]:
+        missing: list[MissingInput] = []
+        global_inputs = request.global_inputs.model_dump()
+        for service in services:
+            cfg = self.config.service_configs[service]
+            service_inputs = request.service_inputs.get(service.value, {})
+            for required in cfg.required_inputs:
+                value = service_inputs.get(required.field)
+                if value is None and required.fallback_global_field:
+                    value = global_inputs.get(required.fallback_global_field)
+                if value is None or value == "":
+                    missing.append(
+                        MissingInput(
+                            service=service,
+                            field=required.field,
+                            question=required.question,
+                            severity="required",
+                        )
+                    )
         return missing
 
-    def _calculate_quote(self, request: PricingQuoteRequest) -> PricingQuoteResponse:
-        tier = request.tier or self.rule_set.catalog.services[request.service].default_tier
-        price_rule = self.rule_set.pricing.rules[request.service]
-        timeline_rule = self.rule_set.timeline.rules[request.service]
-        if tier not in price_rule.rates or tier not in timeline_rule.base_days:
-            msg = f"unsupported tier for {request.service.value}: {tier}"
-            raise PricingCalculationError(msg)
+    def _clarification_quote(
+        self,
+        request: PricingQuoteRequest,
+        services: list[ServiceCategory],
+        missing: list[MissingInput],
+    ) -> PricingTimelineQuote:
+        zero = Money(amount=0, currency="USD")
+        return PricingTimelineQuote(
+            config_versions=self.config.versions,
+            status=QuoteStatus.NEEDS_CLARIFICATION,
+            requested_services=services,
+            line_items=[],
+            subtotal_range=MoneyRange(low=zero, high=zero),
+            discount_lines=[],
+            total_price_range=MoneyRange(low=zero, high=zero),
+            timeline=build_empty_timeline(),
+            payment_schedule_options=[],
+            assumptions=[],
+            exclusions=[],
+            missing_inputs=missing,
+            warnings=[
+                QuoteWarning(
+                    code="MISSING_REQUIRED_INPUTS",
+                    message="The engine cannot return pricing or timeline numbers until required inputs are supplied.",
+                )
+            ],
+            confidence=0.0,
+            human_review_required=False,
+            audit_trace={"engine_version": "2.1.0", "blocked_reason": "missing_required_inputs"},
+        )
 
-        base_price = _formula_amount(
-            formula=price_rule.formula,
-            rate=ensure_decimal(
-                price_rule.rates[tier],
-                field_name=f"pricing.{request.service.value}.{tier}",
-            ),
-            word_count=request.word_count,
-            page_count=request.page_count,
-        )
-        low_multiplier = ensure_decimal(
-            self.rule_set.pricing.range_multiplier.get("low", "1"),
-            field_name="pricing.range_multiplier.low",
-        )
-        high_multiplier = ensure_decimal(
-            self.rule_set.pricing.range_multiplier.get("high", "1"),
-            field_name="pricing.range_multiplier.high",
-        )
-        low_price = _money(base_price * low_multiplier)
-        high_price = _money(base_price * high_multiplier)
-        base_days = _formula_days(
-            formula=timeline_rule.formula,
-            base_days=ensure_decimal(
-                timeline_rule.base_days[tier],
-                field_name=f"timeline.{request.service.value}.{tier}",
-            ),
-            word_count=request.word_count,
-            page_count=request.page_count,
-        )
-        low_padding = int(
-            ensure_decimal(
-                self.rule_set.timeline.range_padding_days.get("low", "0"),
-                field_name="timeline.range_padding_days.low",
+    @staticmethod
+    def _sum_ranges(ranges: list[MoneyRange], currency: str) -> MoneyRange:
+        low = sum((r.low.amount for r in ranges), Decimal("0"))
+        high = sum((r.high.amount for r in ranges), Decimal("0"))
+        return MoneyRange(low=Money(amount=low, currency=currency), high=Money(amount=high, currency=currency))
+
+    @staticmethod
+    def _discount_totals(discounts: list[DiscountLine], currency: str) -> tuple[Money, Money]:
+        total = sum((d.amount.amount for d in discounts), Decimal("0"))
+        return Money(amount=total, currency=currency), Money(amount=total, currency=currency)
+
+    def _payment_options(self, total_range: MoneyRange) -> list[PaymentScheduleOption]:
+        options: list[PaymentScheduleOption] = []
+        midpoint = (total_range.low.amount + total_range.high.amount) / Decimal("2")
+        for code, cfg in self.config.payment_schedule_policy.options.items():
+            payments = []
+            for part in cfg.get("payments", []):
+                pct = Decimal(str(part["percent"]))
+                payments.append(
+                    {
+                        "label": part["label"],
+                        "percent": str(pct),
+                        "estimated_amount": str((midpoint * pct / Decimal("100")).quantize(Decimal("0.01"))),
+                        "trigger": part.get("trigger"),
+                    }
+                )
+            options.append(
+                PaymentScheduleOption(
+                    code=code,
+                    label=cfg.get("label", code),
+                    description=cfg.get("description", ""),
+                    payments=payments,
+                )
             )
-        )
-        high_padding = int(
-            ensure_decimal(
-                self.rule_set.timeline.range_padding_days.get("high", "0"),
-                field_name="timeline.range_padding_days.high",
-            )
-        )
-        timeline_range = TimelineRange(
-            low=max(0, base_days + low_padding),
-            high=max(base_days + low_padding, base_days + high_padding),
-        )
-        money_range = MoneyRange(
-            currency=self.rule_set.pricing.currency,
-            low=low_price,
-            high=high_price,
-        )
-        assumptions = list(self.rule_set.policy.assumptions)
-        assumptions.append(f"Service tier used for calculation: {tier}.")
-        confidence, risk_flags = _confidence_and_risks(request)
-        if request.urgency and request.urgency.lower() in {"rush", "urgent", "asap"}:
-            risk_flags.append("rush_request_requires_review")
-        human_review_required = (
-            confidence < self.rule_set.policy.human_review.low_confidence_threshold
-        )
-        for reason in risk_flags:
-            PRICING_HUMAN_REVIEW.labels(service=request.service.value, reason=reason).inc()
-        human_review_required = human_review_required or bool(risk_flags)
-        line_item = QuoteLineItem(
-            service=request.service,
-            tier=tier,
-            price_range=money_range,
-            timeline_range=timeline_range,
-            assumptions=assumptions,
-        )
-        response = PricingQuoteResponse(
-            service=request.service,
-            line_items=[line_item],
-            total_price_range=money_range,
-            total_timeline_range=timeline_range,
-            currency=self.rule_set.pricing.currency,
-            valid_until=datetime.now(UTC)
-            + timedelta(days=self.rule_set.policy.quote_valid_days),
-            assumptions=assumptions,
-            exclusions=list(self.rule_set.policy.exclusions),
-            confidence=confidence,
-            risk_flags=risk_flags,
-            human_review_required=human_review_required,
-            suggested_phrasing=_quote_phrase(request.service, money_range, timeline_range),
-        )
-        return response
+        return options
 
 
-def suggested_question(missing_inputs: list[str]) -> str:
-    if not missing_inputs:
-        return "I have the required inputs to prepare a deterministic quote."
-    first = missing_inputs[0]
-    prompts = {
-        "service": "Which BookCraft service should I price?",
-        "tier": "Which service tier should I use: basic, standard, or premium?",
-        "word_count": (
-            "To use the deterministic quote engine, approximately how many words "
-            "is your manuscript?"
-        ),
-        "page_count": "Approximately how many pages is your manuscript?",
-        "genre": "What genre is the book?",
-    }
-    return prompts.get(first, f"Please share this quote detail: {first}.")
+def build_empty_timeline() -> ProjectTimeline:
+    from .models import ProjectTimeline
 
-
-def _formula_amount(
-    *,
-    formula: str,
-    rate: Decimal,
-    word_count: int | None,
-    page_count: int | None,
-) -> Decimal:
-    if formula == "word_count_rate":
-        if word_count is None:
-            raise PricingCalculationError("word_count is required")
-        return rate * Decimal(word_count)
-    if formula == "page_count_rate":
-        if page_count is None:
-            raise PricingCalculationError("page_count is required")
-        return rate * Decimal(page_count)
-    if formula == "flat_project":
-        return rate
-    raise PricingConfigurationError(f"unsupported pricing formula: {formula}")
-
-
-def _formula_days(
-    *,
-    formula: str,
-    base_days: Decimal,
-    word_count: int | None,
-    page_count: int | None,
-) -> int:
-    if formula == "word_count_days":
-        count = word_count or 0
-        return int(base_days + Decimal(count // 10000))
-    if formula == "page_count_days":
-        count = page_count or 0
-        return int(base_days + Decimal(count // 100))
-    if formula == "flat_days":
-        return int(base_days)
-    raise PricingConfigurationError(f"unsupported timeline formula: {formula}")
-
-
-def _money(value: Decimal) -> Decimal:
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _confidence_and_risks(request: PricingQuoteRequest) -> tuple[float, list[str]]:
-    confidence = request.confidence or 0.75
-    risk_flags: list[str] = []
-    if not request.genre:
-        confidence -= 0.1
-    if request.add_ons:
-        risk_flags.append("add_ons_require_review")
-    if request.complexity and request.complexity.lower() in {"high", "complex"}:
-        risk_flags.append("high_complexity_requires_review")
-    return max(0.0, min(1.0, confidence)), risk_flags
-
-
-def _quote_phrase(
-    service: ServiceCategory,
-    price: MoneyRange,
-    timeline: TimelineRange,
-) -> str:
-    return (
-        f"For {service.value.replace('_', ' ')}, the deterministic engine returned "
-        f"a {price.currency} {price.low}-{price.high} range and "
-        f"{timeline.low}-{timeline.high} business days, subject to assumptions."
-    )
-
-
-def _timeline_phrase(quote: PricingQuoteResponse) -> str:
-    timeline = quote.total_timeline_range
-    if timeline is None:
-        return "The deterministic engine could not produce a timeline range."
-    return (
-        f"The deterministic engine returned a {timeline.low}-{timeline.high} business day range, "
-        "subject to assumptions."
-    )
+    return ProjectTimeline(total_timeline=DurationRange(low=0, high=0, unit="business_days"), schedule=[])

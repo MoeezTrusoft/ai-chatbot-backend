@@ -1,0 +1,80 @@
+service: audiobook_production
+version: "2.1.0"
+display_name: "Audiobook Production"
+currency: USD
+calculation_model: per_finished_hour
+required_inputs:
+  - field: tier
+    question: "Which audiobook tier is needed: essential, professional, premium, or studio?"
+  - field: finished_hours
+    fallback_global_field: word_count
+    question: "How many finished audio hours are expected, or what is the manuscript word count?"
+  - field: narration_model
+    question: "What narration model is needed: single_narrator, dual_narrator, full_cast, or client_provided?"
+rate_grid:
+  unit_type: finished_hours
+  minimum_fee: 500
+  rates:
+    essential: 150
+    professional: 250
+    premium: 400
+    studio: 600
+base_duration_days:
+  essential: 20
+  professional: 40
+  premium: 50
+  studio: 60
+complexity:
+  factor_name: ACF
+  mode: points
+  point_multiplier: 0.07
+  max_factor: 2.0
+  drivers:
+    - field: narration_model
+      label: "Narration model"
+      options:
+        - value: single_narrator
+          points: 0
+        - value: dual_narrator
+          points: 2
+        - value: full_cast
+          points: 5
+        - value: client_provided
+          points: 1
+    - field: sound_design_level
+      label: "Sound design level"
+      options:
+        - value: none
+          points: 0
+        - value: light
+          points: 1
+        - value: cinematic
+          points: 4
+add_ons:
+  - code: music_intro_outro
+    title: "Music Intro/Outro"
+    price_type: fixed
+    price: 300
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.25
+  - code: acx_mastering
+    title: "ACX/Platform Mastering"
+    price_type: fixed
+    price: 400
+    duration_type: fixed_days
+    duration_days: 3
+    complexity_points: 0.25
+  - code: full_sound_design
+    title: "Full Sound Design"
+    price_type: per_unit
+    price: 75
+    unit_field: finished_hours
+    duration_type: fixed_days
+    duration_days: 7
+    complexity_points: 0.70
+assumptions:
+  - "Finished hours may be supplied directly or derived from word count using the configured words-per-finished-hour policy."
+exclusions:
+  - "Union talent fees, celebrity narration, and licensed music are excluded unless approved."
+source_reference: "Audiobook_Price&TimeEngine.xlsx, normalized into v2.1 config."

@@ -1,31 +1,37 @@
 from pathlib import Path
-from uuid import uuid4
 
 from bookcraft.components.pricing import PricingQuoteRequest, PricingTimelineEngine
-from bookcraft.domain.enums import ServiceCategory
 from bookcraft.infra.config import get_settings
 
 
 def main() -> int:
     settings = get_settings()
-    engine = PricingTimelineEngine.from_rule_dir(
-        Path(settings.pricing_rule_dir),
-        allow_placeholder_rules=settings.pricing_allow_placeholder_rules,
+    engine = PricingTimelineEngine.from_config_dir(
+        Path(settings.pricing_v2_config_dir),
+        values_approved=settings.pricing_v2_values_approved,
     )
     response = engine.quote(
-        PricingQuoteRequest(
-            service=ServiceCategory.GHOSTWRITING,
-            tier="standard",
-            word_count=50000,
-            genre="fantasy",
-            thread_id=uuid4(),
-            confidence=0.9,
-            raw_user_request="smoke quote",
+        PricingQuoteRequest.model_validate(
+            {
+                "requested_services": ["ghostwriting"],
+                "service_inputs": {
+                    "ghostwriting": {
+                        "service_type": "full_ghostwriting",
+                        "category": "fiction_standard",
+                        "word_count": 50000,
+                        "manuscript_status": "outline_ready",
+                    }
+                },
+                "global_inputs": {"word_count": 50000},
+            }
         )
     )
-    if response.total_price_range is not None and not settings.pricing_allow_placeholder_rules:
+    if not settings.pricing_v2_values_approved and response.line_items:
         raise RuntimeError("production placeholder config unexpectedly returned numbers")
-    print(response.suggested_phrasing)
+    if settings.pricing_v2_values_approved:
+        print(response.model_dump_json())
+    else:
+        print("pricing v2.1 values gated; no customer-facing numbers emitted")
     return 0
 
 

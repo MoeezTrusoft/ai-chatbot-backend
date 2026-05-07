@@ -1,0 +1,199 @@
+service: ghostwriting
+version: "2.1.0"
+display_name: "Ghostwriting"
+currency: USD
+calculation_model: word_rate
+required_inputs:
+  - field: service_type
+    question: "Which ghostwriting option do you need: full_ghostwriting, coaching_writing, or manuscript_completion?"
+  - field: category
+    question: "What category best fits the book, such as fiction_standard, nonfiction_complex, poetry, or young_adult?"
+  - field: word_count
+    fallback_global_field: word_count
+    question: "Approximately how many words should the finished manuscript be?"
+  - field: manuscript_status
+    service_input: false
+    fallback_global_field: manuscript_status
+    question: "Do you already have notes, an outline, a partial manuscript, or only an idea?"
+rate_grid:
+  unit_type: words
+  minimum_fee: 750
+  rates:
+    fiction_standard:
+      full_ghostwriting: 0.06
+      coaching_writing: 0.04
+      manuscript_completion: 0.03
+    fiction_complex:
+      full_ghostwriting: 0.12
+      coaching_writing: 0.09
+      manuscript_completion: 0.08
+    nonfiction_standard:
+      full_ghostwriting: 0.08
+      coaching_writing: 0.06
+      manuscript_completion: 0.05
+    nonfiction_complex:
+      full_ghostwriting: 0.14
+      coaching_writing: 0.11
+      manuscript_completion: 0.10
+    young_adult:
+      full_ghostwriting: 0.10
+      coaching_writing: 0.07
+      manuscript_completion: 0.06
+    childrens_standard:
+      full_ghostwriting: 0.07
+      coaching_writing: 0.05
+      manuscript_completion: 0.04
+    childrens_complex:
+      full_ghostwriting: 0.13
+      coaching_writing: 0.10
+      manuscript_completion: 0.09
+    poetry:
+      full_ghostwriting: 0.15
+      coaching_writing: 0.12
+      manuscript_completion: 0.11
+    comics_graphic_narratives:
+      full_ghostwriting: 0.09
+      coaching_writing: 0.07
+      manuscript_completion: 0.06
+    anthologies_collections:
+      full_ghostwriting: 0.11
+      coaching_writing: 0.08
+      manuscript_completion: 0.07
+pace_grid:
+  unit_type: words
+  pace:
+    full_ghostwriting: 1200
+    coaching_writing: 1600
+    manuscript_completion: 1800
+  quality_buffer_percent:
+    full_ghostwriting: 10
+    coaching_writing: 20
+    manuscript_completion: 10
+complexity:
+  factor_name: GCF
+  mode: ghostwriting_weighted
+  max_factor: 1.6
+  point_multiplier: 0.005
+  weighted_coefficients:
+    writing: 0.02
+    worldbuilding: 0.015
+    synergy: 0.01
+    addon: 0.005
+  drivers:
+    - field: narrative_complexity
+      label: "Narrative complexity"
+      options:
+        - value: simple
+          points: 0
+          group: writing
+          reason: "Straightforward structure."
+        - value: multi_perspective
+          points: 2
+          group: writing
+          reason: "Multiple voices require planning and continuity checks."
+        - value: research_heavy
+          points: 3
+          group: writing
+          reason: "Research-heavy projects require extra synthesis and verification."
+    - field: worldbuilding_level
+      label: "Worldbuilding level"
+      options:
+        - value: none
+          points: 0
+          group: worldbuilding
+        - value: moderate
+          points: 2
+          group: worldbuilding
+        - value: extensive
+          points: 4
+          group: worldbuilding
+    - field: collaboration_intensity
+      label: "Collaboration intensity"
+      options:
+        - value: standard
+          points: 0
+          group: synergy
+        - value: high
+          points: 2
+          group: synergy
+add_ons:
+  - code: outline_plan
+    title: "Detailed Outline & Chapter Plan"
+    price_type: fixed
+    price: 1200
+    duration_type: fixed_days
+    duration_days: 5
+    complexity_points: 0.45
+  - code: book_proposal
+    title: "Book Proposal Development"
+    price_type: fixed
+    price: 1800
+    duration_type: fixed_days
+    duration_days: 10
+    complexity_points: 0.60
+  - code: sensitivity_read
+    title: "Sensitivity/Authenticity Read"
+    price_type: per_unit
+    price: 0.005
+    unit_field: word_count
+    duration_type: per_unit_pace
+    pace_per_day: 10000
+    complexity_points: 0.30
+  - code: citations_permissions
+    title: "Sourcing Citations & Permissions"
+    price_type: per_unit
+    price: 0.015
+    unit_field: word_count
+    duration_type: per_unit_pace
+    pace_per_day: 4000
+    complexity_points: 0.10
+  - code: beta_reader_coordination
+    title: "Coordination with Beta Readers"
+    price_type: fixed
+    price: 450
+    duration_type: fixed_days
+    duration_days: 5
+    complexity_points: 0.70
+  - code: final_proofreading
+    title: "Final Proofreading Pass"
+    price_type: per_unit
+    price: 0.005
+    unit_field: word_count
+    duration_type: per_unit_pace
+    pace_per_day: 10000
+    complexity_points: 0.10
+  - code: character_bios
+    title: "Character Bios & Relationship Maps"
+    price_type: fixed
+    price: 500
+    duration_type: fixed_days
+    duration_days: 2
+    complexity_points: 0.45
+  - code: worldbuilding_bible
+    title: "Worldbuilding Bible Creation"
+    price_type: per_unit
+    price: 0.01
+    unit_field: word_count
+    duration_type: per_unit_pace
+    pace_per_day: 10000
+    complexity_points: 0.30
+  - code: series_bible
+    title: "Series Bible Development"
+    price_type: fixed
+    price: 1200
+    duration_type: fixed_days
+    duration_days: 7
+    complexity_points: 0.50
+  - code: query_letter
+    title: "Query Letter & Submission Package"
+    price_type: fixed
+    price: 50
+    duration_type: fixed_days
+    duration_days: 3
+    complexity_points: 0.50
+assumptions:
+  - "Ghostwriting estimate assumes client feedback is provided within agreed review windows."
+  - "Manuscript ownership remains with the client unless a separate agreement says otherwise."
+exclusions:
+  - "Third-party rights, image licensing, and permissions fees are excluded unless listed as approved add-ons."
+source_reference: "Ghostwriting_Price&TimeEngine.xlsx, normalized into v2.1 config."

@@ -1,0 +1,24 @@
+groups:
+  - name: bookcraft-pricing-engine
+    rules:
+      - alert: PricingEngineHighErrorRate
+        expr: sum(rate(pricing_quote_requests_total{status="error"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pricing Engine error rate is elevated"
+      - alert: PricingEngineHumanReviewBacklogSpike
+        expr: sum(rate(pricing_human_review_total[15m])) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Human-review flags are spiking"
+      - alert: PricingEngineLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(pricing_quote_duration_seconds_bucket[5m])) by (le, service)) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pricing Engine p95 latency exceeds 1s"
