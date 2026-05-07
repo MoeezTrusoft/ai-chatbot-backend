@@ -98,7 +98,7 @@ def _pricing_quote_text(quote: PricingTimelineQuote) -> str:
         return quote.missing_inputs[0].question
     if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
         return (
-            "I can scope this, but BookCraft's v2.1 pricing values are not approved for "
+            "I can scope this, but BookCraft's v2.2 pricing values are not approved for "
             "customer-facing use yet. I won't guess at numbers."
         )
     return (
@@ -114,7 +114,7 @@ def _timeline_quote_text(quote: PricingTimelineQuote) -> str:
         return quote.missing_inputs[0].question
     if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
         return (
-            "I can scope this, but BookCraft's v2.1 timeline values are not approved for "
+            "I can scope this, but BookCraft's v2.2 timeline values are not approved for "
             "customer-facing use yet. I won't guess at timing."
         )
     return (

@@ -1,13 +1,13 @@
 service: author_website
-version: "2.1.0"
-display_name: "Author Website"
+version: 2.2.0
+display_name: Author Website
 currency: USD
 calculation_model: package_plus_recurring
 required_inputs:
-  - field: tier
-    question: "Which author website tier is needed: starter, professional, premium, or enterprise?"
-  - field: website_type
-    question: "What type of website is needed: portfolio, book_launch, ecommerce, blog, or custom?"
+- field: tier
+  question: 'Which author website tier is needed: starter, professional, premium, or enterprise?'
+- field: website_type
+  question: 'What type of website is needed: portfolio, blog_focused, book_store, or full_author_platform?'
 package_grid:
   unit_type: project
   rates:
@@ -42,48 +42,374 @@ complexity:
   point_multiplier: 0.06
   max_factor: 1.8
   drivers:
-    - field: integrations
-      label: "Website integrations"
-      options:
-        - value: none
-          points: 0
-        - value: newsletter_or_contact
-          points: 1
-        - value: ecommerce_or_booking
-          points: 3
-    - field: design_style
-      label: "Design style"
-      options:
-        - value: template_based
-          points: 0
-        - value: custom_brand
-          points: 2
-        - value: premium_interactive
-          points: 4
+  - field: design_style
+    label: Design style
+    options:
+    - value: template
+      points: 0
+      group: general
+    - value: custom
+      points: 0.5
+      group: general
+    - value: premium_custom
+      points: 1.0
+      group: general
+  - field: color_scheme
+    label: Color scheme
+    options:
+    - value: preset
+      points: 0
+      group: general
+    - value: custom_palette
+      points: 0.2
+      group: general
+    - value: brand_aligned
+      points: 0.4
+      group: general
+  - field: typography
+    label: Typography
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: licensed
+      points: 0.2
+      group: general
+    - value: custom_pairing
+      points: 0.4
+      group: general
+  - field: home_page_level
+    label: Home page level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: premium
+      points: 0.6
+      group: general
+  - field: about_page_level
+    label: About page level
+    options:
+    - value: simple
+      points: 0
+      group: general
+    - value: interactive
+      points: 0.3
+      group: general
+    - value: multimedia
+      points: 0.6
+      group: general
+  - field: books_page_level
+    label: Books/portfolio page level
+    options:
+    - value: list
+      points: 0
+      group: general
+    - value: gallery
+      points: 0.3
+      group: general
+    - value: interactive
+      points: 0.6
+      group: general
+  - field: blog_page_level
+    label: Blog/news page level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: magazine
+      points: 0.4
+      group: general
+    - value: advanced
+      points: 0.8
+      group: general
+  - field: ecommerce_level
+    label: E-commerce level
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: simple
+      points: 0.6
+      group: general
+    - value: full_store
+      points: 1.2
+      group: general
+  - field: newsletter_integration_level
+    label: Newsletter integration
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: advanced
+      points: 0.3
+      group: general
+    - value: automated
+      points: 0.7
+      group: general
+  - field: event_calendar
+    label: Event calendar
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: basic
+      points: 0.2
+      group: general
+    - value: interactive
+      points: 0.5
+      group: general
+  - field: media_gallery
+    label: Media gallery
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: photo
+      points: 0.3
+      group: general
+    - value: video
+      points: 0.6
+      group: general
+  - field: mobile_responsiveness
+    label: Mobile responsiveness
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: premium
+      points: 0.6
+      group: general
+  - field: seo_setup_level
+    label: SEO setup level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: advanced
+      points: 0.4
+      group: general
+    - value: full
+      points: 0.8
+      group: general
+  - field: security_level
+    label: Security level
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: enterprise
+      points: 0.7
+      group: general
 add_ons:
-  - code: ecommerce_setup
-    title: "eCommerce Setup"
-    price_type: fixed
-    price: 750
-    duration_type: fixed_days
-    duration_days: 5
-    complexity_points: 0.50
-  - code: newsletter_integration
-    title: "Newsletter Integration"
-    price_type: fixed
-    price: 250
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.20
-  - code: advanced_seo
-    title: "Advanced SEO Setup"
-    price_type: fixed
-    price: 600
-    duration_type: fixed_days
-    duration_days: 4
-    complexity_points: 0.30
+- code: custom_logo_design
+  title: Custom Logo Design
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.7
+- code: professional_headshots_integration
+  title: Professional Headshots Integration
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: book_trailer_integration
+  title: Book Trailer Integration
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: audiobook_sample_player
+  title: Audiobook Sample Player
+  price_type: fixed
+  price: 250
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.4
+- code: advanced_analytics_setup
+  title: Advanced Analytics Setup
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: membership_community_area
+  title: Membership/Community Area
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 1.5
+- code: course_learning_platform
+  title: Course/Learning Platform
+  price_type: fixed
+  price: 1500
+  duration_type: fixed_days
+  duration_days: 21
+  complexity_points: 0.2
+- code: podcast_integration
+  title: Podcast Integration
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.6
+- code: multi_language_support
+  title: Multi-language Support
+  price_type: fixed
+  price: 600
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.8
+- code: ada_wcag_compliance_level_aa
+  title: ADA/WCAG Compliance (Level AA)
+  price_type: fixed
+  price: 800
+  duration_type: fixed_days
+  duration_days: 8
+  complexity_points: 1.0
+- code: speed_optimization_package
+  title: Speed Optimization Package
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: backup_and_maintenance_plan_per_year
+  title: Backup & Maintenance Plan (per year)
+  price_type: fixed
+  price: 299
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+  recurring: true
+- code: content_migration_from_old_site
+  title: Content Migration (from old site)
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.5
+- code: training_sessions_per_hour
+  title: Training Sessions (per hour)
+  unit_field: training_hours
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.0
+- code: social_media_graphics_package
+  title: Social Media Graphics Package
+  price_type: fixed
+  price: 350
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.4
+- code: email_template_design_3_templates
+  title: Email Template Design (3 templates)
+  price_type: fixed
+  price: 450
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.6
+- code: custom_404_page_design
+  title: Custom 404 Page Design
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: gdpr_compliance_setup
+  title: GDPR Compliance Setup
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: custom_animations_interactions
+  title: Custom Animations/Interactions
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 8
+  complexity_points: 0.7
+- code: api_integrations_per_integration
+  title: API Integrations (per integration)
+  unit_field: api_integration_count
+  price_type: per_unit
+  price: 200
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.5
+- code: advanced_search_functionality
+  title: Advanced Search Functionality
+  price_type: fixed
+  price: 350
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.4
+- code: event_booking_system
+  title: Event Booking System
+  price_type: fixed
+  price: 600
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.8
+- code: newsletter_automation_setup
+  title: Newsletter Automation Setup
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: social_proof_testimonials_system
+  title: Social Proof/Testimonials System
+  price_type: fixed
+  price: 250
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
 assumptions:
-  - "Author website setup is quoted separately from monthly hosting or maintenance."
+- Author website setup is quoted separately from monthly hosting or maintenance.
 exclusions:
-  - "Domain purchase, premium plugins, paid themes, and third-party subscriptions are excluded unless approved."
-source_reference: "AuthorWeb_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Domain purchase, premium plugins, paid themes, and third-party subscriptions are excluded unless approved.
+source_reference: AuthorWeb_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 2.0
+  min_schedule_multiplier: 1.0
+  max_schedule_multiplier: 2.0
+  rush_slope: 0.7
+  relax_slope: 0.08
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: WTLF
+  rush_slope: 0.7
+  relax_slope: 0.08
+  min_tlf: 1
+  max_tlf: 2
+  service_multipliers:
+    standard:
+      beta: 1
+      min_tlf: 1
+      max_tlf: 1.5
+    rush:
+      beta: 1.4
+      min_tlf: 1.2
+      max_tlf: 1.9
+    express:
+      beta: 1.8
+      min_tlf: 1.3
+      max_tlf: 2

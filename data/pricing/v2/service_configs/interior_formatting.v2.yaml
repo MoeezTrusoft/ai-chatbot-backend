@@ -1,48 +1,49 @@
 service: interior_formatting
-version: "2.1.0"
-display_name: "Interior Formatting"
+version: 2.2.0
+display_name: Interior Formatting
 currency: USD
 calculation_model: page_rate
 required_inputs:
-  - field: output_format
-    question: "Which formatting output do you need: print, ebook, or print_ebook?"
-  - field: category
-    question: "What book category should formatting use: fiction, non_fiction, poetry, academic, childrens_illustrated, cookbook, or graphic_novel?"
-  - field: page_count
-    fallback_global_field: page_count
-    question: "Approximately how many formatted pages will the book have?"
+- field: output_format
+  question: 'Which formatting output do you need: print, ebook, or print_ebook?'
+- field: category
+  question: 'What book category should formatting use: fiction, non_fiction, poetry, academic, childrens_illustrated,
+    cookbook, or graphic_novel?'
+- field: page_count
+  fallback_global_field: page_count
+  question: Approximately how many formatted pages will the book have?
 rate_grid:
   unit_type: pages
   minimum_fee: 199
   rates:
     fiction:
       print: 1.25
-      ebook: 0.90
-      print_ebook: 1.90
+      ebook: 0.9
+      print_ebook: 1.9
     non_fiction:
-      print: 1.50
-      ebook: 1.00
+      print: 1.5
+      ebook: 1.0
       print_ebook: 2.25
     poetry:
       print: 1.75
       ebook: 1.25
-      print_ebook: 2.50
+      print_ebook: 2.5
     academic:
-      print: 2.00
+      print: 2.0
       ebook: 1.25
-      print_ebook: 2.90
+      print_ebook: 2.9
     childrens_illustrated:
-      print: 2.50
-      ebook: 1.50
-      print_ebook: 3.60
+      print: 2.5
+      ebook: 1.5
+      print_ebook: 3.6
     cookbook:
-      print: 3.00
+      print: 3.0
       ebook: 1.75
       print_ebook: 4.25
     graphic_novel:
-      print: 4.00
+      print: 4.0
       ebook: 2.25
-      print_ebook: 5.50
+      print_ebook: 5.5
 pace_grid:
   unit_type: pages
   pace:
@@ -74,48 +75,185 @@ pace_grid:
       print: 6
       ebook: 14
       print_ebook: 5
-  quality_buffer_percent: 10
+  quality_buffer_percent: 0
 complexity:
   factor_name: FCF
   mode: points
   point_multiplier: 0.05
   max_factor: 1.6
   drivers:
-    - field: content_complexity
-      label: "Content complexity"
-      options:
-        - value: text_only
-          points: 0
-        - value: images_tables
-          points: 2
-        - value: complex_layout
-          points: 4
-    - field: design_style
-      label: "Design style"
-      options:
-        - value: standard
-          points: 0
-        - value: custom
-          points: 2
-        - value: highly_designed
-          points: 4
+  - field: images_per_chapter
+    label: Images/illustrations per chapter
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: few
+      points: 0.5
+      group: general
+    - value: moderate
+      points: 1.0
+      group: general
+    - value: heavy
+      points: 1.5
+      group: general
+  - field: tables_charts_graphs
+    label: Tables/charts/graphs
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.5
+      group: general
+  - field: footnotes_endnotes
+    label: Footnotes/endnotes
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.3
+      group: general
+  - field: special_layout_elements
+    label: Special layout elements
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.4
+      group: general
+  - field: index_required
+    label: Index required
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.6
+      group: general
+  - field: complex_chapter_starts
+    label: Complex chapter starts
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.3
+      group: general
+  - field: custom_design
+    label: Custom design
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.8
+      group: general
+  - field: licensed_fonts_required
+    label: Licensed fonts required
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.2
+      group: general
+  - field: color_interior
+    label: Color interior
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.5
+      group: general
 add_ons:
-  - code: clickable_toc
-    title: "Clickable Table of Contents"
-    price_type: fixed
-    price: 75
-    duration_type: fixed_days
-    duration_days: 1
-    complexity_points: 0.10
-  - code: image_optimization
-    title: "Image Optimization"
-    price_type: fixed
-    price: 150
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.30
+- code: custom_chapter_art_ornaments_per_element
+  title: Custom Chapter Art/Ornaments (per element)
+  unit_field: custom_chapter_art_count
+  price_type: per_unit
+  price: 50
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.3
+- code: extra_revision_round_beyond_included
+  title: Extra Revision Round (beyond included)
+  unit_field: extra_revision_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.0
+- code: font_licensing_premium_fonts
+  title: Font Licensing (premium fonts)
+  unit_field: premium_font_count
+  price_type: per_unit
+  price: 75
+  duration_type: fixed_days
+  duration_days: 0.5
+  complexity_points: 0.2
+- code: print_ready_file_optimization
+  title: Print-Ready File Optimization
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.2
+- code: ebook_conversion_additional_formats_beyond_epub
+  title: eBook Conversion (additional formats beyond EPUB)
+  unit_field: additional_format_count
+  price_type: per_unit
+  price: 75
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+- code: accessibility_features_alt_text_proper_tagging
+  title: Accessibility Features (alt text, proper tagging)
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.5
+- code: complex_table_graph_recreation
+  title: Complex Table/Graph Recreation
+  unit_field: complex_table_graph_count
+  price_type: per_unit
+  price: 30
+  duration_type: fixed_days
+  duration_days: 0.25
+  complexity_points: 0.5
 assumptions:
-  - "Formatting estimate assumes final edited manuscript is available before formatting begins."
+- Formatting estimate assumes final edited manuscript is available before formatting begins.
 exclusions:
-  - "Print proofing costs and platform fees are excluded unless separately listed."
-source_reference: "Formatting_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Print proofing costs and platform fees are excluded unless separately listed.
+source_reference: Formatting_Price&TimeEngine.xlsx, normalized into v2.2 config.
+quality_buffer_status: Workbook formula references quality buffer but workbook does not define explicit per-service
+  buffer values.
+timeline_policy:
+  max_compression_ratio: 1.5
+  min_schedule_multiplier: 0.9
+  max_schedule_multiplier: 1.5
+  rush_slope: 0.5
+  relax_slope: 0.15
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: FTLF
+  rush_slope: 0.5
+  relax_slope: 0.15
+  min_tlf: 0.9
+  max_tlf: 1.4
+  service_multipliers:
+    print:
+      beta: 1
+      min_tlf: 0.9
+      max_tlf: 1.4
+    ebook:
+      beta: 0.8
+      min_tlf: 0.9
+      max_tlf: 1.3
+    print_ebook:
+      beta: 1.2
+      min_tlf: 0.9
+      max_tlf: 1.5

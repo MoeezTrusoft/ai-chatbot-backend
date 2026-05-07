@@ -19,7 +19,7 @@ def main() -> int:
     else:
         print("pricing verifier passed")
     if not settings.pricing_v2_values_approved:
-        print("pricing v2.1 values are installed but not approved for customer-facing use")
+        print("pricing v2.2 values are installed but not approved for customer-facing use")
     return 0
 
 

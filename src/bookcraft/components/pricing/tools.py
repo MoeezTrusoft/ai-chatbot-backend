@@ -286,7 +286,7 @@ def _legacy_quote_response(
             human_review_required=True,
             confidence=0.0,
             suggested_phrasing=(
-                "I can scope this, but BookCraft's v2.1 pricing values are not approved "
+                "I can scope this, but BookCraft's v2.2 pricing values are not approved "
                 "for customer-facing use yet. I won't guess at numbers."
             ),
         )
@@ -318,7 +318,7 @@ def _legacy_timeline_response(
             human_review_required=True,
             confidence=0.0,
             suggested_phrasing=(
-                "I can scope this, but BookCraft's v2.1 timeline values are not approved "
+                "I can scope this, but BookCraft's v2.2 timeline values are not approved "
                 "for customer-facing use yet. I won't guess at timing."
             ),
         )

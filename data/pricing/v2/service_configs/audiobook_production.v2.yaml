@@ -1,16 +1,16 @@
 service: audiobook_production
-version: "2.1.0"
-display_name: "Audiobook Production"
+version: 2.2.0
+display_name: Audiobook Production
 currency: USD
 calculation_model: per_finished_hour
 required_inputs:
-  - field: tier
-    question: "Which audiobook tier is needed: essential, professional, premium, or studio?"
-  - field: finished_hours
-    fallback_global_field: word_count
-    question: "How many finished audio hours are expected, or what is the manuscript word count?"
-  - field: narration_model
-    question: "What narration model is needed: single_narrator, dual_narrator, full_cast, or client_provided?"
+- field: tier
+  question: 'Which audiobook tier is needed: essential, professional, premium, or studio?'
+- field: finished_hours
+  fallback_global_field: word_count
+  question: How many finished audio hours are expected, or what is the manuscript word count?
+- field: narrator_level
+  question: 'What narrator level is needed: entry, professional, celebrity, or author_narration?'
 rate_grid:
   unit_type: finished_hours
   minimum_fee: 500
@@ -30,51 +30,304 @@ complexity:
   point_multiplier: 0.07
   max_factor: 2.0
   drivers:
-    - field: narration_model
-      label: "Narration model"
-      options:
-        - value: single_narrator
-          points: 0
-        - value: dual_narrator
-          points: 2
-        - value: full_cast
-          points: 5
-        - value: client_provided
-          points: 1
-    - field: sound_design_level
-      label: "Sound design level"
-      options:
-        - value: none
-          points: 0
-        - value: light
-          points: 1
-        - value: cinematic
-          points: 4
+  - field: narrator_level
+    label: Narrator level
+    options:
+    - value: entry
+      points: 0
+      group: general
+    - value: professional
+      points: 0.3
+      group: general
+    - value: celebrity
+      points: 0.8
+      group: general
+    - value: author_narration
+      points: 0.5
+      group: general
+  - field: voice_requirements
+    label: Voice requirements
+    options:
+    - value: single
+      points: 0
+      group: general
+    - value: dual
+      points: 0.5
+      group: general
+    - value: full_cast
+      points: 1.2
+      group: general
+  - field: accent_language_complexity
+    label: Accent/language complexity
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: regional
+      points: 0.3
+      group: general
+    - value: bilingual
+      points: 0.6
+      group: general
+    - value: multiple_languages
+      points: 1.0
+      group: general
+  - field: recording_environment
+    label: Recording environment
+    options:
+    - value: home
+      points: 0
+      group: general
+    - value: professional
+      points: 0.2
+      group: general
+    - value: broadcast_studio
+      points: 0.4
+      group: general
+  - field: audio_quality_level
+    label: Audio quality level
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: high
+      points: 0.2
+      group: general
+    - value: premium
+      points: 0.4
+      group: general
+  - field: mastering_level
+    label: Mastering level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: cinema_quality
+      points: 0.7
+      group: general
+  - field: sound_design_level
+    label: Sound design level
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: basic
+      points: 0.4
+      group: general
+    - value: enhanced
+      points: 0.8
+      group: general
+    - value: full_production
+      points: 1.2
+      group: general
+  - field: music_scoring
+    label: Music & scoring
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: intro_outro
+      points: 0.3
+      group: general
+    - value: chapter_stings
+      points: 0.6
+      group: general
+    - value: full_score
+      points: 1.0
+      group: general
+  - field: book_type_difficulty
+    label: Book type difficulty
+    options:
+    - value: fiction
+      points: 0
+      group: general
+    - value: non_fiction
+      points: 0.2
+      group: general
+    - value: academic
+      points: 0.5
+      group: general
+    - value: technical
+      points: 0.8
+      group: general
 add_ons:
-  - code: music_intro_outro
-    title: "Music Intro/Outro"
-    price_type: fixed
-    price: 300
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.25
-  - code: acx_mastering
-    title: "ACX/Platform Mastering"
-    price_type: fixed
-    price: 400
-    duration_type: fixed_days
-    duration_days: 3
-    complexity_points: 0.25
-  - code: full_sound_design
-    title: "Full Sound Design"
-    price_type: per_unit
-    price: 75
-    unit_field: finished_hours
-    duration_type: fixed_days
-    duration_days: 7
-    complexity_points: 0.70
+- code: pronunciation_guide_creation
+  title: Pronunciation Guide Creation
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: character_voice_differentiation_per_5_characters
+  title: Character Voice Differentiation (per 5 characters)
+  unit_field: character_voice_sets
+  price_type: per_unit
+  price: 150
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.4
+- code: foreign_language_sections_per_language
+  title: Foreign Language Sections (per language)
+  unit_field: foreign_language_count
+  price_type: per_unit
+  price: 300
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.6
+- code: sound_effects_integration_basic
+  title: Sound Effects Integration (Basic)
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.7
+- code: sound_effects_integration_enhanced
+  title: Sound Effects Integration (Enhanced)
+  price_type: fixed
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 8
+  complexity_points: 1.2
+- code: original_music_composition_intro_outro
+  title: Original Music Composition (Intro/Outro)
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.9
+- code: original_music_composition_full_score
+  title: Original Music Composition (Full Score)
+  price_type: fixed
+  price: 2000
+  duration_type: fixed_days
+  duration_days: 14
+  complexity_points: 2.0
+- code: audiobook_trailer_60_second
+  title: Audiobook Trailer (60-second)
+  price_type: fixed
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 1.0
+- code: multiple_narrator_coordination_per_narrator
+  title: Multiple Narrator Coordination (per narrator)
+  unit_field: additional_narrator_count
+  price_type: per_unit
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.8
+- code: advanced_mastering_cinema_quality
+  title: Advanced Mastering (Cinema-Quality)
+  price_type: fixed
+  price: 1500
+  duration_type: fixed_days
+  duration_days: 6
+  complexity_points: 1.0
+- code: accessibility_features_descriptive_audio
+  title: Accessibility Features (Descriptive Audio)
+  price_type: fixed
+  price: 800
+  duration_type: fixed_days
+  duration_days: 9
+  complexity_points: 1.1
+- code: retailer_specific_optimization_per_platform
+  title: Retailer-Specific Optimization (per platform)
+  unit_field: retailer_platform_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: marketing_snippets_creation_3_clips
+  title: Marketing Snippets Creation (3 clips)
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.4
+- code: social_media_audio_clips_5_clips
+  title: Social Media Audio Clips (5 clips)
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: audiobook_cover_adaptation
+  title: Audiobook Cover Adaptation
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: metadata_optimization
+  title: Metadata Optimization
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: royalty_share_negotiation_service
+  title: Royalty Share Negotiation Service
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.6
+- code: qc_pass_by_audio_engineer
+  title: QC Pass by Audio Engineer
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: distribution_to_additional_platforms_per_platform
+  title: Distribution to Additional Platforms (per platform)
+  unit_field: additional_platform_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: audiobook_sample_chapter
+  title: Audiobook Sample Chapter
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.5
 assumptions:
-  - "Finished hours may be supplied directly or derived from word count using the configured words-per-finished-hour policy."
+- Finished hours may be supplied directly or derived from word count using the configured words-per-finished-hour
+  policy.
 exclusions:
-  - "Union talent fees, celebrity narration, and licensed music are excluded unless approved."
-source_reference: "Audiobook_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Union talent fees, celebrity narration, and licensed music are excluded unless approved.
+source_reference: Audiobook_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 2.5
+  min_schedule_multiplier: 1.1
+  max_schedule_multiplier: 2.5
+  rush_slope: 0.9
+  relax_slope: 0.03
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: ATLF
+  rush_slope: 0.9
+  relax_slope: 0.03
+  min_tlf: 1.1
+  max_tlf: 2.5
+  service_multipliers:
+    standard:
+      beta: 1
+      min_tlf: 1.1
+      max_tlf: 1.8
+    accelerated:
+      beta: 1.4
+      min_tlf: 1.5
+      max_tlf: 2.2
+    express:
+      beta: 1.8
+      min_tlf: 2
+      max_tlf: 2.5

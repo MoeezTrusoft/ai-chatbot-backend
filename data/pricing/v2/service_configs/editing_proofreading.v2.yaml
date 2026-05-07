@@ -1,24 +1,26 @@
 service: editing_proofreading
-version: "2.1.0"
-display_name: "Editing & Proofreading"
+version: 2.2.0
+display_name: Editing & Proofreading
 currency: USD
 calculation_model: word_rate
 required_inputs:
-  - field: service_type
-    question: "Which editing service do you need: developmental_editing, line_editing, copy_editing, proofreading, or manuscript_assessment?"
-  - field: category
-    question: "What category best fits the manuscript: standard_fiction, complex_fiction, standard_nonfiction, complex_nonfiction, academic_technical, poetry, comics_graphic, or anthologies?"
-  - field: word_count
-    fallback_global_field: word_count
-    question: "Approximately how many words is the manuscript?"
-  - field: manuscript_condition
-    question: "What condition is the manuscript in: clean, average, rough, or heavy_rewrite_needed?"
+- field: service_type
+  question: 'Which editing service do you need: developmental_editing, line_editing, copy_editing, proofreading,
+    or manuscript_assessment?'
+- field: category
+  question: 'What category best fits the manuscript: standard_fiction, complex_fiction, standard_nonfiction, complex_nonfiction,
+    academic_technical, poetry, comics_graphic, or anthologies?'
+- field: word_count
+  fallback_global_field: word_count
+  question: Approximately how many words is the manuscript?
+- field: manuscript_condition
+  question: 'What condition is the manuscript in: clean, average, rough, or heavy_rewrite_needed?'
 rate_grid:
   unit_type: words
   minimum_fee: 250
   rates:
     standard_fiction:
-      developmental_editing: 0.010
+      developmental_editing: 0.01
       line_editing: 0.007
       copy_editing: 0.005
       proofreading: 0.004
@@ -36,7 +38,7 @@ rate_grid:
       proofreading: 0.006
       manuscript_assessment: 0.005
     complex_nonfiction:
-      developmental_editing: 0.020
+      developmental_editing: 0.02
       line_editing: 0.015
       copy_editing: 0.012
       proofreading: 0.008
@@ -45,22 +47,22 @@ rate_grid:
       developmental_editing: 0.025
       line_editing: 0.018
       copy_editing: 0.014
-      proofreading: 0.010
+      proofreading: 0.01
       manuscript_assessment: 0.0085
     poetry:
-      developmental_editing: 0.020
+      developmental_editing: 0.02
       line_editing: 0.015
       copy_editing: 0.012
       proofreading: 0.008
       manuscript_assessment: 0.006
     comics_graphic:
-      developmental_editing: 0.010
+      developmental_editing: 0.01
       line_editing: 0.007
       copy_editing: 0.005
       proofreading: 0.004
       manuscript_assessment: 0.003
     anthologies:
-      developmental_editing: 0.010
+      developmental_editing: 0.01
       line_editing: 0.007
       copy_editing: 0.005
       proofreading: 0.004
@@ -84,62 +86,232 @@ complexity:
   mode: points
   point_multiplier: 0.035
   max_factor: 1.6
+  service_specific_point_multipliers:
+    developmental_editing: 0.04
+    line_editing: 0.035
+    copy_editing: 0.03
+    proofreading: 0.02
+    manuscript_assessment: 0.025
   drivers:
-    - field: manuscript_condition
-      label: "Manuscript condition"
-      options:
-        - value: clean
-          points: 0
-        - value: average
-          points: 1
-        - value: rough
-          points: 3
-        - value: heavy_rewrite_needed
-          points: 5
-          reason: "Substantial restructuring or rewrite-level intervention may be required."
-    - field: citation_density
-      label: "Citation density"
-      options:
-        - value: none
-          points: 0
-        - value: moderate
-          points: 1
-        - value: heavy
-          points: 3
-    - field: language_complexity
-      label: "Language/style complexity"
-      options:
-        - value: standard
-          points: 0
-        - value: technical
-          points: 2
-        - value: multilingual_or_dialect
-          points: 3
+  - field: manuscript_condition
+    label: Manuscript condition
+    options:
+    - value: polished
+      points: 0
+      group: general
+    - value: revised
+      points: 0.2
+      group: general
+    - value: rough
+      points: 0.5
+      group: general
+    - value: very_rough
+      points: 0.8
+      group: general
+  - field: genre_complexity
+    label: Genre complexity
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: complex
+      points: 0.3
+      group: general
+    - value: highly_complex
+      points: 0.7
+      group: general
+  - field: multiple_povs_narrators
+    label: Multiple POVs/narrators
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.3
+      group: general
+  - field: technical_specialized_content
+    label: Technical/specialized content
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.4
+      group: general
+  - field: non_standard_formatting
+    label: Non-standard formatting
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.2
+      group: general
+  - field: extensive_notes_comments
+    label: Extensive notes/comments
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.3
+      group: general
+  - field: author_first_language
+    label: Author's first language
+    options:
+    - value: english
+      points: 0
+      group: general
+    - value: esl_advanced
+      points: 0.2
+      group: general
+    - value: esl_basic
+      points: 0.5
+      group: general
+  - field: writing_style_consistency
+    label: Writing style consistency
+    options:
+    - value: consistent
+      points: 0
+      group: general
+    - value: some_issues
+      points: 0.2
+      group: general
+    - value: highly_inconsistent
+      points: 0.5
+      group: general
+  - field: grammar_mechanics_level
+    label: Grammar/mechanics level
+    options:
+    - value: strong
+      points: 0
+      group: general
+    - value: moderate
+      points: 0.3
+      group: general
+    - value: needs_significant_work
+      points: 0.7
+      group: general
 add_ons:
-  - code: style_sheet
-    title: "Editorial Style Sheet"
-    price_type: fixed
-    price: 150
-    duration_type: fixed_days
-    duration_days: 1
-    complexity_points: 0.20
-  - code: references_check
-    title: "Reference and Citation Check"
-    price_type: per_unit
-    price: 0.004
-    unit_field: word_count
-    duration_type: per_unit_pace
-    pace_per_day: 12000
-    complexity_points: 0.40
-  - code: expedited_editor_review
-    title: "Senior Editor Review"
-    price_type: fixed
-    price: 500
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.30
+- code: editorial_letter_5_10_pages
+  title: Editorial Letter (5–10 pages)
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.45
+- code: chapter_by_chapter_comments
+  title: Chapter-by-Chapter Comments
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.6
+- code: style_sheet_creation
+  title: Style Sheet Creation
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: fact_checking
+  title: Fact-Checking
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.1
+- code: sensitivity_read
+  title: Sensitivity Read
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.7
+- code: query_letter_review
+  title: Query Letter Review
+  price_type: fixed
+  price: 50
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+- code: synopsis_development
+  title: Synopsis Development
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.45
+- code: comparative_title_analysis
+  title: Comparative Title Analysis
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: reference_footnote_verification
+  title: Reference/Footnote Verification
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.01
+  duration_type: per_unit_pace
+  pace_per_day: 5000.0
+  complexity_points: 0.5
+- code: index_creation
+  title: Index Creation
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.008
+  duration_type: per_unit_pace
+  pace_per_day: 6000.0
+  complexity_points: 0.75
+- code: glossary_development
+  title: Glossary Development
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.5
 assumptions:
-  - "Editing estimate assumes manuscript is provided in a standard editable document format."
+- Editing estimate assumes manuscript is provided in a standard editable document format.
 exclusions:
-  - "Fact-checking, permissions clearance, and legal review are excluded unless approved separately."
-source_reference: "Editing_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Fact-checking, permissions clearance, and legal review are excluded unless approved separately.
+source_reference: Editing_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 1.6
+  min_schedule_multiplier: 0.95
+  max_schedule_multiplier: 1.6
+  rush_slope: 0.5
+  relax_slope: 0.15
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: ETLF
+  rush_slope: 0.5
+  relax_slope: 0.15
+  min_tlf: 0.95
+  max_tlf: 1.6
+  service_multipliers:
+    developmental_editing:
+      beta: 1.1
+      min_tlf: 0.95
+      max_tlf: 1.6
+    line_editing:
+      beta: 1
+      min_tlf: 0.95
+      max_tlf: 1.5
+    copy_editing:
+      beta: 0.9
+      min_tlf: 0.95
+      max_tlf: 1.4
+    proofreading:
+      beta: 0.8
+      min_tlf: 0.95
+      max_tlf: 1.3
+    manuscript_assessment:
+      beta: 0.85
+      min_tlf: 0.95
+      max_tlf: 1.35

@@ -1,20 +1,20 @@
 service: ghostwriting
-version: "2.1.0"
-display_name: "Ghostwriting"
+version: 2.2.0
+display_name: Ghostwriting
 currency: USD
 calculation_model: word_rate
 required_inputs:
-  - field: service_type
-    question: "Which ghostwriting option do you need: full_ghostwriting, coaching_writing, or manuscript_completion?"
-  - field: category
-    question: "What category best fits the book, such as fiction_standard, nonfiction_complex, poetry, or young_adult?"
-  - field: word_count
-    fallback_global_field: word_count
-    question: "Approximately how many words should the finished manuscript be?"
-  - field: manuscript_status
-    service_input: false
-    fallback_global_field: manuscript_status
-    question: "Do you already have notes, an outline, a partial manuscript, or only an idea?"
+- field: service_type
+  question: 'Which ghostwriting option do you need: full_ghostwriting, coaching_writing, or manuscript_completion?'
+- field: category
+  question: What category best fits the book, such as fiction_standard, nonfiction_complex, poetry, or young_adult?
+- field: word_count
+  fallback_global_field: word_count
+  question: Approximately how many words should the finished manuscript be?
+- field: manuscript_status
+  service_input: false
+  fallback_global_field: manuscript_status
+  question: Do you already have notes, an outline, a partial manuscript, or only an idea?
 rate_grid:
   unit_type: words
   minimum_fee: 750
@@ -34,9 +34,9 @@ rate_grid:
     nonfiction_complex:
       full_ghostwriting: 0.14
       coaching_writing: 0.11
-      manuscript_completion: 0.10
+      manuscript_completion: 0.1
     young_adult:
-      full_ghostwriting: 0.10
+      full_ghostwriting: 0.1
       coaching_writing: 0.07
       manuscript_completion: 0.06
     childrens_standard:
@@ -45,7 +45,7 @@ rate_grid:
       manuscript_completion: 0.04
     childrens_complex:
       full_ghostwriting: 0.13
-      coaching_writing: 0.10
+      coaching_writing: 0.1
       manuscript_completion: 0.09
     poetry:
       full_ghostwriting: 0.15
@@ -80,120 +80,290 @@ complexity:
     synergy: 0.01
     addon: 0.005
   drivers:
-    - field: narrative_complexity
-      label: "Narrative complexity"
-      options:
-        - value: simple
-          points: 0
-          group: writing
-          reason: "Straightforward structure."
-        - value: multi_perspective
-          points: 2
-          group: writing
-          reason: "Multiple voices require planning and continuity checks."
-        - value: research_heavy
-          points: 3
-          group: writing
-          reason: "Research-heavy projects require extra synthesis and verification."
-    - field: worldbuilding_level
-      label: "Worldbuilding level"
-      options:
-        - value: none
-          points: 0
-          group: worldbuilding
-        - value: moderate
-          points: 2
-          group: worldbuilding
-        - value: extensive
-          points: 4
-          group: worldbuilding
-    - field: collaboration_intensity
-      label: "Collaboration intensity"
-      options:
-        - value: standard
-          points: 0
-          group: synergy
-        - value: high
-          points: 2
-          group: synergy
+  - field: advanced_technical_specialized_content
+    label: Advanced technical/specialized content
+    options:
+    - value: 'no'
+      points: 0
+      group: writing
+    - value: 'yes'
+      points: 3
+      group: writing
+  - field: multi_perspective_voice
+    label: Multi-perspective or multi-voice narrative
+    options:
+    - value: 'no'
+      points: 0
+      group: writing
+    - value: 'yes'
+      points: 2
+      group: writing
+  - field: constructed_language
+    label: Requires a constructed language (Conlang)
+    options:
+    - value: 'no'
+      points: 0
+      group: writing
+    - value: 'yes'
+      points: 3
+      group: writing
+  - field: glossary_50_plus_terms
+    label: Requires a glossary (50+ terms)
+    options:
+    - value: 'no'
+      points: 0
+      group: writing
+    - value: 'yes'
+      points: 1
+      group: writing
+  - field: planned_series
+    label: Part of a planned series
+    options:
+    - value: 'no'
+      points: 0
+      group: writing
+    - value: 'yes'
+      points: 2
+      group: writing
+  - field: required_research_level
+    label: Required research level
+    options:
+    - value: none
+      points: 0
+      group: writing
+    - value: light
+      points: 1
+      group: writing
+    - value: moderate
+      points: 3
+      group: writing
+    - value: heavy
+      points: 6
+      group: writing
+  - field: distinct_cultures
+    label: Number of distinct cultures
+    options:
+    - value: lte_2
+      points: 0
+      group: worldbuilding
+    - value: three_to_five
+      points: 2
+      group: worldbuilding
+    - value: six_plus
+      points: 4
+      group: worldbuilding
+  - field: non_human_species
+    label: Non-human species
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: defined_magic_system
+    label: Defined system — magic
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: defined_advanced_tech_system
+    label: Defined system — advanced tech
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: economic_trade_system
+    label: Economic/trade system
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: religious_belief_system
+    label: Religious belief system
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: political_factions_system
+    label: Political factions/system
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: included_artifacts
+    label: Included artifacts
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: alternate_history_calendar_science
+    label: Alternate history/calendar/scientific rules
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: complex_timeline
+    label: Complex timeline
+    options:
+    - value: 'no'
+      points: 0
+      group: worldbuilding
+    - value: 'yes'
+      points: 1
+      group: worldbuilding
+  - field: synergy_naming_morphology_species_lexicon
+    label: 'Synergy: naming morphology + species lexicon'
+    options:
+    - value: 'no'
+      points: 0
+      group: synergy
+    - value: 'yes'
+      points: 1
+      group: synergy
+  - field: synergy_terminology_management
+    label: 'Synergy: terminology management'
+    options:
+    - value: 'no'
+      points: 0
+      group: synergy
+    - value: 'yes'
+      points: 1
+      group: synergy
+  - field: synergy_weave_voices_across_eras
+    label: 'Synergy: weave voices across eras'
+    options:
+    - value: 'no'
+      points: 0
+      group: synergy
+    - value: 'yes'
+      points: 1
+      group: synergy
 add_ons:
-  - code: outline_plan
-    title: "Detailed Outline & Chapter Plan"
-    price_type: fixed
-    price: 1200
-    duration_type: fixed_days
-    duration_days: 5
-    complexity_points: 0.45
-  - code: book_proposal
-    title: "Book Proposal Development"
-    price_type: fixed
-    price: 1800
-    duration_type: fixed_days
-    duration_days: 10
-    complexity_points: 0.60
-  - code: sensitivity_read
-    title: "Sensitivity/Authenticity Read"
-    price_type: per_unit
-    price: 0.005
-    unit_field: word_count
-    duration_type: per_unit_pace
-    pace_per_day: 10000
-    complexity_points: 0.30
-  - code: citations_permissions
-    title: "Sourcing Citations & Permissions"
-    price_type: per_unit
-    price: 0.015
-    unit_field: word_count
-    duration_type: per_unit_pace
-    pace_per_day: 4000
-    complexity_points: 0.10
-  - code: beta_reader_coordination
-    title: "Coordination with Beta Readers"
-    price_type: fixed
-    price: 450
-    duration_type: fixed_days
-    duration_days: 5
-    complexity_points: 0.70
-  - code: final_proofreading
-    title: "Final Proofreading Pass"
-    price_type: per_unit
-    price: 0.005
-    unit_field: word_count
-    duration_type: per_unit_pace
-    pace_per_day: 10000
-    complexity_points: 0.10
-  - code: character_bios
-    title: "Character Bios & Relationship Maps"
-    price_type: fixed
-    price: 500
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.45
-  - code: worldbuilding_bible
-    title: "Worldbuilding Bible Creation"
-    price_type: per_unit
-    price: 0.01
-    unit_field: word_count
-    duration_type: per_unit_pace
-    pace_per_day: 10000
-    complexity_points: 0.30
-  - code: series_bible
-    title: "Series Bible Development"
-    price_type: fixed
-    price: 1200
-    duration_type: fixed_days
-    duration_days: 7
-    complexity_points: 0.50
-  - code: query_letter
-    title: "Query Letter & Submission Package"
-    price_type: fixed
-    price: 50
-    duration_type: fixed_days
-    duration_days: 3
-    complexity_points: 0.50
+- code: outline_plan
+  title: Detailed Outline & Chapter Plan
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.45
+- code: book_proposal
+  title: Book Proposal Development (Non-Fiction)
+  price_type: fixed
+  price: 1800
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.6
+- code: sensitivity_read
+  title: Sensitivity/Authenticity Read
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.3
+- code: citations_permissions
+  title: Sourcing Citations & Securing Permissions
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.015
+  duration_type: per_unit_pace
+  pace_per_day: 4000.0
+  complexity_points: 0.1
+- code: beta_reader_coordination
+  title: Coordination with Beta Readers (2)
+  price_type: fixed
+  price: 450
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.7
+- code: final_proofreading
+  title: Final Proofreading Pass
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.005
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.1
+- code: character_bios
+  title: Character Bios & Relationship Maps
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.45
+- code: worldbuilding_bible
+  title: Worldbuilding Bible Creation
+  unit_field: word_count
+  price_type: per_unit
+  price: 0.01
+  duration_type: per_unit_pace
+  pace_per_day: 10000.0
+  complexity_points: 0.3
+- code: series_bible
+  title: Series Bible Development
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.5
+- code: query_letter
+  title: Query Letter Review
+  price_type: fixed
+  price: 50
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.5
 assumptions:
-  - "Ghostwriting estimate assumes client feedback is provided within agreed review windows."
-  - "Manuscript ownership remains with the client unless a separate agreement says otherwise."
+- Ghostwriting estimate assumes client feedback is provided within agreed review windows.
+- Manuscript ownership remains with the client unless a separate agreement says otherwise.
 exclusions:
-  - "Third-party rights, image licensing, and permissions fees are excluded unless listed as approved add-ons."
-source_reference: "Ghostwriting_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Third-party rights, image licensing, and permissions fees are excluded unless listed as approved add-ons.
+source_reference: Ghostwriting_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 1.8
+  min_schedule_multiplier: 0.95
+  max_schedule_multiplier: 1.8
+  rush_slope: 0.6
+  relax_slope: 0.2
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: GTLF
+  rush_slope: 0.6
+  relax_slope: 0.2
+  min_tlf: 0.95
+  max_tlf: 1.8
+  service_multipliers:
+    full_ghostwriting:
+      beta: 1.15
+      min_tlf: 0.95
+      max_tlf: 1.6
+    coaching_writing:
+      beta: 0.95
+      min_tlf: 0.95
+      max_tlf: 1.4
+    manuscript_completion:
+      beta: 1.05
+      min_tlf: 0.95
+      max_tlf: 1.5

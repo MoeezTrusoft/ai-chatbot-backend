@@ -1,15 +1,16 @@
 service: marketing_promotion
-version: "2.1.0"
-display_name: "Marketing & Promotion"
+version: 2.2.0
+display_name: Marketing & Promotion
 currency: USD
 calculation_model: campaign_package
 required_inputs:
-  - field: tier
-    question: "Which marketing tier is needed: launch_essentials, professional_campaign, premium_blitz, or enterprise_rollout?"
-  - field: campaign_duration
-    question: "What campaign duration is needed: 1_month, 3_months, 6_months, or 12_months?"
-  - field: primary_goal
-    question: "What is the main marketing goal: awareness, launch_support, reviews, lead_generation, or sales_support?"
+- field: tier
+  question: 'Which marketing tier is needed: launch_essentials, professional_campaign, or premium_blitz? Enterprise
+    rollout is custom-quote/human-review only because the workbook has no auto-pricing grid for it.'
+- field: campaign_duration
+  question: 'What campaign duration is needed: 1_month, 3_months, 6_months, or 12_months?'
+- field: primary_goal
+  question: 'What is the main marketing goal: awareness, launch_support, reviews, lead_generation, or sales_support?'
 package_grid:
   unit_type: calendar_days
   rates:
@@ -27,12 +28,7 @@ package_grid:
       1_month: 4999
       3_months: 12999
       6_months: 23999
-      12_months: 44999
-    enterprise_rollout:
-      1_month: 9999
-      3_months: 24999
-      6_months: 47999
-      12_months: 89999
+      12_months: 43999
 base_duration_days:
   launch_essentials: 10
   professional_campaign: 15
@@ -41,52 +37,369 @@ base_duration_days:
 complexity:
   factor_name: MCF
   mode: points
-  point_multiplier: 0.06
-  max_factor: 2.0
+  point_multiplier: 0.05
+  max_factor: 1.7
   drivers:
-    - field: audience_size
-      label: "Target audience size"
-      options:
-        - value: niche
-          points: 0
-        - value: broad
-          points: 2
-        - value: multi_segment
-          points: 4
-    - field: channel_mix
-      label: "Channel mix"
-      options:
-        - value: standard
-          points: 0
-        - value: multi_channel
-          points: 2
-        - value: full_funnel
-          points: 4
+  - field: target_audience_size
+    label: Target audience size
+    options:
+    - value: niche
+      points: 0
+      group: general
+    - value: medium
+      points: 0.3
+      group: general
+    - value: large
+      points: 0.6
+      group: general
+    - value: mass
+      points: 1.0
+      group: general
+  - field: genre_competitiveness
+    label: Genre competitiveness
+    options:
+    - value: low
+      points: 0
+      group: general
+    - value: medium
+      points: 0.2
+      group: general
+    - value: high
+      points: 0.5
+      group: general
+    - value: saturated
+      points: 0.9
+      group: general
+  - field: existing_platform
+    label: Existing author platform
+    options:
+    - value: none
+      points: 0.5
+      group: general
+    - value: small
+      points: 0.2
+      group: general
+    - value: medium
+      points: 0
+      group: general
+    - value: large
+      points: -0.2
+      group: general
+  - field: email_list_size
+    label: Email list size
+    options:
+    - value: none
+      points: 0.4
+      group: general
+    - value: small
+      points: 0.2
+      group: general
+    - value: medium
+      points: 0
+      group: general
+    - value: large
+      points: -0.1
+      group: general
+  - field: social_following
+    label: Social following
+    options:
+    - value: none
+      points: 0.3
+      group: general
+    - value: small
+      points: 0.1
+      group: general
+    - value: medium
+      points: 0
+      group: general
+    - value: large
+      points: -0.1
+      group: general
+  - field: series_or_standalone
+    label: Series or standalone
+    options:
+    - value: standalone
+      points: 0
+      group: general
+    - value: series_new
+      points: 0.2
+      group: general
+    - value: series_existing
+      points: -0.1
+      group: general
+  - field: cover_blurb_quality
+    label: Cover/blurb quality
+    options:
+    - value: poor
+      points: 0.3
+      group: general
+    - value: average
+      points: 0.1
+      group: general
+    - value: good
+      points: 0
+      group: general
+    - value: excellent
+      points: -0.1
+      group: general
+  - field: reviews_endorsements
+    label: Reviews/endorsements
+    options:
+    - value: none
+      points: 0.3
+      group: general
+    - value: few
+      points: 0.1
+      group: general
+    - value: some
+      points: 0
+      group: general
+    - value: many
+      points: -0.2
+      group: general
+  - field: number_of_channels
+    label: Number of channels
+    options:
+    - value: one_to_two
+      points: 0
+      group: general
+    - value: three_to_four
+      points: 0.2
+      group: general
+    - value: five_plus
+      points: 0.4
+      group: general
+  - field: paid_advertising_level
+    label: Paid advertising level
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: basic
+      points: 0.2
+      group: general
+    - value: moderate
+      points: 0.4
+      group: general
+    - value: heavy
+      points: 0.7
+      group: general
 add_ons:
-  - code: press_release
-    title: "Press Release Package"
-    price_type: fixed
-    price: 500
-    duration_type: fixed_days
-    duration_days: 3
-    complexity_points: 0.20
-  - code: author_brand_kit
-    title: "Author Brand Kit"
-    price_type: fixed
-    price: 750
-    duration_type: fixed_days
-    duration_days: 5
-    complexity_points: 0.30
-  - code: paid_ad_management
-    title: "Paid Ad Management Setup"
-    price_type: fixed
-    price: 1000
-    duration_type: fixed_days
-    duration_days: 5
-    complexity_points: 0.40
+- code: advanced_analytics_setup
+  title: Advanced Analytics Setup
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: custom_landing_page_design
+  title: Custom Landing Page Design
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: virtual_book_tour_10_stops
+  title: Virtual Book Tour (10 stops)
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 12
+  complexity_points: 1.2
+- code: podcast_tour_8_interviews
+  title: Podcast Tour (8 interviews)
+  price_type: fixed
+  price: 2500
+  duration_type: fixed_days
+  duration_days: 20
+  complexity_points: 1.8
+- code: bookstore_outreach_50_stores
+  title: Bookstore Outreach (50 stores)
+  price_type: fixed
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 14
+  complexity_points: 1.0
+- code: library_marketing_100_libraries
+  title: Library Marketing (100 libraries)
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 20
+  complexity_points: 1.2
+- code: international_promotion_per_region
+  title: International Promotion (per region)
+  unit_field: region_count
+  price_type: per_unit
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.9
+- code: audiobook_promotion_package
+  title: Audiobook Promotion Package
+  price_type: fixed
+  price: 900
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.8
+- code: book_club_package_25_clubs
+  title: Book Club Package (25 clubs)
+  price_type: fixed
+  price: 700
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.7
+- code: awards_submission_5_awards
+  title: Awards Submission (5 awards)
+  price_type: fixed
+  price: 600
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.6
+- code: media_training_3_hours
+  title: Media Training (3 hours)
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 1.0
+- code: press_release_distribution_per_outlet
+  title: Press Release Distribution (per outlet)
+  unit_field: press_outlet_count
+  price_type: per_unit
+  price: 300
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.3
+- code: advanced_seo_optimization
+  title: Advanced SEO Optimization
+  price_type: fixed
+  price: 900
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.8
+- code: social_media_ad_creative_5_ads
+  title: Social Media Ad Creative (5 ads)
+  price_type: fixed
+  price: 700
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.7
+- code: email_sequence_automation_5_sequences
+  title: Email Sequence Automation (5 sequences)
+  price_type: fixed
+  price: 800
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 0.8
+- code: review_solicitation_service_50_reviews
+  title: Review Solicitation Service (50 reviews)
+  price_type: fixed
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 14
+  complexity_points: 1.0
+- code: sales_funnel_creation
+  title: Sales Funnel Creation
+  price_type: fixed
+  price: 1500
+  duration_type: fixed_days
+  duration_days: 14
+  complexity_points: 1.2
+- code: affiliate_program_setup
+  title: Affiliate Program Setup
+  price_type: fixed
+  price: 1200
+  duration_type: fixed_days
+  duration_days: 14
+  complexity_points: 1.0
+- code: event_coordination_per_event
+  title: Event Coordination (per event)
+  unit_field: event_count
+  price_type: per_unit
+  price: 800
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.7
+- code: content_calendar_creation_3_months
+  title: Content Calendar Creation (3 months)
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: influencer_gifting_program
+  title: Influencer Gifting Program
+  price_type: fixed
+  price: 1500
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 1.0
+- code: book_trailer_promotion
+  title: Book Trailer Promotion
+  price_type: fixed
+  price: 700
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.7
+- code: amazon_a_plus_content_optimization
+  title: Amazon A+ Content Optimization
+  price_type: fixed
+  price: 600
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.6
+- code: goodreads_campaign
+  title: Goodreads Campaign
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.5
+- code: newsletter_swap_coordination
+  title: Newsletter Swap Coordination
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.4
 assumptions:
-  - "Marketing estimate treats active campaign duration separately from internal setup days."
-  - "Ad spend is excluded from the service fee unless separately approved."
+- Marketing estimate treats active campaign duration separately from internal setup days.
+- Ad spend is excluded from the service fee unless separately approved.
 exclusions:
-  - "Book sales, rankings, bestseller status, and guaranteed ROI are never guaranteed."
-source_reference: "Marketing_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Book sales, rankings, bestseller status, and guaranteed ROI are never guaranteed.
+source_reference: Marketing_Price&TimeEngine.xlsx, normalized into v2.2 config.
+enterprise_rollout_policy:
+  pricing_mode: quote_only
+  reason: Workbook input form lists Enterprise Rollout but provides no base-price grid values; route to human review.
+timeline_policy:
+  max_compression_ratio: 1.8
+  min_schedule_multiplier: 0.9
+  max_schedule_multiplier: 1.8
+  rush_slope: 0.6
+  relax_slope: 0.05
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: MTLF
+  accelerated_slope: 0.6
+  intensive_slope: 0.9
+  min_tlf: 0.9
+  max_tlf: 1.8
+  campaign_duration_multipliers:
+    1_month: 1.2
+    3_months: 1.0
+    6_months: 0.9
+    12_months: 0.8
+  service_multipliers:
+    launch_essentials:
+      beta: 1
+      min_tlf: 0.9
+      max_tlf: 1.5
+    professional_campaign:
+      beta: 1.2
+      min_tlf: 1
+      max_tlf: 1.6
+    premium_blitz:
+      beta: 1.4
+      min_tlf: 1.1
+      max_tlf: 1.7

@@ -31,7 +31,7 @@ def main() -> int:
     if settings.pricing_v2_values_approved:
         print(response.model_dump_json())
     else:
-        print("pricing v2.1 values gated; no customer-facing numbers emitted")
+        print("pricing v2.2 values gated; no customer-facing numbers emitted")
     return 0
 
 

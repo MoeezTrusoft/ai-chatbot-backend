@@ -1,15 +1,15 @@
 service: publishing_distribution
-version: "2.1.0"
-display_name: "Publishing & Distribution"
+version: 2.2.0
+display_name: Publishing & Distribution
 currency: USD
 calculation_model: package_grid
 required_inputs:
-  - field: tier
-    question: "Which publishing tier is needed: essential, professional, or premium?"
-  - field: package_dimension
-    question: "Which distribution format is needed: ebook_only, print_only, or ebook_print?"
-  - field: distribution_channels
-    question: "Which channels/platforms should be prepared for distribution?"
+- field: tier
+  question: 'Which publishing tier is needed: essential, professional, or premium?'
+- field: package_dimension
+  question: 'Which distribution format is needed: ebook_only, print_only, or ebook_print?'
+- field: distribution_channels
+  question: Which channels/platforms should be prepared for distribution?
 package_grid:
   unit_type: project
   rates:
@@ -48,46 +48,222 @@ complexity:
   point_multiplier: 0.06
   max_factor: 1.8
   drivers:
-    - field: platform_count
-      label: "Distribution platform count"
-      options:
-        - value: few
-          points: 0
-        - value: multiple
-          points: 2
-        - value: global_multi_market
-          points: 4
-    - field: accessibility_level
-      label: "Accessibility level"
-      options:
-        - value: standard
-          points: 0
-        - value: enhanced
-          points: 2
-        - value: advanced
-          points: 4
+  - field: distribution_channels
+    label: Distribution channels
+    options:
+    - value: ebook_only
+      points: 0
+      group: general
+    - value: print_only
+      points: 0.3
+      group: general
+    - value: ebook_print
+      points: 0.6
+      group: general
+  - field: print_format
+    label: Print format
+    options:
+    - value: paperback
+      points: 0
+      group: general
+    - value: hardcover
+      points: 0.2
+      group: general
+    - value: both
+      points: 0.4
+      group: general
+  - field: trim_size_complexity
+    label: Trim size complexity
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: custom
+      points: 0.3
+      group: general
+  - field: color_interior
+    label: Color interior
+    options:
+    - value: bw
+      points: 0
+      group: general
+    - value: color
+      points: 0.4
+      group: general
+    - value: mixed
+      points: 0.6
+      group: general
+  - field: ebook_formats
+    label: eBook formats
+    options:
+    - value: single
+      points: 0
+      group: general
+    - value: multiple
+      points: 0.2
+      group: general
+    - value: all_standard
+      points: 0.3
+      group: general
+  - field: drm_requirements
+    label: DRM requirements
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.2
+      group: general
+  - field: accessibility_level
+    label: Accessibility level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: full_wcag
+      points: 0.6
+      group: general
+  - field: distribution_level
+    label: Distribution level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: expanded
+      points: 0.4
+      group: general
+    - value: full_global
+      points: 0.8
+      group: general
 add_ons:
-  - code: isbn_registration
-    title: "ISBN/Registration Support"
-    price_type: fixed
-    price: 150
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.15
-  - code: metadata_optimization
-    title: "Metadata Optimization"
-    price_type: fixed
-    price: 250
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.20
-  - code: custom_printing_cost
-    title: "Custom Printing Cost"
-    price_type: quote_only
-    duration_type: quote_only
-    complexity_points: 0
+- code: advanced_metadata_optimization
+  title: Advanced Metadata Optimization
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: audiobook_distribution_setup
+  title: Audiobook Distribution Setup
+  price_type: fixed
+  price: 299
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: print_on_demand_setup_per_additional_platform
+  title: Print-on-Demand Setup (per additional platform)
+  unit_field: additional_platform_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: bulk_print_order_management_per_100_books
+  title: Bulk Print Order Management (per 100 books)
+  unit_field: bulk_print_100_book_blocks
+  price_type: per_unit
+  price: 50
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.1
+- code: international_isbns_per_territory
+  title: International ISBNs (per territory)
+  unit_field: international_territory_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.2
+- code: barcode_generation_print_and_ebook
+  title: Barcode Generation (Print & eBook)
+  price_type: fixed
+  price: 50
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.0
+- code: copyright_registration_filing
+  title: Copyright Registration Filing
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 0.4
+- code: bookstore_consignment_setup
+  title: Bookstore Consignment Setup
+  price_type: fixed
+  price: 199
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.5
+- code: library_distribution_setup
+  title: Library Distribution Setup
+  price_type: fixed
+  price: 349
+  duration_type: fixed_days
+  duration_days: 8
+  complexity_points: 0.7
+- code: isbn_bowker_registration
+  title: ISBN Bowker Registration
+  price_type: fixed
+  price: 85
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.1
+- code: foreign_rights_submission_package
+  title: Foreign Rights Submission Package
+  price_type: fixed
+  price: 499
+  duration_type: fixed_days
+  duration_days: 10
+  complexity_points: 1.0
 assumptions:
-  - "Publishing estimate assumes final cover and print-ready interior files are approved before upload."
+- Publishing estimate assumes final cover and print-ready interior files are approved before upload.
 exclusions:
-  - "Platform fees, print proof fees, ISBN purchase fees, and advertising spend are excluded unless separately approved."
-source_reference: "Publishing_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Platform fees, print proof fees, ISBN purchase fees, and advertising spend are excluded unless separately approved.
+source_reference: Publishing_Price&TimeEngine.xlsx, normalized into v2.2 config.
+printing_cost_grid:
+  5x8:
+    paperback_bw: 3.5
+    hardcover_bw: 8
+    color_premium: 12
+  6x9:
+    paperback_bw: 4.25
+    hardcover_bw: 9.5
+    color_premium: 15
+  8.5x11:
+    paperback_bw: 6
+    hardcover_bw: 12
+    color_premium: 22
+  custom_size:
+    paperback_bw: quote_only
+    hardcover_bw: quote_only
+    color_premium: quote_only
+timeline_policy:
+  max_compression_ratio: 2.0
+  min_schedule_multiplier: 1.0
+  max_schedule_multiplier: 2.0
+  rush_slope: 0.8
+  relax_slope: 0.05
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: PTLF
+  rush_slope: 0.8
+  relax_slope: 0.05
+  min_tlf: 1
+  max_tlf: 2
+  service_multipliers:
+    standard:
+      beta: 1
+      min_tlf: 1
+      max_tlf: 1.5
+    rush:
+      beta: 1.3
+      min_tlf: 1.2
+      max_tlf: 1.8
+    express:
+      beta: 1.6
+      min_tlf: 1.5
+      max_tlf: 2

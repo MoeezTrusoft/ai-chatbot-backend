@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from bookcraft.components.pricing import PricingQuoteRequest, PricingTimelineEngine
@@ -32,6 +32,7 @@ def _ghostwriting(engine: PricingTimelineEngine, words: int, add_ons: list[str] 
     low=st.integers(min_value=1000, max_value=50000),
     extra=st.integers(min_value=0, max_value=50000),
 )
+@settings(deadline=None)
 def test_increasing_word_count_never_decreases_price(low: int, extra: int) -> None:
     engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
 

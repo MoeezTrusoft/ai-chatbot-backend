@@ -1,4 +1,4 @@
-version: "2.1"
+version: '2.2'
 bundle_discounts:
   editing_formatting: 5
   production_bundle: 10

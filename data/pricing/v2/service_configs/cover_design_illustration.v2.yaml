@@ -1,13 +1,14 @@
 service: cover_design_illustration
-version: "2.1.0"
-display_name: "Cover Design & Illustration"
+version: 2.2.0
+display_name: Cover Design & Illustration
 currency: USD
 calculation_model: cover_illustration
 required_inputs:
-  - field: format
-    question: "What format is needed: ebook, print, or ebook_print?"
-  - field: cover_type
-    question: "Which cover type is needed: front_only, front_back, or full_wrap? If this is illustrations only, provide illustration_count instead."
+- field: format
+  question: 'What format is needed: ebook, print, or ebook_print?'
+- field: cover_type
+  question: 'Which cover type is needed: front_only, front_back, or full_wrap? If this is illustrations only, provide
+    illustration_count instead.'
 package_grid:
   unit_type: assets
   rates:
@@ -41,67 +42,221 @@ package_grid:
 base_duration_days:
   covers:
     front_only:
-      simple: 3
-      standard: 5
-      complex: 7
-      premium: 10
+      simple: 2
+      standard: 3
+      complex: 4
+      premium: 5
     front_back:
       simple: 4
-      standard: 6
-      complex: 8
-      premium: 12
+      standard: 5
+      complex: 7
+      premium: 8
     full_wrap:
       simple: 5
-      standard: 7
-      complex: 10
-      premium: 14
+      standard: 6
+      complex: 8
+      premium: 10
+  illustrations:
+    black_white:
+      spot_art: 0.5
+      half_page: 1
+      full_page: 1.5
+      full_spread: 2
+    color:
+      spot_art: 1
+      half_page: 1.5
+      full_page: 2
+      full_spread: 3
 complexity:
   factor_name: CCF
   mode: points
   point_multiplier: 0.08
   max_factor: 1.6
   drivers:
-    - field: art_direction_complexity
-      label: "Art direction complexity"
-      options:
-        - value: simple
-          points: 0
-        - value: detailed
-          points: 2
-        - value: cinematic_or_symbolic
-          points: 4
-    - field: illustration_style
-      label: "Illustration style"
-      options:
-        - value: stock_based
-          points: 0
-        - value: custom_digital
-          points: 2
-        - value: painterly_or_handdrawn
-          points: 3
+  - field: illustration_style
+    label: Illustration style
+    options:
+    - value: photographic
+      points: 0.5
+      group: general
+    - value: illustrated
+      points: 1.0
+      group: general
+    - value: mixed_media
+      points: 1.5
+      group: general
+    - value: minimalist
+      points: 0.3
+      group: general
+  - field: custom_typography
+    label: Custom typography
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.4
+      group: general
+  - field: spine_design
+    label: Spine design
+    options:
+    - value: standard
+      points: 0
+      group: general
+    - value: complex
+      points: 0.3
+      group: general
+  - field: number_of_elements
+    label: Number of elements
+    options:
+    - value: one_to_two
+      points: 0
+      group: general
+    - value: three_to_four
+      points: 0.5
+      group: general
+    - value: five_plus
+      points: 1.0
+      group: general
+  - field: background_complexity
+    label: Background complexity
+    options:
+    - value: simple
+      points: 0
+      group: general
+    - value: moderate
+      points: 0.3
+      group: general
+    - value: detailed
+      points: 0.6
+      group: general
+  - field: symbolism_thematic_elements
+    label: Symbolism/thematic elements
+    options:
+    - value: 'no'
+      points: 0
+      group: general
+    - value: 'yes'
+      points: 0.2
+      group: general
 add_ons:
-  - code: source_files
-    title: "Source Files Package"
-    price_type: fixed
-    price: 150
-    duration_type: none
-    complexity_points: 0
-  - code: additional_concept
-    title: "Additional Cover Concept"
-    price_type: fixed
-    price: 100
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.25
-  - code: social_mockups
-    title: "Social Media Mockups"
-    price_type: fixed
-    price: 75
-    duration_type: fixed_days
-    duration_days: 1
-    complexity_points: 0.10
+- code: character_design_sheets_per_character
+  title: Character Design Sheets (per character)
+  unit_field: character_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.8
+- code: map_cartography_creation
+  title: Map/Cartography Creation
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 7
+  complexity_points: 1.0
+- code: chapter_header_illustrations_each
+  title: Chapter Header Illustrations (each)
+  unit_field: chapter_header_count
+  price_type: per_unit
+  price: 40
+  duration_type: fixed_days
+  duration_days: 0.5
+  complexity_points: 0.2
+- code: hardcover_case_wrap_design
+  title: Hardcover Case Wrap Design
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.5
+- code: 3d_mockups_each_view
+  title: 3D Mockups (each view)
+  unit_field: mockup_view_count
+  price_type: per_unit
+  price: 50
+  duration_type: fixed_days
+  duration_days: 0.5
+  complexity_points: 0.1
+- code: extra_revision_round_cover
+  title: Extra Revision Round (Cover)
+  unit_field: extra_cover_revision_count
+  price_type: per_unit
+  price: 50
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.0
+- code: extra_revision_round_illustration_per_piece
+  title: Extra Revision Round (Illustration - per piece)
+  unit_field: extra_illustration_revision_count
+  price_type: per_unit
+  price: 25
+  duration_type: fixed_days
+  duration_days: 0.5
+  complexity_points: 0.0
+- code: audiobook_cover_adaptation
+  title: Audiobook Cover Adaptation
+  price_type: fixed
+  price: 75
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.2
+- code: series_style_guide
+  title: Series Style Guide
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.6
+- code: custom_typography_package
+  title: Custom Typography Package
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1.5
+  complexity_points: 0.4
+- code: foil_stamping_embossing_design
+  title: Foil Stamping/Embossing Design
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.5
+- code: special_finishes_design
+  title: Special Finishes Design
+  price_type: fixed
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.2
 assumptions:
-  - "Cover estimate assumes title, subtitle, author name, trim size, and genre direction are available."
+- Cover estimate assumes title, subtitle, author name, trim size, and genre direction are available.
 exclusions:
-  - "Licensed stock, paid fonts, and third-party art assets are excluded unless pre-approved."
-source_reference: "CoverDesign_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Licensed stock, paid fonts, and third-party art assets are excluded unless pre-approved.
+source_reference: CoverDesign_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 1.6
+  min_schedule_multiplier: 0.95
+  max_schedule_multiplier: 1.6
+  rush_slope: 0.7
+  relax_slope: 0.1
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: CTLF
+  rush_slope: 0.7
+  relax_slope: 0.1
+  min_tlf: 0.95
+  max_tlf: 1.5
+  service_multipliers:
+    cover_design_only:
+      beta: 1
+      min_tlf: 0.95
+      max_tlf: 1.5
+    interior_illustration_only:
+      beta: 0.9
+      min_tlf: 0.95
+      max_tlf: 1.4
+    full_package:
+      beta: 1.2
+      min_tlf: 0.95
+      max_tlf: 1.6

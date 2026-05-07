@@ -1,4 +1,4 @@
-version: "2.1"
+version: '2.2'
 quote_expiration_days: 14
-confidence_complete: 0.90
+confidence_complete: 0.9
 confidence_with_warnings: 0.75

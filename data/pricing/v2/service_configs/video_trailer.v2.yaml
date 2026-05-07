@@ -1,38 +1,38 @@
 service: video_trailer
-version: "2.1.0"
-display_name: "Video Trailer"
+version: 2.2.0
+display_name: Video Trailer
 currency: USD
 calculation_model: video_length_grid
 required_inputs:
-  - field: tier
-    question: "Which trailer tier is needed: essential, professional, premium, or cinematic?"
-  - field: video_length_seconds
-    question: "What video length is needed: 30, 60, 90, or 120 seconds?"
-  - field: production_style
-    question: "What production style is needed: simple_motion, cinematic_stock, animated, or custom?"
+- field: tier
+  question: 'Which trailer tier is needed: essential, professional, premium, or cinematic?'
+- field: video_length_seconds
+  question: 'What video length is needed: 30, 60, 90, or 120 seconds?'
+- field: production_style
+  question: 'What production style is needed: simple_motion, cinematic_stock, animated, or custom?'
 package_grid:
   unit_type: video_seconds
   rates:
     essential:
-      "30": 500
-      "60": 750
-      "90": 1000
-      "120": 1250
+      '30': 500
+      '60': 750
+      '90': 1000
+      '120': 1250
     professional:
-      "30": 700
-      "60": 1000
-      "90": 1350
-      "120": 1700
+      '30': 700
+      '60': 1000
+      '90': 1350
+      '120': 1700
     premium:
-      "30": 1400
-      "60": 2100
-      "90": 2800
-      "120": 3500
+      '30': 1400
+      '60': 2100
+      '90': 2800
+      '120': 3500
     cinematic:
-      "30": 2500
-      "60": 3750
-      "90": 5000
-      "120": 6250
+      '30': 2500
+      '60': 3750
+      '90': 5000
+      '120': 6250
 base_duration_days:
   essential: 20
   professional: 30
@@ -44,46 +44,359 @@ complexity:
   point_multiplier: 0.08
   max_factor: 2.0
   drivers:
-    - field: production_style
-      label: "Production style"
-      options:
-        - value: simple_motion
-          points: 0
-        - value: cinematic_stock
-          points: 2
-        - value: animated
-          points: 4
-        - value: custom
-          points: 6
-    - field: aspect_ratios
-      label: "Aspect ratio variants"
-      options:
-        - value: one
-          points: 0
-        - value: multiple
-          points: 2
+  - field: visual_style
+    label: Visual style
+    options:
+    - value: stock
+      points: 0
+      group: general
+    - value: mixed_media
+      points: 0.4
+      group: general
+    - value: 2d_animation
+      points: 0.8
+      group: general
+    - value: 3d_animation
+      points: 1.2
+      group: general
+  - field: animation_level
+    label: Animation level
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: basic_motion
+      points: 0.5
+      group: general
+    - value: 2d_character
+      points: 0.9
+      group: general
+    - value: 3d_character
+      points: 1.4
+      group: general
+  - field: voiceover_type
+    label: Voiceover type
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: ai
+      points: 0.2
+      group: general
+    - value: professional
+      points: 0.5
+      group: general
+    - value: celebrity
+      points: 0.9
+      group: general
+  - field: music_type
+    label: Music type
+    options:
+    - value: stock
+      points: 0
+      group: general
+    - value: licensed
+      points: 0.3
+      group: general
+    - value: custom
+      points: 0.7
+      group: general
+  - field: sound_design_level
+    label: Sound design level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.4
+      group: general
+    - value: cinema
+      points: 0.8
+      group: general
+  - field: text_title_animation
+    label: Text/title animation
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: animated
+      points: 0.3
+      group: general
+    - value: kinetic
+      points: 0.6
+      group: general
+  - field: color_grading_level
+    label: Color grading level
+    options:
+    - value: basic
+      points: 0
+      group: general
+    - value: enhanced
+      points: 0.3
+      group: general
+    - value: cinematic
+      points: 0.7
+      group: general
+  - field: visual_effects_level
+    label: Visual effects level
+    options:
+    - value: none
+      points: 0
+      group: general
+    - value: basic
+      points: 0.4
+      group: general
+    - value: advanced
+      points: 0.9
+      group: general
+    - value: vfx_heavy
+      points: 1.4
+      group: general
+  - field: illustration_style
+    label: Illustration style
+    options:
+    - value: stock_assets
+      points: 0
+      group: general
+    - value: custom_illustrations
+      points: 0.5
+      group: general
+    - value: premium_art
+      points: 0.9
+      group: general
+  - field: aspect_ratios
+    label: Aspect ratios
+    options:
+    - value: single
+      points: 0
+      group: general
+    - value: dual
+      points: 0.2
+      group: general
+    - value: multiple
+      points: 0.4
+      group: general
+  - field: platform_optimization
+    label: Platform optimization
+    options:
+    - value: single
+      points: 0
+      group: general
+    - value: multiple
+      points: 0.3
+      group: general
+    - value: all_platforms
+      points: 0.6
+      group: general
 add_ons:
-  - code: voiceover
-    title: "Voiceover"
-    price_type: fixed
-    price: 250
-    duration_type: fixed_days
-    duration_days: 2
-    complexity_points: 0.20
-  - code: platform_cutdowns
-    title: "Platform Cutdowns"
-    price_type: fixed
-    price: 300
-    duration_type: fixed_days
-    duration_days: 3
-    complexity_points: 0.30
-  - code: original_music
-    title: "Original Music"
-    price_type: quote_only
-    duration_type: quote_only
-    complexity_points: 0.50
+- code: storyboard_development_per30_seconds
+  title: Storyboard Development (per30 seconds)
+  unit_field: storyboard_30_second_blocks
+  price_type: per_unit
+  price: 250
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.8
+- code: script_writing_per_30_seconds
+  title: Script Writing (per 30 seconds)
+  unit_field: script_30_second_blocks
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: custom_illustration_creation_per_illustration
+  title: Custom Illustration Creation (per illustration)
+  unit_field: custom_illustration_count
+  price_type: per_unit
+  price: 150
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.4
+- code: character_design_and_animation_per_character
+  title: Character Design & Animation (per character)
+  unit_field: character_count
+  price_type: per_unit
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 1.0
+- code: professional_voiceover_recording
+  title: Professional Voiceover Recording
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.5
+- code: custom_music_composition
+  title: Custom Music Composition
+  price_type: fixed
+  price: 1000
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 1.2
+- code: multiple_aspect_ratios_per_format
+  title: Multiple Aspect Ratios (per format)
+  unit_field: aspect_ratio_format_count
+  price_type: per_unit
+  price: 150
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.2
+- code: social_media_cutdowns_per_version
+  title: Social Media Cutdowns (per version)
+  unit_field: cutdown_version_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+- code: subtitles_captions_per_language
+  title: Subtitles/Captions (per language)
+  unit_field: subtitle_language_count
+  price_type: per_unit
+  price: 50
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+- code: language_localization_per_language
+  title: Language Localization (per language)
+  unit_field: localization_language_count
+  price_type: per_unit
+  price: 200
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: color_grade_variations_per_look
+  title: Color Grade Variations (per look)
+  unit_field: color_grade_look_count
+  price_type: per_unit
+  price: 200
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: motion_graphics_package_enhanced_per_30_seconds
+  title: Motion Graphics Package (Enhanced - per 30 seconds)
+  unit_field: motion_graphics_30_second_blocks
+  price_type: per_unit
+  price: 500
+  duration_type: fixed_days
+  duration_days: 5
+  complexity_points: 0.8
+- code: 3d_logo_animation
+  title: 3D Logo Animation
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.7
+- code: advanced_particle_effects_per_30_seconds
+  title: Advanced Particle Effects (per 30 seconds)
+  unit_field: particle_effect_30_second_blocks
+  price_type: per_unit
+  price: 300
+  duration_type: fixed_days
+  duration_days: 4
+  complexity_points: 0.7
+- code: behind_the_scenes_animatic
+  title: Behind-the-Scenes Animatic
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.5
+- code: analytics_and_optimization_guide
+  title: Analytics & Optimization Guide
+  price_type: fixed
+  price: 150
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.2
+- code: video_thumbnail_design_3_options
+  title: Video Thumbnail Design (3 options)
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: video_seo_optimization
+  title: Video SEO Optimization
+  price_type: fixed
+  price: 250
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: distribution_strategy_consultation
+  title: Distribution Strategy Consultation
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.4
+- code: premium_stock_asset_licensing_per_asset
+  title: Premium Stock Asset Licensing (per asset)
+  unit_field: premium_stock_asset_count
+  price_type: per_unit
+  price: 100
+  duration_type: fixed_days
+  duration_days: 1
+  complexity_points: 0.1
+- code: sound_effects_library_premium
+  title: Sound Effects Library (premium)
+  price_type: fixed
+  price: 200
+  duration_type: fixed_days
+  duration_days: 2
+  complexity_points: 0.3
+- code: color_correction_pass
+  title: Color Correction Pass
+  price_type: fixed
+  price: 300
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.3
+- code: audio_mastering_cinema_quality
+  title: Audio Mastering (Cinema Quality)
+  price_type: fixed
+  price: 400
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.4
+- code: style_frame_development
+  title: Style Frame Development
+  price_type: fixed
+  price: 500
+  duration_type: fixed_days
+  duration_days: 3
+  complexity_points: 0.5
 assumptions:
-  - "Video trailer estimate assumes client supplies approved book assets, synopsis, and brand direction."
+- Video trailer estimate assumes client supplies approved book assets, synopsis, and brand direction.
 exclusions:
-  - "Licensed footage, talent, and original music are excluded unless separately approved."
-source_reference: "VideoTrailer_Price&TimeEngine.xlsx, normalized into v2.1 config."
+- Licensed footage, talent, and original music are excluded unless separately approved.
+source_reference: VideoTrailer_Price&TimeEngine.xlsx, normalized into v2.2 config.
+timeline_policy:
+  max_compression_ratio: 2.5
+  min_schedule_multiplier: 1.1
+  max_schedule_multiplier: 2.5
+  rush_slope: 0.8
+  relax_slope: 0.05
+  service_beta: 1.0
+timeline_tuning:
+  factor_name: VTLF
+  rush_slope: 0.8
+  relax_slope: 0.05
+  min_tlf: 1.1
+  max_tlf: 2.5
+  service_multipliers:
+    standard:
+      beta: 1
+      min_tlf: 1.1
+      max_tlf: 1.8
+    rush:
+      beta: 1.5
+      min_tlf: 1.3
+      max_tlf: 2.1
+    express:
+      beta: 2
+      min_tlf: 1.7
+      max_tlf: 2.5
