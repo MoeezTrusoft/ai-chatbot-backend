@@ -17,3 +17,7 @@ redis-data/
 es-data/
 tei-data/
 grafana-data/
+
+# Generated RAG artifacts; source content remains canonical under docs/.
+data/rag-corpus/source_markdown/
+data/rag-corpus/build/

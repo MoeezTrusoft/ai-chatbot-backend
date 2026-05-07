@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config
+.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -31,3 +31,16 @@ compose-config:
 
 smoke:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/smoke.py
+
+rag-build:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/extract_bookcraft_knowledge.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/build_rag_corpus.py
+
+rag-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_rag_corpus.py
+
+rag-index:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/index_rag_corpus.py
+
+rag-smoke:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/rag_smoke.py

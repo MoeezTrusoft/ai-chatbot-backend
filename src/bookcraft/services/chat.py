@@ -10,6 +10,7 @@ from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.intent import HaikuIntentClassifier
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import SharedPreprocessor
+from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.domain.state import ThreadState
@@ -37,6 +38,7 @@ class ChatService:
     state_applier: StateApplier
     response_generator: SonnetResponseGenerator
     formatter: ResponseFormatter
+    rag_retriever: RagRetriever | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
@@ -89,11 +91,15 @@ class ChatService:
                     {"delta_count": len(extraction.state_deltas)},
                 )
             )
+            rag_chunks = []
+            if self.rag_retriever is not None:
+                rag_chunks = await self.rag_retriever.retrieve(processed, intent)
             draft = await self.response_generator.generate(
                 message=processed,
                 state=memory.state,
                 intent=intent,
                 extraction=extraction,
+                rag_chunks=rag_chunks,
             )
             bubbles = self.formatter.format(draft.text)
             event_ids.append(

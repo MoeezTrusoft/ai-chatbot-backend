@@ -74,6 +74,12 @@ class Settings(BaseSettings):
 
     rag_top_k: int = 8
     rag_max_tokens_per_chunk: int = 200
+    rag_chunk_overlap_tokens: int = 50
+    rag_index_alias: str = "bookcraft_rag_current"
+    rag_index_version: str = "bookcraft_rag_v1"
+    rag_source_dir: str = "data/rag-corpus/source_markdown"
+    rag_build_dir: str = "data/rag-corpus/build"
+    rag_strict_verifier: bool = True
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
     intent_ensemble_timeout_seconds: float = 2.5

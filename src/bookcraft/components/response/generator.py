@@ -6,6 +6,7 @@ from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
@@ -26,6 +27,7 @@ class SonnetResponseGenerator:
         state: ThreadState,
         intent: IntentVote,
         extraction: CombinedExtraction,
+        rag_chunks: list[RetrievedChunk] | None = None,
     ) -> ResponseDraft:
         del state, extraction
         with RESPONSE_SECONDS.time():
@@ -36,10 +38,13 @@ class SonnetResponseGenerator:
             ):
                 return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
             LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
-            return ResponseDraft(text=self._mock_response(intent), source=self.provider_name)
+            return ResponseDraft(
+                text=self._mock_response(intent, rag_chunks or []),
+                source=self.provider_name,
+            )
 
     @staticmethod
-    def _mock_response(intent: IntentVote) -> str:
+    def _mock_response(intent: IntentVote, rag_chunks: list[RetrievedChunk]) -> str:
         quote_intents = {QueryIntentType.PRICING_QUESTION, QueryIntentType.TIMELINE_QUESTION}
         if intent.query_primary in quote_intents:
             return (
@@ -62,6 +67,9 @@ class SonnetResponseGenerator:
                 "I can help start the service agreement request. Agreement text must come from "
                 "the approved template, not from the language model."
             )
+        if rag_chunks:
+            first = rag_chunks[0]
+            return f"{first.content}\n\nSource: {first.title}, section: {first.section}."
         return (
             "BookCraft can help with ghostwriting, editing, cover design, formatting, audiobook "
             "production, publishing, marketing, author websites, and video trailers. Tell me "
