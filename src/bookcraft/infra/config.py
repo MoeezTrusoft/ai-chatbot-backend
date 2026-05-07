@@ -1,0 +1,95 @@
+from functools import lru_cache
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    app_env: str = "dev"
+    app_name: str = "bookcraft-chatbot"
+    app_host: str = "0.0.0.0"  # noqa: S104 - local ASGI default, configurable by env.
+    app_port: int = 8000
+    readiness_check_externals: bool = False
+
+    database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:5432/bookcraft"
+    database_replica_url: str | None = None
+    database_pool_size: int = 20
+    database_max_overflow: int = 10
+
+    redis_url: str = "redis://localhost:6379/0"
+    redis_hot_ttl_hours: int = 24
+    redis_idempotency_ttl_hours: int = 24
+    redis_relation_cache_ttl_hours: int = 24
+
+    elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_user: str | None = None
+    elasticsearch_password: str | None = None
+    elasticsearch_index_prefix: str = "bookcraft_"
+
+    tei_url: str = "http://localhost:8080"
+    tei_timeout_seconds: float = 10.0
+    tei_batch_size: int = 128
+
+    anthropic_api_key: str | None = None
+    anthropic_base_url: str = "https://api.anthropic.com"
+    openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "http://deepseek-internal:8000/v1"
+
+    nda_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
+    agreement_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
+    nda_template_version: str = "v1.0"
+    agreement_template_version: str = "v1.0"
+    document_retraction_hours: int = 24
+    s3_documents_bucket: str = "bookcraft-documents"
+    s3_region: str = "us-east-1"
+    document_signed_url_ttl_hours: int = 24
+
+    email_provider: Literal["sendgrid", "ses"] = "sendgrid"
+    sendgrid_api_key: str | None = None
+    email_from_address: str = "hello@bookcraft.ai"
+    email_from_name: str = "BookCraft AI"
+
+    trimatch_mode: Literal["shadow", "vote_only", "shortcut_enabled"] = "shadow"
+    trimatch_shortcut_layers: str = ""
+    trimatch_shortcut_threshold: float = 0.95
+    trimatch_autocorrect_enabled: bool = False
+    trimatch_autoapprove_enabled: bool = False
+
+    funnel_signal_mode: Literal["shadow", "vote_only"] = "shadow"
+
+    rag_top_k: int = 8
+    rag_max_tokens_per_chunk: int = 200
+    sonnet_max_tokens: int = 600
+    haiku_max_tokens: int = 2048
+    intent_ensemble_timeout_seconds: float = 2.5
+    deepseek_timeout_seconds: float = 4.0
+    shared_processor_cache_size: int = 1000
+    trg_hot_nodes_limit: int = 24
+    trg_compact_keep: int = 12
+    trg_relation_fast_path_threshold: float = 0.85
+    trg_compliance_threshold_default: float = 0.62
+
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    sentry_dsn: str | None = None
+    sentry_environment: str = "dev"
+    log_level: str = "INFO"
+    log_format: Literal["json", "console"] = "json"
+
+    jwt_signing_key: str | None = None
+    jwt_ttl_hours: int = 24
+    ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
+    rate_limit_per_ip_per_minute: int = 30
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

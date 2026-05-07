@@ -1,0 +1,11 @@
+groups:
+  - name: bookcraft-foundation
+    rules:
+      - alert: BookCraftApiTargetDown
+        expr: up{job="bookcraft-api"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: BookCraft API Prometheus target is down
+
