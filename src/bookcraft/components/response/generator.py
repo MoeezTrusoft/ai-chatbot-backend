@@ -1,0 +1,69 @@
+from dataclasses import dataclass
+
+from prometheus_client import Histogram
+
+from bookcraft.components.extraction.schemas import CombinedExtraction
+from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.llm.metrics import LLM_CALLS
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.response.schemas import ResponseDraft
+from bookcraft.domain.enums import QueryIntentType
+from bookcraft.domain.state import ThreadState
+
+RESPONSE_SECONDS = Histogram("response_generation_seconds", "Response generation latency.")
+
+GREETING_RESPONSE = "Hello! How can I help with your book project today?"
+
+
+@dataclass(slots=True)
+class SonnetResponseGenerator:
+    provider_name: str = "mock_sonnet"
+
+    async def generate(
+        self,
+        *,
+        message: ProcessedMessage,
+        state: ThreadState,
+        intent: IntentVote,
+        extraction: CombinedExtraction,
+    ) -> ResponseDraft:
+        del state, extraction
+        with RESPONSE_SECONDS.time():
+            if (
+                intent.query_primary == QueryIntentType.GREETING
+                and intent.confidence >= 0.9
+                and message.normalized.lower() in {"hi", "hello", "hey"}
+            ):
+                return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
+            LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
+            return ResponseDraft(text=self._mock_response(intent), source=self.provider_name)
+
+    @staticmethod
+    def _mock_response(intent: IntentVote) -> str:
+        quote_intents = {QueryIntentType.PRICING_QUESTION, QueryIntentType.TIMELINE_QUESTION}
+        if intent.query_primary in quote_intents:
+            return (
+                "I can help scope that, but pricing and timelines must come from BookCraft's "
+                "deterministic quote engine. To prepare that, please share your service, genre, "
+                "manuscript word count or page count, and how urgent the project is."
+            )
+        if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
+            return (
+                "I can help route a portfolio request. Samples must come from the approved "
+                "BookCraft registry, so I won't invent links here."
+            )
+        if intent.query_primary == QueryIntentType.NDA_REQUEST:
+            return (
+                "I can help start the NDA request. Legal documents must use approved templates "
+                "and manual gating, so I need the author name, email, phone, book title, and date."
+            )
+        if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
+            return (
+                "I can help start the service agreement request. Agreement text must come from "
+                "the approved template, not from the language model."
+            )
+        return (
+            "BookCraft can help with ghostwriting, editing, cover design, formatting, audiobook "
+            "production, publishing, marketing, author websites, and video trailers. Tell me "
+            "which service you are considering and what stage your manuscript is in."
+        )

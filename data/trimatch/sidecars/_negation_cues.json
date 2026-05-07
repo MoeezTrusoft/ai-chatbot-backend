@@ -1,0 +1,6 @@
+{
+  "version": "v1",
+  "negation_cues": ["no", "not", "never", "dont", "don't", "do not", "isn't", "is not"],
+  "hedge_cues": ["maybe", "might", "possibly", "thinking about", "considering", "not sure"],
+  "counterfactual_cues": ["if i had", "if i were", "would ask", "would need", "hypothetically"]
+}

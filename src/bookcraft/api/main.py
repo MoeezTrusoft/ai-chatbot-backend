@@ -8,11 +8,19 @@ from fastapi import FastAPI, Response, status
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
+from bookcraft.api.chat import router as chat_router
+from bookcraft.components.extraction import CombinedExtractor, StateApplier
+from bookcraft.components.intent import HaikuIntentClassifier
+from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
+from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_client
 from bookcraft.infra.config import Settings, get_settings
 from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
+from bookcraft.services.chat import ChatService
 
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
@@ -48,6 +56,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
+    app.state.chat_service = build_chat_service(resolved_settings)
+    app.include_router(chat_router)
 
     @app.get("/healthz", response_model=HealthResponse, tags=["system"])
     async def healthz() -> HealthResponse:
@@ -84,6 +94,31 @@ def configure_sentry(settings: Settings) -> None:
         environment=settings.sentry_environment,
         integrations=[FastApiIntegration()],
         traces_sample_rate=0.05,
+    )
+
+
+def build_chat_service(settings: Settings) -> ChatService:
+    sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
+    cache_client = None
+    if settings.readiness_check_externals:
+        cache_client = cast(CacheClient, create_redis_client(settings))
+    key_builder = CacheKeyBuilder(environment=settings.app_env)
+    embedding_client = EmbeddingClient(
+        tei_url=settings.tei_url,
+        timeout_seconds=settings.tei_timeout_seconds,
+        dimensions=settings.embedding_dimensions,
+        degraded_mode_enabled=settings.tei_degraded_mode_enabled,
+        cache=cache_client,
+        keys=key_builder,
+    )
+    return ChatService(
+        language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
+        preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
+        intent_classifier=HaikuIntentClassifier(),
+        extractor=CombinedExtractor(),
+        state_applier=StateApplier(),
+        response_generator=SonnetResponseGenerator(),
+        formatter=ResponseFormatter(),
     )
 
 

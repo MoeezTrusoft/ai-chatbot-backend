@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "variants": {
+    "ghost writing": "ghostwriting",
+    "proof reading": "proofreading",
+    "proof-reading": "proofreading",
+    "cover-design": "cover design",
+    "audio book": "audiobook",
+    "video-trailer": "video trailer",
+    "author website": "author website"
+  }
+}

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"  # noqa: S104 - local ASGI default, configurable by env.
     app_port: int = 8000
     readiness_check_externals: bool = False
+    language_guard_enabled: bool = True
 
     database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:5432/bookcraft"
     database_replica_url: str | None = None
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     tei_url: str = "http://localhost:8080"
     tei_timeout_seconds: float = 10.0
     tei_batch_size: int = 128
+    tei_degraded_mode_enabled: bool = True
+    embedding_dimensions: int = 384
 
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"
@@ -43,6 +46,8 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "http://deepseek-internal:8000/v1"
+    llm_provider_mode: Literal["mock", "live"] = "mock"
+    llm_request_timeout_seconds: float = 8.0
 
     nda_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
     agreement_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
@@ -65,6 +70,7 @@ class Settings(BaseSettings):
     trimatch_autoapprove_enabled: bool = False
 
     funnel_signal_mode: Literal["shadow", "vote_only"] = "shadow"
+    preprocessor_sidecar_dir: str = "data/trimatch/sidecars"
 
     rag_top_k: int = 8
     rag_max_tokens_per_chunk: int = 200
