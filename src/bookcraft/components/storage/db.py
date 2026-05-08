@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 
+from prometheus_client import Gauge
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,14 +11,21 @@ from sqlmodel import SQLModel
 
 from bookcraft.infra.config import Settings
 
+DB_POOL_CHECKED_OUT = Gauge(
+    "db_pool_checked_out",
+    "Database connections currently checked out.",
+)
+
 
 def create_engine(settings: Settings, database_url: str | None = None) -> AsyncEngine:
-    return create_async_engine(
+    engine = create_async_engine(
         database_url or settings.database_url,
         pool_pre_ping=True,
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
     )
+    DB_POOL_CHECKED_OUT.set(0)
+    return engine
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

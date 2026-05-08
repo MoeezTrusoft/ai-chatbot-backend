@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 import structlog
+from prometheus_client import Counter, Histogram
 from pydantic import BaseModel, ValidationError
 
 from bookcraft.domain.enums import ToolClass, ToolInvocationStatus
@@ -18,6 +19,22 @@ from bookcraft.tools.schemas import ToolContext, ToolResultEnvelope
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
+
+TOOL_INVOCATIONS = Counter(
+    "tool_invocations_total",
+    "Tool invocations by tool and status.",
+    ["tool_name", "status"],
+)
+TOOL_FAILURES = Counter(
+    "tool_invocation_failures_total",
+    "Tool invocation failures by tool.",
+    ["tool_name"],
+)
+TOOL_LATENCY = Histogram(
+    "tool_invocation_latency_seconds",
+    "Tool invocation latency by tool.",
+    ["tool_name"],
+)
 
 
 class ToolError(Exception):
@@ -138,6 +155,10 @@ class ToolDispatcher:
 
         cached = await self.idempotency_store.get(context.idempotency_key)
         if cached is not None:
+            TOOL_INVOCATIONS.labels(
+                tool_name=tool_name,
+                status=ToolInvocationStatus.IDEMPOTENT_REPLAY.value,
+            ).inc()
             return ToolResultEnvelope(
                 tool_name=tool_name,
                 status=ToolInvocationStatus.IDEMPOTENT_REPLAY.value,
@@ -161,6 +182,10 @@ class ToolDispatcher:
                 result={"reason": gating_decision.reason},
                 duration_ms=_duration_ms(started),
             )
+            TOOL_INVOCATIONS.labels(
+                tool_name=tool_name,
+                status=ToolInvocationStatus.DEFERRED.value,
+            ).inc()
             return ToolResultEnvelope(
                 tool_name=tool_name,
                 status=ToolInvocationStatus.DEFERRED.value,
@@ -182,10 +207,16 @@ class ToolDispatcher:
                 error=str(exc),
                 duration_ms=_duration_ms(started),
             )
+            TOOL_INVOCATIONS.labels(
+                tool_name=tool_name,
+                status=ToolInvocationStatus.FAILED.value,
+            ).inc()
+            TOOL_FAILURES.labels(tool_name=tool_name).inc()
             raise ToolValidationError(str(exc)) from exc
 
         try:
-            output = await self._run_with_retry(definition, validated_input, context)
+            with TOOL_LATENCY.labels(tool_name=tool_name).time():
+                output = await self._run_with_retry(definition, validated_input, context)
             validated_output = definition.output_model.model_validate(output)
             result = validated_output.model_dump(mode="json")
             await self.idempotency_store.store(context.idempotency_key, result)
@@ -199,6 +230,10 @@ class ToolDispatcher:
                 result=result,
                 duration_ms=_duration_ms(started),
             )
+            TOOL_INVOCATIONS.labels(
+                tool_name=tool_name,
+                status=ToolInvocationStatus.SUCCEEDED.value,
+            ).inc()
             return ToolResultEnvelope(
                 tool_name=tool_name,
                 status=ToolInvocationStatus.SUCCEEDED.value,
@@ -220,6 +255,11 @@ class ToolDispatcher:
                 error=str(exc),
                 duration_ms=_duration_ms(started),
             )
+            TOOL_INVOCATIONS.labels(
+                tool_name=tool_name,
+                status=ToolInvocationStatus.FAILED.value,
+            ).inc()
+            TOOL_FAILURES.labels(tool_name=tool_name).inc()
             raise
 
     async def _run_with_retry(

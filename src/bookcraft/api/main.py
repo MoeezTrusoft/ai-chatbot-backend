@@ -2,10 +2,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
@@ -67,6 +68,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
     app.state.chat_service = build_chat_service(resolved_settings)
     app.include_router(chat_router)
+
+    @app.middleware("http")
+    async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]
+        correlation_id = request.headers.get("x-correlation-id") or str(uuid4())
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+        response = await call_next(request)
+        response.headers["x-correlation-id"] = correlation_id
+        return response
 
     @app.get("/healthz", response_model=HealthResponse, tags=["system"])
     async def healthz() -> HealthResponse:

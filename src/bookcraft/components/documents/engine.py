@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from prometheus_client import Counter
+
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.renderer import StrictTemplateRenderer
 from bookcraft.components.documents.schemas import (
@@ -15,6 +17,17 @@ from bookcraft.components.documents.schemas import (
     NDAParams,
 )
 from bookcraft.components.documents.verifier import DocumentVerifier
+
+DOCUMENT_GENERATION = Counter(
+    "document_generation_total",
+    "Document generations by kind and status.",
+    ["kind", "status"],
+)
+DOCUMENT_FAILURES = Counter(
+    "document_generation_failures_total",
+    "Document generation failures by kind and reason.",
+    ["kind", "reason"],
+)
 
 
 class DocumentEngine:
@@ -39,7 +52,11 @@ class DocumentEngine:
 
     def _generate(self, kind: DocumentKind, params: dict[str, object]) -> DocumentGenerationResult:
         record = self.registry.get(kind)
-        rendered = self.renderer.render(record.path, params)
+        try:
+            rendered = self.renderer.render(record.path, params)
+        except Exception:
+            DOCUMENT_FAILURES.labels(kind=kind.value, reason="render_failed").inc()
+            raise
         parameter_hash = _hash_json(params)
         rendered_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
         document_id = f"{kind.value}_{uuid4()}"
@@ -65,14 +82,19 @@ class DocumentEngine:
         )
         verification_errors = self.verifier.verify(result, rendered)
         if verification_errors:
-            return result.model_copy(
+            DOCUMENT_FAILURES.labels(kind=kind.value, reason="verifier_rejected").inc()
+            rejected = result.model_copy(
                 update={
                     "status": DocumentStatus.REJECTED,
                     "verification_errors": verification_errors,
                     "human_review_required": True,
                 }
             )
-        return result.model_copy(update={"status": DocumentStatus.VERIFIED})
+            DOCUMENT_GENERATION.labels(kind=kind.value, status=rejected.status.value).inc()
+            return rejected
+        verified = result.model_copy(update={"status": DocumentStatus.VERIFIED})
+        DOCUMENT_GENERATION.labels(kind=kind.value, status=verified.status.value).inc()
+        return verified
 
 
 def _hash_json(payload: dict[str, object]) -> str:

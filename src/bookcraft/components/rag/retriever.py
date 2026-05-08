@@ -12,6 +12,8 @@ from bookcraft.components.rag.schemas import RagRetrievalRequest, RetrievedChunk
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 
 RAG_RETRIEVAL_SECONDS = Histogram("rag_retrieval_seconds", "RAG retrieval latency.")
+RAG_QUERY_LATENCY = Histogram("rag_query_latency_seconds", "RAG query latency.")
+RAG_QUERIES_TOTAL = Counter("rag_queries_total", "RAG queries by result.", ["result"])
 RAG_CHUNKS_RETURNED = Counter("rag_chunks_returned", "RAG chunks returned.")
 RAG_EMPTY_RESULTS = Counter("rag_empty_result_total", "RAG retrieval empty result count.")
 
@@ -37,14 +39,23 @@ class RagRetriever:
             service_intent=intent.service_primary,
             top_k=top_k,
         )
-        with RAG_RETRIEVAL_SECONDS.time():
-            bm25 = await self._bm25(request)
-            vector = await self._vector(request)
-            ranked = reciprocal_rank_fusion([bm25, vector], top_k=top_k)
-            maybe_chunks = [_hit_to_chunk(hit_id, score, bm25, vector) for hit_id, score in ranked]
-            chunks = [chunk for chunk in maybe_chunks if chunk is not None]
+        with RAG_RETRIEVAL_SECONDS.time(), RAG_QUERY_LATENCY.time():
+            try:
+                bm25 = await self._bm25(request)
+                vector = await self._vector(request)
+                ranked = reciprocal_rank_fusion([bm25, vector], top_k=top_k)
+                maybe_chunks = [
+                    _hit_to_chunk(hit_id, score, bm25, vector) for hit_id, score in ranked
+                ]
+                chunks = [chunk for chunk in maybe_chunks if chunk is not None]
+            except Exception:
+                RAG_QUERIES_TOTAL.labels(result="failed").inc()
+                raise
         if not chunks:
             RAG_EMPTY_RESULTS.inc()
+            RAG_QUERIES_TOTAL.labels(result="empty").inc()
+        else:
+            RAG_QUERIES_TOTAL.labels(result="found").inc()
         RAG_CHUNKS_RETURNED.inc(len(chunks))
         return chunks
 

@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke
+.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -80,3 +80,6 @@ documents-verify:
 
 documents-smoke:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/document_smoke.py
+
+monitoring-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/ops/verify_monitoring.py

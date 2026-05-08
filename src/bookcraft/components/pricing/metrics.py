@@ -37,6 +37,21 @@ class PricingMetrics:
                     "Pricing quote latency in seconds.",
                     ["service"],
                 ),
+                "quote_latency": Histogram(
+                    "pricing_quote_latency_seconds",
+                    "Pricing quote latency in seconds.",
+                    ["service"],
+                ),
+                "quotes_total": Counter(
+                    "pricing_quotes_total",
+                    "Total pricing quotes by status.",
+                    ["service", "status"],
+                ),
+                "quote_failures": Counter(
+                    "pricing_quote_failures_total",
+                    "Pricing quote failures by reason.",
+                    ["service", "reason"],
+                ),
                 "quote_value": Histogram(
                     "pricing_quote_value_usd",
                     "Quote midpoint value in USD.",
@@ -60,6 +75,9 @@ class PricingMetrics:
             }
         self.quote_requests = PricingMetrics._shared["quote_requests"]
         self.quote_duration = PricingMetrics._shared["quote_duration"]
+        self.quote_latency = PricingMetrics._shared["quote_latency"]
+        self.quotes_total = PricingMetrics._shared["quotes_total"]
+        self.quote_failures = PricingMetrics._shared["quote_failures"]
         self.quote_value = PricingMetrics._shared["quote_value"]
         self.missing_inputs = PricingMetrics._shared["missing_inputs"]
         self.human_review = PricingMetrics._shared["human_review"]
@@ -73,10 +91,14 @@ class PricingMetrics:
         finally:
             if self.enabled:
                 self.quote_duration.labels(service=service).observe(perf_counter() - start)  # type: ignore[attr-defined]
+                self.quote_latency.labels(service=service).observe(perf_counter() - start)  # type: ignore[attr-defined]
 
     def record_status(self, service: str, status: str) -> None:
         if self.enabled:
             self.quote_requests.labels(service=service, status=status).inc()  # type: ignore[attr-defined]
+            self.quotes_total.labels(service=service, status=status).inc()  # type: ignore[attr-defined]
+            if status in {"error", "failed"}:
+                self.quote_failures.labels(service=service, reason=status).inc()  # type: ignore[attr-defined]
 
     def record_missing(self, service: str, field: str) -> None:
         if self.enabled:

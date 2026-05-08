@@ -58,6 +58,7 @@ services:
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./ops/prometheus/pricing-alerts.yml:/etc/prometheus/pricing-alerts.yml:ro
     depends_on:
       - otel-collector
 
@@ -96,4 +97,3 @@ volumes:
   es-data:
   tei-data:
   grafana-data:
-

@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from prometheus_client import Counter
+
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 
 from .engine import TRIMATCH_PRECISION, TRIMATCH_RECALL, TriMatchEngine
@@ -21,6 +23,11 @@ RECALL_FLOORS = {
     TriMatchLayer.REGEX: 0.35,
     TriMatchLayer.PATTERN: 0.45,
 }
+TRIMATCH_VERIFIER_FAILURES = Counter(
+    "trimatch_verifier_failures_total",
+    "Tri-Match verifier failures by reason.",
+    ["reason"],
+)
 
 
 class TriMatchVerifier:
@@ -54,12 +61,14 @@ class TriMatchVerifier:
             TRIMATCH_PRECISION.labels(dimension=dimension, layer=layer).set(value)
             if layer in {"exact", "regex", "pattern"} and value < 0.97:
                 errors.append(f"{key}: shortcut precision below 0.97")
+                TRIMATCH_VERIFIER_FAILURES.labels(reason="precision_floor").inc()
         for key, value in recall.items():
             dimension, layer = key.split(":", 1)
             TRIMATCH_RECALL.labels(dimension=dimension, layer=layer).set(value)
             layer_enum = TriMatchLayer(layer)
             if layer_enum in RECALL_FLOORS and value < RECALL_FLOORS[layer_enum]:
                 errors.append(f"{key}: recall below floor {RECALL_FLOORS[layer_enum]}")
+                TRIMATCH_VERIFIER_FAILURES.labels(reason="recall_floor").inc()
 
         return TriMatchVerificationResult(
             valid=not errors,

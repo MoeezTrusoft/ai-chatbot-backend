@@ -46,6 +46,11 @@ TRIMATCH_SHORTCUTS = Counter(
     "Tri-Match shortcut decisions.",
     ["dimension", "layer", "status"],
 )
+FUNNEL_SIGNAL_VOTES = Counter(
+    "funnel_signal_votes_total",
+    "Shadow funnel-stage votes emitted by Tri-Match under D-081.",
+    ["stage", "mode"],
+)
 
 LAYER_WEIGHTS = {
     TriMatchLayer.EXACT: 1.0,
@@ -80,6 +85,7 @@ class TriMatchEngine:
         shortcut_eligible = self._shortcut_eligible(evidence)
         if funnel_stage is not None and self.funnel_stage_weight == 0:
             shadow_only = [TriMatchDimension.FUNNEL_STAGE]
+            FUNNEL_SIGNAL_VOTES.labels(stage=funnel_stage.value, mode="shadow").inc()
         else:
             shadow_only = []
         return TriMatchResult(

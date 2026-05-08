@@ -2,8 +2,11 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import redis.asyncio as redis
+from prometheus_client import Counter
 
 from bookcraft.infra.config import Settings
+
+REDIS_CACHE_HITS = Counter("redis_cache_hits_total", "Redis cache hits.")
 
 
 class CacheClient(Protocol):
@@ -54,7 +57,10 @@ class RedisCache:
     default_ttl_seconds: int
 
     async def get(self, key: str) -> str | None:
-        return await self.client.get(key)
+        value = await self.client.get(key)
+        if value is not None:
+            REDIS_CACHE_HITS.inc()
+        return value
 
     async def set_with_ttl(self, key: str, value: str, ttl_seconds: int | None = None) -> None:
         await self.client.set(key, value, ex=ttl_seconds or self.default_ttl_seconds)
