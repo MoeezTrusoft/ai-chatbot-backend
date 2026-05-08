@@ -4,10 +4,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  staging-placeholder:
+  staging:
     runs-on: ubuntu-latest
+    environment: staging
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: make install
       - name: Build image placeholder
-        run: echo "Phase 0 CD skeleton: build, migrate, deploy staging, smoke, manual production gate."
-
+        run: echo "build image: Dockerfile will be introduced with deployment packaging"
+      - name: Run migrations placeholder
+        run: echo "run migrations: alembic upgrade head in staging deployment"
+      - name: Deploy staging placeholder
+        run: echo "deploy staging: publish image and update staging service"
+      - name: Smoke test placeholder
+        run: echo "smoke test: run post-deploy health, readiness, and chat checks"
+  production-gate:
+    runs-on: ubuntu-latest
+    needs: staging
+    environment: production
+    steps:
+      - name: Manual production gate
+        run: echo "manual production gate: approval required before production deployment"

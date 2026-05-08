@@ -1,0 +1,35 @@
+title = "BookCraft local secret scanning"
+
+[allowlist]
+description = "Allow documented empty placeholders and generated local artifacts."
+paths = [
+  '''^\.env\.example$''',
+  '''^data/generated/''',
+  '''^\.venv/''',
+  '''^\.uv-cache/''',
+  '''^uv\.lock$'''
+]
+
+[[rules]]
+id = "private-key"
+description = "Private key block"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+tags = ["key"]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API key"
+regex = '''sk-[A-Za-z0-9_\-]{20,}'''
+tags = ["api-key"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9_\-]{20,}'''
+tags = ["api-key"]
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS access key"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["api-key"]

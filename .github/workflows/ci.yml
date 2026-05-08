@@ -22,6 +22,11 @@ jobs:
         run: make type
       - name: Test
         run: make test
+      - name: Verifier gates
+        run: make verifier-gates
+      - name: Security scan
+        run: make security-scan
+      - name: Dependency scan
+        run: make dependency-scan
       - name: Compose config
         run: docker compose config
-

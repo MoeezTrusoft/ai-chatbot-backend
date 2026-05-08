@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify
+.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify prompt-verify eval-verify ci-cd-verify security-scan dependency-scan verifier-gates ci-local
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -83,3 +83,22 @@ documents-smoke:
 
 monitoring-verify:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/ops/verify_monitoring.py
+
+prompt-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_prompt_pack.py
+
+eval-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_eval_corpus.py
+
+ci-cd-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/ops/verify_ci_cd.py
+
+security-scan:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/secret_scan.py
+
+dependency-scan:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/dependency_scan.py
+
+verifier-gates: rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
+
+ci-local: lint type test verifier-gates security-scan dependency-scan compose-config

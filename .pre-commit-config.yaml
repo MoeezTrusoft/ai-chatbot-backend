@@ -12,4 +12,15 @@ repos:
         additional_dependencies:
           - pydantic>=2.7
           - pydantic-settings>=2.3
-
+  - repo: local
+    hooks:
+      - id: bookcraft-secret-scan
+        name: BookCraft secret scan
+        entry: python scripts/security/secret_scan.py
+        language: system
+        pass_filenames: false
+      - id: bookcraft-prompt-verify
+        name: BookCraft prompt verifier
+        entry: python scripts/data/verify_prompt_pack.py
+        language: system
+        pass_filenames: false
