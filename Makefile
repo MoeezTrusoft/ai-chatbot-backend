@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify prompt-verify eval-verify ci-cd-verify security-scan dependency-scan verifier-gates ci-local
+.PHONY: install lint type test run up down smoke acceptance compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify prompt-verify eval-verify ci-cd-verify security-scan dependency-scan verifier-gates ci-local
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -31,6 +31,9 @@ compose-config:
 
 smoke:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/smoke.py
+
+acceptance:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/final_acceptance.py
 
 rag-build:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/extract_bookcraft_knowledge.py

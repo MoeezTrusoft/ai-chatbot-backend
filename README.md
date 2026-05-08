@@ -2,7 +2,7 @@
 
 Production-grade AI sales assistant for BookCraft Publishers.
 
-This repository is being implemented phase by phase from the locked architecture and implementation guide. Phase 0 contains the local foundation only: package setup, service scaffold, health/readiness endpoints, observability shell, Docker Compose, and CI skeleton.
+This repository is being implemented phase by phase from the locked architecture and implementation guide. It now includes the local app shell, guarded chat loop, RAG verifier/retriever, deterministic pricing engine, portfolio registry, template-only document generation, Tri-Match with ADR-gated funnel-stage shadow output, monitoring assets, governance gates, and final acceptance coverage.
 
 ## Local Commands
 
@@ -15,17 +15,35 @@ make run
 make up
 make down
 make smoke
+make acceptance
+make verifier-gates
+make ci-local
 ```
 
-## Phase 0 Endpoints
+## Endpoints
 
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
+- `POST /api/v1/chat/turn`
+- `WS /api/v1/chat/ws/{thread_id}`
+
+## Acceptance
+
+Run the local acceptance path with:
+
+```bash
+make acceptance
+```
+
+This exercises the Phase 14 customer journey in process: ghostwriting inquiry, pricing/timeline clarification, gated pricing fallback, registry-backed portfolio samples, ghostwriting confidentiality, NDA/agreement routing, conversation event inspection, and strict-template document rendering.
+
+Pricing v2.2 values are gated by default. The chatbot must not emit customer-facing pricing or timeline numbers unless approved values are explicitly enabled through configuration.
+
+See `docs/runbooks/final-acceptance.md` for the release checklist and current constraints.
 
 ## Canonical Documents
 
 - `docs/architecture/architecture-reference.md`
 - `docs/architecture/architecture-amendments.md`
 - `docs/implementation/bookcraft_ai_chatbot_ultimate_implementation_guide.md`
-
