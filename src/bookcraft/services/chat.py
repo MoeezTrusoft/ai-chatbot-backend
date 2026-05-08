@@ -9,7 +9,9 @@ from prometheus_client import Counter, Histogram
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
+from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.portfolio import PortfolioEngine, PortfolioRequest, PortfolioResponse
 from bookcraft.components.preprocessor import SharedPreprocessor
 from bookcraft.components.pricing import (
     PricingQuoteRequest,
@@ -21,7 +23,7 @@ from bookcraft.components.response import ResponseFormatter, SonnetResponseGener
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
-from bookcraft.domain.enums import QueryIntentType, Source
+from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.state import ThreadState
 
 if TYPE_CHECKING:
@@ -49,6 +51,7 @@ class ChatService:
     formatter: ResponseFormatter
     rag_retriever: RagRetriever | None = None
     pricing_engine: PricingTimelineEngine | None = None
+    portfolio_engine: PortfolioEngine | None = None
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
@@ -124,7 +127,7 @@ class ChatService:
                 )
             )
             rag_chunks = []
-            if self.rag_retriever is not None:
+            if self.rag_retriever is not None and _allow_rag_for_intent(intent):
                 rag_chunks = await self.rag_retriever.retrieve(processed, intent)
             pricing_quote: PricingTimelineQuote | None = None
             timeline_estimate: PricingTimelineQuote | None = None
@@ -156,6 +159,14 @@ class ChatService:
                             ]
                         ),
                     )
+            portfolio_response: PortfolioResponse | None = None
+            if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
+                portfolio_response = self._portfolio_turn(
+                    state=memory.state,
+                    intent_service=intent.service_primary,
+                    message=payload.message,
+                )
+            document_status_message = _document_status_message(intent)
             draft = await self.response_generator.generate(
                 message=processed,
                 state=memory.state,
@@ -165,8 +176,10 @@ class ChatService:
                 pricing_quote=pricing_quote,
                 timeline_estimate=timeline_estimate,
                 pricing_missing_question=pricing_missing_question,
+                portfolio_response=portfolio_response,
+                document_status_message=document_status_message,
             )
-            bubbles = self.formatter.format(draft.text)
+            bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
                 trg_result = await self.trg_engine.update_after_turn(
                     thread_id=thread_id,
@@ -295,6 +308,57 @@ class ChatService:
         if quote.missing_inputs:
             return None, None, quote.missing_inputs[0].question
         return quote, None, None
+
+    def _portfolio_turn(
+        self,
+        *,
+        state: ThreadState,
+        intent_service: ServiceCategory | None,
+        message: str,
+    ) -> PortfolioResponse | None:
+        if self.portfolio_engine is None:
+            return None
+        service = intent_service or (
+            state.project.services_discussed[0].service.value
+            if state.project.services_discussed
+            and state.project.services_discussed[0].service.value is not None
+            else None
+        )
+        if service is None:
+            return None
+        return self.portfolio_engine.request_samples(
+            PortfolioRequest(
+                service=ServiceCategory(str(service)),
+                genre=state.project.genre.value or _genre_from_text(message),
+                limit=3,
+            )
+        )
+
+
+def _allow_rag_for_intent(intent: IntentVote) -> bool:
+    return intent.query_primary not in {
+        QueryIntentType.PRICING_QUESTION,
+        QueryIntentType.TIMELINE_QUESTION,
+        QueryIntentType.PORTFOLIO_REQUEST,
+        QueryIntentType.NDA_REQUEST,
+        QueryIntentType.AGREEMENT_REQUEST,
+    }
+
+
+def _document_status_message(intent: IntentVote) -> str | None:
+    if intent.query_primary == QueryIntentType.NDA_REQUEST:
+        return (
+            "I can start the NDA request. NDA text must render from BookCraft's approved "
+            "template only, so I need the author name, email, phone, and effective date "
+            "before it can enter the document queue."
+        )
+    if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
+        return (
+            "I can start the service agreement request. Agreement text must render from "
+            "BookCraft's approved template only, and fee fields must come from an accepted "
+            "deterministic quote before the agreement can enter the document queue."
+        )
+    return None
 
 
 def _genre_from_text(text: str) -> str | None:

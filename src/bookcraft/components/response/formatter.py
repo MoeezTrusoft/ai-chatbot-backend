@@ -8,7 +8,7 @@ from bookcraft.components.response.schemas import FormattedBubble
 class ResponseFormatter:
     max_bubble_chars: int = 500
 
-    def format(self, text: str) -> list[FormattedBubble]:
+    def format(self, text: str, *, approved_urls: set[str] | None = None) -> list[FormattedBubble]:
         sanitized = self._sanitize(text)
         if not sanitized:
             sanitized = "I can help with your BookCraft project. What would you like to work on?"
@@ -20,7 +20,7 @@ class ResponseFormatter:
                     FormattedBubble(
                         text=chunk,
                         bubble_index=len(bubbles),
-                        rich_segments=self._rich_segments(chunk),
+                        rich_segments=self._rich_segments(chunk, approved_urls or set()),
                     )
                 )
         return bubbles
@@ -57,10 +57,12 @@ class ResponseFormatter:
         return chunks
 
     @staticmethod
-    def _rich_segments(text: str) -> list[dict[str, str]]:
+    def _rich_segments(text: str, approved_urls: set[str]) -> list[dict[str, str]]:
         segments: list[dict[str, str]] = []
         for match in re.finditer(r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}", text):
             segments.append({"type": "email", "text": match.group(0)})
         for match in re.finditer(r"https?://\S+", text):
-            segments.append({"type": "url", "text": match.group(0)})
+            url = match.group(0).rstrip(".,)")
+            if url in approved_urls:
+                segments.append({"type": "url", "text": url})
         return segments

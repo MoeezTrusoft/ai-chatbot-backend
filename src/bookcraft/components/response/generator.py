@@ -1,13 +1,15 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from prometheus_client import Histogram
 
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
+from bookcraft.components.portfolio.schemas import PortfolioResponse, PortfolioStatus
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
 from bookcraft.components.rag.schemas import RetrievedChunk
+from bookcraft.components.response.routing import ResponseRouter
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
@@ -20,6 +22,7 @@ GREETING_RESPONSE = "Hello! How can I help with your book project today?"
 @dataclass(slots=True)
 class SonnetResponseGenerator:
     provider_name: str = "mock_sonnet"
+    router: ResponseRouter = field(default_factory=ResponseRouter)
 
     async def generate(
         self,
@@ -32,9 +35,12 @@ class SonnetResponseGenerator:
         pricing_quote: PricingTimelineQuote | None = None,
         timeline_estimate: PricingTimelineQuote | None = None,
         pricing_missing_question: str | None = None,
+        portfolio_response: PortfolioResponse | None = None,
+        document_status_message: str | None = None,
     ) -> ResponseDraft:
         del state, extraction
         with RESPONSE_SECONDS.time():
+            route = self.router.route(intent)
             if (
                 intent.query_primary == QueryIntentType.GREETING
                 and intent.confidence >= 0.9
@@ -53,14 +59,23 @@ class SonnetResponseGenerator:
                     text=_timeline_quote_text(timeline_estimate),
                     source="pricing_engine",
                 )
+            if portfolio_response is not None:
+                return _portfolio_response_text(portfolio_response)
+            if document_status_message is not None:
+                return ResponseDraft(text=document_status_message, source=route.name)
             LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
             return ResponseDraft(
-                text=self._mock_response(intent, rag_chunks or []),
-                source=self.provider_name,
-            )
+                text=self._mock_response(intent, rag_chunks or [], route.name),
+                source=route.name if route.name != "direct_answer" else self.provider_name,
+    )
 
     @staticmethod
-    def _mock_response(intent: IntentVote, rag_chunks: list[RetrievedChunk]) -> str:
+    def _mock_response(
+        intent: IntentVote,
+        rag_chunks: list[RetrievedChunk],
+        route_name: str,
+    ) -> str:
+        del route_name
         quote_intents = {QueryIntentType.PRICING_QUESTION, QueryIntentType.TIMELINE_QUESTION}
         if intent.query_primary in quote_intents:
             return (
@@ -70,13 +85,13 @@ class SonnetResponseGenerator:
             )
         if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
             return (
-                "I can help route a portfolio request. Samples must come from the approved "
-                "BookCraft registry, so I won't invent links here."
+                "I can help with samples, but portfolio links must come from the approved "
+                "BookCraft registry. Which service and genre should I match?"
             )
         if intent.query_primary == QueryIntentType.NDA_REQUEST:
             return (
                 "I can help start the NDA request. Legal documents must use approved templates "
-                "and manual gating, so I need the author name, email, phone, book title, and date."
+                "and manual gating, so I need the author name, email, phone, and date."
             )
         if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
             return (
@@ -106,6 +121,25 @@ def _pricing_quote_text(quote: PricingTimelineQuote) -> str:
         f"{quote.total_price_range.low.amount}-{quote.total_price_range.high.amount} range "
         f"and {quote.timeline.total_timeline.low}-{quote.timeline.total_timeline.high} "
         "business days, subject to assumptions."
+    )
+
+
+def _portfolio_response_text(response: PortfolioResponse) -> ResponseDraft:
+    if response.status != PortfolioStatus.FOUND:
+        return ResponseDraft(text=response.message, source="portfolio_engine")
+    lines = [response.message]
+    approved_urls: list[str] = []
+    for sample in response.samples:
+        link = sample.url or sample.cover_image
+        if link:
+            approved_urls.append(link)
+            lines.append(f"- {sample.title}: {link}")
+        else:
+            lines.append(f"- {sample.title}")
+    return ResponseDraft(
+        text="\n".join(lines),
+        source="portfolio_engine",
+        approved_urls=approved_urls,
     )
 
 

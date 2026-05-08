@@ -13,6 +13,7 @@ from bookcraft.api.chat import router as chat_router
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.intent import build_mock_ensemble_classifier
 from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
@@ -133,6 +134,13 @@ def build_chat_service(settings: Settings) -> ChatService:
         pricing_engine=PricingTimelineEngine.from_config_dir(
             Path(settings.pricing_v2_config_dir),
             values_approved=settings.pricing_v2_values_approved,
+        ),
+        portfolio_engine=PortfolioEngine(
+            PortfolioRegistry.from_files(
+                samples_registry_path=settings.portfolio_samples_registry_path,
+                genre_hierarchy_path=settings.portfolio_genre_hierarchy_path,
+                portfolio_docx_path=settings.portfolio_samples_docx_path,
+            )
         ),
         trimatch_engine=build_trimatch_engine(settings),
     )
