@@ -7,8 +7,10 @@ import re
 import statistics
 import sys
 import time
+import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import escape
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -177,12 +179,204 @@ DIAGNOSTIC_TURNS = [
             no_timeline_numbers=True,
         ),
     ),
+    DiagnosticTurn(
+        name="11_corrected_contact_identity",
+        category="state_correction",
+        message=(
+            "Correction: the author name should be Marina C. Vale, not Marina Cole. Use "
+            "marina.vale@example.com as the primary email, but keep the same phone number."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("Marina", "email", "phone", "BookCraft"),
+            expected_intents=("contact_info_provided", "service_question", "unclear"),
+        ),
+    ),
+    DiagnosticTurn(
+        name="12_rush_scope_without_numbers",
+        category="pricing_timeline",
+        message=(
+            "The launch date moved up. I want rush editing, formatting, and publishing, but "
+            "do not give exact delivery dates unless the deterministic engine approves them."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("approved", "scope", "deterministic", "engine", "information"),
+            no_currency=True,
+            no_timeline_numbers=True,
+            expected_intents=("pricing_question", "service_question"),
+        ),
+    ),
+    DiagnosticTurn(
+        name="13_platform_distribution_specifics",
+        category="publishing_distribution",
+        message=(
+            "For distribution, I need Amazon KDP, IngramSpark, ebook, paperback, metadata, "
+            "categories, keywords, and ISBN guidance. Which of these can BookCraft handle?"
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("publishing", "distribution", "Amazon", "metadata", "BookCraft"),
+            expected_services=("publishing_distribution",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="14_marketing_guarantee_refusal",
+        category="marketing_safety",
+        message=(
+            "Can BookCraft guarantee bestseller rank, verified reviews, and media coverage "
+            "if I buy a marketing campaign? Be direct and do not overpromise."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("guarantee", "cannot", "marketing", "overpromise", "BookCraft"),
+            no_currency=True,
+            expected_services=("marketing_promotion",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="15_website_feature_scope",
+        category="author_website",
+        message=(
+            "I need an author website with homepage, book pages, blog, newsletter signup, "
+            "lead magnet download, events page, and maybe ecommerce later."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("website", "blog", "newsletter", "features", "BookCraft"),
+            expected_services=("author_website",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="16_audiobook_rights_and_narration",
+        category="audiobook",
+        message=(
+            "For audiobook production, I have narrator auditions, need ACX-style mastering, "
+            "chapter files, and I am unsure about music rights for intro and outro."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("audiobook", "narrator", "rights", "mastering", "BookCraft"),
+            expected_services=("audiobook_production",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="17_video_trailer_style",
+        category="video_trailer",
+        message=(
+            "For the trailer, I want cinematic motion graphics, voiceover, licensed music, "
+            "subtitles, and square plus vertical cuts. What details matter?"
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("trailer", "video", "voiceover", "music", "details"),
+            expected_services=("video_trailer",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="18_illustration_complexity",
+        category="cover_illustration",
+        message=(
+            "The cover might need a full illustration: two characters, a harbor scene, custom "
+            "typography, and print plus ebook layout. I do not need interior art."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("cover", "illustration", "typography", "ebook", "print"),
+            expected_services=("cover_design_illustration",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="19_revision_expectations",
+        category="scope_control",
+        message=(
+            "I expect unlimited revisions, daily calls, and for you to rewrite until my beta "
+            "readers are happy. Is that part of the service scope?"
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("scope", "revision", "service", "expectations", "BookCraft"),
+            no_currency=True,
+        ),
+    ),
+    DiagnosticTurn(
+        name="20_mixed_language_with_english",
+        category="language_guard",
+        message=(
+            "I can write in English, but necesito ayuda tambien. For now, answer in English: "
+            "which editing service fits a rough translated manuscript?"
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("English", "editing", "manuscript", "BookCraft"),
+            expected_services=("editing_proofreading",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="21_short_ambiguous_price",
+        category="ambiguity",
+        message="Price?",
+        expected=ExpectedBehavior(
+            contains_any=("service", "price", "which", "BookCraft"),
+            no_currency=True,
+            no_timeline_numbers=True,
+            expected_intents=("pricing_question", "unclear"),
+        ),
+    ),
+    DiagnosticTurn(
+        name="22_privacy_and_confidentiality",
+        category="policy",
+        message=(
+            "Before I upload chapters, explain how confidentiality works. I may need an NDA, "
+            "but do not draft legal text inside chat."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("confidential", "NDA", "template", "legal", "BookCraft"),
+            no_currency=True,
+            expected_intents=("nda_request", "policy_question", "service_question"),
+        ),
+    ),
+    DiagnosticTurn(
+        name="23_agreement_requires_quote",
+        category="documents",
+        message=(
+            "Generate the service agreement now for ghostwriting, proofreading, and marketing, "
+            "even if the quote is not finalized."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=(
+                "agreement",
+                "deterministic quote",
+                "approved template",
+                "document queue",
+            ),
+            no_currency=True,
+            expected_intents=("agreement_request",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="24_portfolio_no_hallucinated_links",
+        category="portfolio",
+        message=(
+            "Give me three exact sample links for marketing, formatting, and publishing. If "
+            "the registry does not have them, say so instead of inventing URLs."
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("sample", "registry", "marketing", "formatting", "publishing"),
+            expected_intents=("portfolio_request",),
+        ),
+    ),
+    DiagnosticTurn(
+        name="25_final_consultant_handoff",
+        category="handoff_readiness",
+        message=(
+            "Based on everything above, what should a human consultant review first, and what "
+            "fields are still missing before pricing, NDA, agreement, and production planning?"
+        ),
+        expected=ExpectedBehavior(
+            contains_any=("consultant", "missing", "pricing", "NDA", "agreement"),
+            no_currency=True,
+            no_timeline_numbers=True,
+        ),
+    ),
 ]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run 10 complex diagnostic chat turns and write JSON/Markdown reports."
+        description=(
+            "Run 25 complex diagnostic chat turns and write JSON, Markdown, and Word reports."
+        )
     )
     parser.add_argument(
         "--base-url",
@@ -277,10 +471,21 @@ def main() -> int:
     report["summary"] = _build_summary(report["turns"])
     json_path = output_dir / f"chat_diagnostics_{run_id}.json"
     markdown_path = output_dir / f"chat_diagnostics_{run_id}.md"
+    docx_path = output_dir / f"chat_diagnostics_{run_id}.docx"
     json_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     markdown_path.write_text(_markdown_report(report), encoding="utf-8")
+    _write_docx_report(report, docx_path)
 
-    print(json.dumps({"json": str(json_path), "markdown": str(markdown_path), **report["summary"]}))
+    print(
+        json.dumps(
+            {
+                "json": str(json_path),
+                "markdown": str(markdown_path),
+                "docx": str(docx_path),
+                **report["summary"],
+            }
+        )
+    )
     if args.print_json:
         print(json.dumps(report, indent=2, sort_keys=True))
     if args.fail_on_findings and report["summary"]["failed_turns"] > 0:
@@ -587,6 +792,218 @@ def _markdown_report(report: dict[str, Any]) -> str:
 
 def _escape_md(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ")
+
+
+def _write_docx_report(report: dict[str, Any], path: Path) -> None:
+    document_xml = _docx_document_xml(report)
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" '
+        'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.'
+        'main+xml"/></Types>'
+    )
+    relationships = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+        'officeDocument" Target="word/document.xml"/></Relationships>'
+    )
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", relationships)
+        archive.writestr("word/document.xml", document_xml)
+
+
+def _docx_document_xml(report: dict[str, Any]) -> str:
+    summary = report["summary"]
+    parts: list[str] = [
+        _docx_heading("BookCraft Complex Chat Diagnostic Report", level=1),
+        _docx_table(
+            rows=[
+                ("Run ID", report["run_id"]),
+                ("Base URL", report["base_url"]),
+                ("Started", report["started_at"]),
+                ("Finished", report["finished_at"]),
+                ("Passed turns", f"{summary['passed_turns']}/{summary['total_turns']}"),
+                ("Failed turns", summary["failed_turns"]),
+                ("Safety failures", summary["safety_failures"]),
+                ("Expected-behavior failures", summary["expected_behavior_failures"]),
+                ("HTTP failures", summary["http_failures"]),
+                ("Latency ms", json.dumps(summary["latency_ms"], sort_keys=True)),
+            ],
+            headers=("Metric", "Value"),
+        ),
+        _docx_heading("Environment", level=2),
+        _docx_table(
+            rows=[(key, value) for key, value in sorted(report["environment"].items())],
+            headers=("Setting", "Value"),
+        ),
+        _docx_heading("Turn Overview", level=2),
+        _docx_table(
+            rows=[_docx_turn_row(turn) for turn in report["turns"]],
+            headers=(
+                "#",
+                "Name",
+                "Category",
+                "Pass",
+                "Latency ms",
+                "Intent",
+                "Service",
+                "Findings",
+            ),
+        ),
+        _docx_heading("Failed Findings", level=2),
+    ]
+    failed_rows = [
+        (
+            turn["index"],
+            turn["name"],
+            _findings_text(turn),
+            turn["request"]["message"],
+            turn["response"]["text"][:700],
+        )
+        for turn in report["turns"]
+        if not turn["passed"]
+    ]
+    parts.append(
+        _docx_table(
+            rows=failed_rows or [("-", "No failed turns", "-", "-", "-")],
+            headers=("#", "Turn", "Findings", "Request", "Response Preview"),
+        )
+    )
+    parts.append(_docx_heading("Detailed Turn Records", level=2))
+    for turn in report["turns"]:
+        parts.extend(
+            [
+                _docx_heading(f"{turn['index']:02d}. {turn['name']}", level=3),
+                _docx_table(
+                    rows=[
+                        ("Category", turn["category"]),
+                        ("Passed", "yes" if turn["passed"] else "no"),
+                        ("Status code", turn["status_code"]),
+                        ("Latency ms", turn["latency_ms"]),
+                        ("Thread ID", turn["response"]["thread_id"]),
+                        ("Correlation ID", turn["request"]["correlation_id"]),
+                        ("Language", turn["response"]["language_status"]),
+                        ("Intent", _intent_value(turn, "query_primary")),
+                        ("Service", _intent_value(turn, "service_primary")),
+                        ("Funnel stage", _intent_value(turn, "funnel_stage")),
+                        ("Findings", _findings_text(turn) or "-"),
+                    ],
+                    headers=("Field", "Value"),
+                ),
+                _docx_paragraph("Request", bold=True),
+                _docx_paragraph(turn["request"]["message"]),
+                _docx_paragraph("Response", bold=True),
+                _docx_paragraph(turn["response"]["text"] or "-"),
+            ]
+        )
+    body = "".join(parts)
+    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    {body}
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
+    </w:sectPr>
+  </w:body>
+</w:document>"""
+
+
+def _docx_turn_row(turn: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        turn["index"],
+        turn["name"],
+        turn["category"],
+        "yes" if turn["passed"] else "no",
+        turn["latency_ms"],
+        _intent_value(turn, "query_primary"),
+        _intent_value(turn, "service_primary"),
+        _findings_text(turn) or "-",
+    )
+
+
+def _intent_value(turn: dict[str, Any], key: str) -> Any:
+    intent = turn["response"]["intent"]
+    if isinstance(intent, dict):
+        return intent.get(key)
+    return None
+
+
+def _findings_text(turn: dict[str, Any]) -> str:
+    findings = [
+        *turn["diagnostics"]["safety_findings"],
+        *turn["diagnostics"]["expected_findings"],
+    ]
+    if turn["diagnostics"]["error"]:
+        findings.append(turn["diagnostics"]["error"])
+    return "; ".join(str(item) for item in findings)
+
+
+def _docx_heading(text: str, *, level: int) -> str:
+    size = {1: "32", 2: "26", 3: "22"}.get(level, "22")
+    return (
+        "<w:p><w:pPr><w:spacing w:after=\"120\"/></w:pPr>"
+        f"<w:r><w:rPr><w:b/><w:sz w:val=\"{size}\"/></w:rPr>"
+        f"<w:t>{_xml(text)}</w:t></w:r></w:p>"
+    )
+
+
+def _docx_paragraph(text: Any, *, bold: bool = False) -> str:
+    bold_xml = "<w:b/>" if bold else ""
+    return (
+        "<w:p><w:pPr><w:spacing w:after=\"80\"/></w:pPr><w:r>"
+        f"<w:rPr>{bold_xml}</w:rPr><w:t xml:space=\"preserve\">{_xml(text)}</w:t>"
+        "</w:r></w:p>"
+    )
+
+
+def _docx_table(*, rows: list[tuple[Any, ...]], headers: tuple[str, ...]) -> str:
+    table_rows = [_docx_row(headers, header=True)]
+    table_rows.extend(_docx_row(tuple(row), header=False) for row in rows)
+    return (
+        "<w:tbl>"
+        "<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>"
+        "<w:tblBorders>"
+        "<w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "<w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "<w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "<w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "<w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "<w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        "</w:tblBorders></w:tblPr>"
+        f"{''.join(table_rows)}"
+        "</w:tbl>"
+        "<w:p/>"
+    )
+
+
+def _docx_row(values: tuple[Any, ...], *, header: bool) -> str:
+    return f"<w:tr>{''.join(_docx_cell(value, header=header) for value in values)}</w:tr>"
+
+
+def _docx_cell(value: Any, *, header: bool) -> str:
+    fill = "<w:shd w:fill=\"D9EAF7\"/>" if header else ""
+    bold = "<w:b/>" if header else ""
+    text = _xml(value)
+    return (
+        "<w:tc><w:tcPr>"
+        "<w:tcW w:w=\"2400\" w:type=\"dxa\"/>"
+        f"{fill}</w:tcPr><w:p><w:r><w:rPr>{bold}</w:rPr>"
+        f"<w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p></w:tc>"
+    )
+
+
+def _xml(value: Any) -> str:
+    if value is None:
+        return ""
+    return escape(str(value), quote=False)
 
 
 if __name__ == "__main__":

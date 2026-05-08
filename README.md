@@ -52,13 +52,13 @@ Pricing v2.2 values are gated by default. The chatbot must not emit customer-fac
 See `docs/runbooks/final-acceptance.md` for the release checklist and current constraints.
 See `docs/runbooks/complex-chat-testing-and-ai-keys.md` for complex test messages and live AI key setup.
 
-For a deeper 10-turn diagnostic report after the API is running:
+For a deeper 25-turn diagnostic report after the API is running:
 
 ```bash
 make chat-diagnostics
 ```
 
-Reports are written to `reports/chat-diagnostics/`.
+JSON, Markdown, and Word `.docx` reports are written to `reports/chat-diagnostics/`.
 
 ## Canonical Documents
 

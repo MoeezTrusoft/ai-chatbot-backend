@@ -58,13 +58,13 @@ UV_CACHE_DIR=.uv-cache python3 -m uv run python scripts/dev/complex_chat_probe.p
 
 ## Run Diagnostic Report
 
-After the API is running, use the 10-turn diagnostic runner:
+After the API is running, use the 25-turn diagnostic runner:
 
 ```bash
 make chat-diagnostics
 ```
 
-It writes JSON and Markdown reports under:
+It writes JSON, Markdown, and Word `.docx` reports under:
 
 ```bash
 reports/chat-diagnostics/
@@ -77,7 +77,8 @@ The report includes:
 - per-turn latency, status code, thread ID, correlation ID, language, intent, service, response text, and debug event IDs,
 - safety findings for price/timeline/legal-template/raw-JSON leakage,
 - expected-behavior findings for each complex scenario,
-- aggregate pass/fail and latency summary.
+- aggregate pass/fail and latency summary,
+- formatted Word tables for executive review and deeper diagnosis.
 
 To point at another server:
 
