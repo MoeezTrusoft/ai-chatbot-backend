@@ -21,6 +21,10 @@ from bookcraft.components.pricing import (
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
+from bookcraft.components.storage.thread_repository import (
+    LoadedThread,
+    ThreadRepository,
+)
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
@@ -55,28 +59,37 @@ class ChatService:
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
+    thread_repository: ThreadRepository | None = None
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
         CHAT_TURNS_TOTAL.inc()
         with CHAT_TURN_LATENCY.time():
-            thread_id = payload.thread_id or uuid4()
-            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            thread = await self._load_thread(payload)
+            thread_id = thread.thread_id
+            state = thread.state
+            event_sequence = thread.event_count
+            previous_event_hash = thread.last_event_hash
             language = self.language_guard.detect(payload.message, cached_language="en")
-            event_ids = [
-                self._append_event(memory, thread_id, "user.message", {"text": payload.message})
-            ]
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="user.message",
+                payload={"text": payload.message},
+            )
+            event_ids = [event_id]
             if not language.is_english:
                 bubbles = self.formatter.format(language.redirect_message or "")
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "assistant.redirect",
-                        {"language": language.language},
-                    )
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="assistant.redirect",
+                    payload={"language": language.language},
                 )
+                event_ids.append(event_id)
                 return ChatTurnResponse(
                     thread_id=thread_id,
                     bubbles=bubbles,
@@ -89,43 +102,43 @@ class ChatService:
             trimatch_result = None
             if self.trimatch_engine is not None:
                 trimatch_result = self.trimatch_engine.classify(processed)
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "trimatch.voted",
-                        trimatch_result.model_dump(mode="json"),
-                    )
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.voted",
+                    payload=trimatch_result.model_dump(mode="json"),
                 )
+                event_ids.append(event_id)
             intent = await self.intent_classifier.classify(
                 processed,
-                memory.state,
+                state,
                 trimatch_result=trimatch_result,
             )
             decision = self.intent_classifier.last_decision
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "intent.classified",
-                    {
-                        "intent": intent.model_dump(mode="json"),
-                        "decision": decision.model_dump(mode="json") if decision else None,
-                    },
-                )
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="intent.classified",
+                payload={
+                    "intent": intent.model_dump(mode="json"),
+                    "decision": decision.model_dump(mode="json") if decision else None,
+                },
             )
-            extraction = await self.extractor.extract(processed, memory.state)
-            previous_state = memory.state.model_copy(deep=True)
-            memory.state = self.state_applier.apply(memory.state, extraction)
+            event_ids.append(event_id)
+            extraction = await self.extractor.extract(processed, state)
+            previous_state = state.model_copy(deep=True)
+            state = self.state_applier.apply(state, extraction)
             STATE_UPDATES.labels(result="applied").inc()
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "extraction.applied",
-                    {"delta_count": len(extraction.state_deltas)},
-                )
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="extraction.applied",
+                payload={"delta_count": len(extraction.state_deltas)},
             )
+            event_ids.append(event_id)
             rag_chunks = []
             if self.rag_retriever is not None and _allow_rag_for_intent(intent):
                 rag_chunks = await self.rag_retriever.retrieve(processed, intent)
@@ -138,14 +151,14 @@ class ChatService:
             }:
                 pricing_quote, timeline_estimate, pricing_missing_question = self._price_turn(
                     thread_id=thread_id,
-                    state=memory.state,
+                    state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
                     confidence=intent.confidence,
                 )
                 if pricing_quote is not None:
-                    memory.state = self.state_applier.apply(
-                        memory.state,
+                    state = self.state_applier.apply(
+                        state,
                         CombinedExtraction(
                             state_deltas=[
                                 StateDelta(
@@ -162,14 +175,14 @@ class ChatService:
             portfolio_response: PortfolioResponse | None = None
             if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
                 portfolio_response = self._portfolio_turn(
-                    state=memory.state,
+                    state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
             document_status_message = _document_status_message(intent)
             draft = await self.response_generator.generate(
                 message=processed,
-                state=memory.state,
+                state=state,
                 intent=intent,
                 extraction=extraction,
                 rag_chunks=rag_chunks,
@@ -183,37 +196,46 @@ class ChatService:
             if self.trg_engine is not None:
                 trg_result = await self.trg_engine.update_after_turn(
                     thread_id=thread_id,
-                    turn_sequence=len(memory.events) + 1,
+                    turn_sequence=event_sequence + 1,
                     user_text=payload.message,
                     assistant_text=draft.text,
                     previous_state=previous_state,
                     state_deltas=extraction.state_deltas,
                 )
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "trg.updated",
-                        {
-                            "node_count": len(trg_result.graph.nodes),
-                            "edge_count": len(trg_result.graph.edges),
-                            "unresolved_question_count": trg_result.unresolved_question_count,
-                            "contradiction_count": trg_result.contradiction_count,
-                        },
-                    )
-                )
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "assistant.response",
-                    {
-                        "intent": intent.model_dump(mode="json"),
-                        "bubble_count": len(bubbles),
-                        "source": draft.source,
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trg.updated",
+                    payload={
+                        "node_count": len(trg_result.graph.nodes),
+                        "edge_count": len(trg_result.graph.edges),
+                        "unresolved_question_count": trg_result.unresolved_question_count,
+                        "contradiction_count": trg_result.contradiction_count,
                     },
                 )
+                event_ids.append(event_id)
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="assistant.response",
+                payload={
+                    "intent": intent.model_dump(mode="json"),
+                    "bubble_count": len(bubbles),
+                    "source": draft.source,
+                },
             )
+            event_ids.append(event_id)
+            if self.thread_repository is not None:
+                await self.thread_repository.save_state(
+                    thread_id=thread_id,
+                    state=state,
+                    expected_version=thread.version,
+                    language=language.language,
+                )
+            else:
+                self.threads[thread_id].state = state
             return ChatTurnResponse(
                 thread_id=thread_id,
                 bubbles=bubbles,
@@ -248,6 +270,49 @@ class ChatService:
             }
         )
         return event_hash
+
+    async def _load_thread(self, payload: ChatTurnRequest) -> LoadedThread:
+        if self.thread_repository is None:
+            thread_id = payload.thread_id or uuid4()
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            return LoadedThread(
+                thread_id=thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=len(memory.events),
+                event_count=len(memory.events),
+                last_event_hash=str(memory.events[-1]["event_hash"])
+                if memory.events
+                else None,
+            )
+
+        return await self.thread_repository.load_or_create(
+            thread_id=payload.thread_id,
+            customer_id=payload.customer_id,
+        )
+
+    async def _append_thread_event(
+        self,
+        *,
+        thread_id: UUID,
+        sequence: int,
+        previous_hash: str | None,
+        event_type: str,
+        payload: dict[str, object],
+    ) -> tuple[str, int, str]:
+        if self.thread_repository is None:
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            event_hash = self._append_event(memory, thread_id, event_type, payload)
+            return event_hash, len(memory.events), event_hash
+
+        event_hash = await self.thread_repository.append_event(
+            thread_id=thread_id,
+            sequence=sequence + 1,
+            event_type=event_type,
+            payload=payload,
+            previous_hash=previous_hash,
+        )
+        return event_hash, sequence + 1, event_hash
 
     def _price_turn(
         self,

@@ -18,6 +18,8 @@ from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.storage.db import create_engine, create_session_factory
+from bookcraft.components.storage.thread_repository import ThreadRepository
 from bookcraft.components.trimatch import (
     RuleRepository,
     TriMatchEngine,
@@ -57,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app_env=resolved_settings.app_env,
         )
         yield
+        await app.state.db_engine.dispose()
         structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(
@@ -66,7 +69,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
-    app.state.chat_service = build_chat_service(resolved_settings)
+    db_engine = create_engine(resolved_settings)
+    session_factory = create_session_factory(db_engine)
+    thread_repository = ThreadRepository(session_factory=session_factory)
+    app.state.db_engine = db_engine
+    app.state.chat_service = build_chat_service(
+        resolved_settings,
+        thread_repository=thread_repository,
+    )
     app.include_router(chat_router)
 
     @app.middleware("http")
@@ -116,7 +126,11 @@ def configure_sentry(settings: Settings) -> None:
     )
 
 
-def build_chat_service(settings: Settings) -> ChatService:
+def build_chat_service(
+    settings: Settings,
+    *,
+    thread_repository: ThreadRepository | None = None,
+) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
     cache_client = None
     if settings.readiness_check_externals:
@@ -153,6 +167,7 @@ def build_chat_service(settings: Settings) -> ChatService:
             )
         ),
         trimatch_engine=build_trimatch_engine(settings),
+        thread_repository=thread_repository,
     )
 
 
