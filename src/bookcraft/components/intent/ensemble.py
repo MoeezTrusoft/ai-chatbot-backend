@@ -1,0 +1,355 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Protocol
+
+from prometheus_client import Counter, Histogram
+
+from bookcraft.components.intent.classifier import mock_intent_vote
+from bookcraft.components.intent.schemas import (
+    DecisionLayerResult,
+    IntentProviderStatus,
+    IntentVote,
+    ProviderIntentVote,
+)
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.trimatch.schemas import TriMatchResult
+from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
+from bookcraft.domain.state import ThreadState
+
+INTENT_PROVIDER_CALLS = Counter(
+    "intent_provider_calls_total",
+    "Intent provider calls by provider and status.",
+    ["provider", "status"],
+)
+INTENT_PROVIDER_LATENCY = Histogram(
+    "intent_provider_latency_seconds",
+    "Intent provider latency.",
+    ["provider"],
+)
+INTENT_DECISIONS = Counter(
+    "intent_decisions_total",
+    "Decision Layer intent decisions by query and funnel stage.",
+    ["query_intent", "funnel_stage"],
+)
+INTENT_COST = Counter(
+    "llm_call_cost_usd_total",
+    "Estimated LLM call cost in USD.",
+    ["provider", "purpose"],
+)
+INTENT_TOKENS = Counter(
+    "llm_tokens_total",
+    "Estimated LLM tokens by provider, purpose, and token type.",
+    ["provider", "purpose", "token_type"],
+)
+
+
+class IntentVoteProvider(Protocol):
+    name: str
+
+    async def classify(self, message: ProcessedMessage, state: ThreadState) -> IntentVote: ...
+
+
+@dataclass(slots=True)
+class CircuitBreaker:
+    failure_threshold: int = 3
+    failure_count: int = 0
+    open: bool = False
+
+    def before_call(self) -> bool:
+        return not self.open
+
+    def record_success(self) -> None:
+        self.failure_count = 0
+        self.open = False
+
+    def record_failure(self) -> None:
+        self.failure_count += 1
+        if self.failure_count >= self.failure_threshold:
+            self.open = True
+
+
+@dataclass(slots=True)
+class MockIntentProvider:
+    name: str
+
+    async def classify(self, message: ProcessedMessage, state: ThreadState) -> IntentVote:
+        del state
+        return mock_intent_vote(message, provider_name=self.name)
+
+
+@dataclass(slots=True)
+class DecisionLayer:
+    provider_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "claude_haiku": 1.0,
+            "openai_gpt_5_4_mini": 1.0,
+            "deepseek_v3": 1.0,
+        }
+    )
+    trimatch_weight: float = 0.35
+    trimatch_funnel_stage_weight: float = 0.0
+
+    def decide(
+        self,
+        *,
+        provider_votes: Sequence[ProviderIntentVote],
+        trimatch_result: TriMatchResult | None,
+    ) -> DecisionLayerResult:
+        successful = [vote for vote in provider_votes if vote.vote is not None]
+        if not successful:
+            fallback = IntentVote(
+                query_primary=QueryIntentType.UNCLEAR,
+                service_primary=None,
+                funnel_stage=SalesStage.NEW,
+                needs_clarification=True,
+                confidence=0.0,
+                rationale="Decision Layer fallback: no provider returned a usable vote.",
+                evidence=[],
+            )
+            return DecisionLayerResult(
+                final_vote=fallback,
+                provider_votes=list(provider_votes),
+                needs_clarification=True,
+                audit_trail=["no_provider_votes"],
+            )
+
+        query_scores: dict[str, float] = {}
+        service_scores: dict[str, float] = {}
+        funnel_stage_scores: dict[str, float] = {}
+        audit = ["provider_votes_collected"]
+        for vote in successful:
+            assert vote.vote is not None
+            weight = self.provider_weights.get(vote.provider, 1.0)
+            self._add_score(
+                query_scores,
+                vote.vote.query_primary.value,
+                weight,
+                vote.vote.confidence,
+            )
+            self._add_score(
+                funnel_stage_scores,
+                vote.vote.funnel_stage.value,
+                weight,
+                vote.vote.confidence,
+            )
+            if vote.vote.service_primary is not None:
+                self._add_score(
+                    service_scores,
+                    vote.vote.service_primary.value,
+                    weight,
+                    vote.vote.confidence,
+                )
+        if trimatch_result is not None:
+            if trimatch_result.query_primary is not None:
+                self._add_score(
+                    query_scores,
+                    trimatch_result.query_primary.value,
+                    self.trimatch_weight,
+                    trimatch_result.confidence,
+                )
+                audit.append("trimatch_query_vote_included")
+            if trimatch_result.service_primary is not None:
+                self._add_score(
+                    service_scores,
+                    trimatch_result.service_primary.value,
+                    self.trimatch_weight,
+                    trimatch_result.confidence,
+                )
+                audit.append("trimatch_service_vote_included")
+            if (
+                trimatch_result.funnel_stage is not None
+                and self.trimatch_funnel_stage_weight > 0.0
+            ):
+                self._add_score(
+                    funnel_stage_scores,
+                    trimatch_result.funnel_stage.value,
+                    self.trimatch_funnel_stage_weight,
+                    trimatch_result.confidence,
+                )
+                audit.append("trimatch_funnel_stage_vote_included")
+            elif trimatch_result.funnel_stage is not None:
+                audit.append("trimatch_funnel_stage_shadow_weight_zero")
+
+        query_quorum = self._provider_quorum(successful)
+        if query_quorum is not None:
+            audit.append(f"provider_query_quorum:{query_quorum}")
+
+        first_vote = successful[0].vote
+        if first_vote is None:
+            raise RuntimeError("successful provider vote unexpectedly missing vote payload")
+        query = QueryIntentType(self._winner(query_scores) or first_vote.query_primary.value)
+        service_winner = self._winner(service_scores)
+        service = ServiceCategory(service_winner) if service_winner else None
+        funnel = SalesStage(
+            self._winner(funnel_stage_scores) or first_vote.funnel_stage.value
+        )
+        confidence = min(1.0, max(query_scores.values(), default=0.0))
+        needs_clarification = any(vote.vote.needs_clarification for vote in successful if vote.vote)
+        final = IntentVote(
+            query_primary=query,
+            service_primary=service,
+            funnel_stage=funnel,
+            needs_clarification=needs_clarification,
+            confidence=confidence,
+            rationale="Decision Layer aggregated provider votes with Tri-Match shadow inputs.",
+            evidence=audit,
+        )
+        INTENT_DECISIONS.labels(query_intent=query.value, funnel_stage=funnel.value).inc()
+        return DecisionLayerResult(
+            final_vote=final,
+            provider_votes=list(provider_votes),
+            query_scores=query_scores,
+            service_scores=service_scores,
+            funnel_stage_scores=funnel_stage_scores,
+            needs_clarification=needs_clarification,
+            audit_trail=audit,
+        )
+
+    def _add_score(
+        self,
+        scores: dict[str, float],
+        key: str,
+        source_weight: float,
+        confidence: float,
+    ) -> None:
+        scores[key] = scores.get(key, 0.0) + source_weight * confidence
+
+    def _winner(self, scores: dict[str, float]) -> str | None:
+        if not scores:
+            return None
+        return max(scores.items(), key=lambda item: item[1])[0]
+
+    def _provider_quorum(self, provider_votes: list[ProviderIntentVote]) -> str | None:
+        counts: dict[str, int] = {}
+        for provider_vote in provider_votes:
+            if provider_vote.vote is None:
+                continue
+            query = provider_vote.vote.query_primary.value
+            counts[query] = counts.get(query, 0) + 1
+        for query, count in counts.items():
+            if count >= 2:
+                return query
+        return None
+
+
+@dataclass(slots=True)
+class EnsembleIntentClassifier:
+    providers: Sequence[IntentVoteProvider]
+    decision_layer: DecisionLayer
+    timeout_seconds: float = 2.5
+    circuit_breakers: dict[str, CircuitBreaker] = field(default_factory=dict)
+    last_decision: DecisionLayerResult | None = None
+
+    async def classify(
+        self,
+        message: ProcessedMessage,
+        state: ThreadState,
+        trimatch_result: TriMatchResult | None = None,
+    ) -> IntentVote:
+        provider_votes = await asyncio.gather(
+            *(self._classify_provider(provider, message, state) for provider in self.providers)
+        )
+        decision = self.decision_layer.decide(
+            provider_votes=provider_votes,
+            trimatch_result=trimatch_result,
+        )
+        self.last_decision = decision
+        return decision.final_vote
+
+    async def _classify_provider(
+        self,
+        provider: IntentVoteProvider,
+        message: ProcessedMessage,
+        state: ThreadState,
+    ) -> ProviderIntentVote:
+        breaker = self.circuit_breakers.setdefault(provider.name, CircuitBreaker())
+        if not breaker.before_call():
+            INTENT_PROVIDER_CALLS.labels(
+                provider=provider.name,
+                status=IntentProviderStatus.CIRCUIT_OPEN.value,
+            ).inc()
+            return ProviderIntentVote(
+                provider=provider.name,
+                status=IntentProviderStatus.CIRCUIT_OPEN,
+                error="circuit_open",
+            )
+        started = time.perf_counter()
+        try:
+            with INTENT_PROVIDER_LATENCY.labels(provider=provider.name).time():
+                vote = await asyncio.wait_for(
+                    provider.classify(message, state),
+                    timeout=self.timeout_seconds,
+                )
+        except TimeoutError:
+            breaker.record_failure()
+            return self._failed_vote(
+                provider=provider.name,
+                status=IntentProviderStatus.TIMED_OUT,
+                started=started,
+                error="timeout",
+            )
+        except Exception as exc:  # noqa: BLE001 - provider failure must be captured.
+            breaker.record_failure()
+            return self._failed_vote(
+                provider=provider.name,
+                status=IntentProviderStatus.FAILED,
+                started=started,
+                error=exc.__class__.__name__,
+            )
+        breaker.record_success()
+        prompt_tokens = max(1, len(message.normalized.split()))
+        completion_tokens = 32
+        INTENT_PROVIDER_CALLS.labels(
+            provider=provider.name,
+            status=IntentProviderStatus.SUCCEEDED.value,
+        ).inc()
+        INTENT_TOKENS.labels(provider.name, "intent", "prompt").inc(prompt_tokens)
+        INTENT_TOKENS.labels(provider.name, "intent", "completion").inc(completion_tokens)
+        INTENT_COST.labels(provider=provider.name, purpose="intent").inc(0.0)
+        return ProviderIntentVote(
+            provider=provider.name,
+            status=IntentProviderStatus.SUCCEEDED,
+            vote=vote,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=0.0,
+        )
+
+    def _failed_vote(
+        self,
+        *,
+        provider: str,
+        status: IntentProviderStatus,
+        started: float,
+        error: str,
+    ) -> ProviderIntentVote:
+        INTENT_PROVIDER_CALLS.labels(provider=provider, status=status.value).inc()
+        return ProviderIntentVote(
+            provider=provider,
+            status=status,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            error=error,
+        )
+
+
+def build_mock_ensemble_classifier(
+    *,
+    timeout_seconds: float,
+    trimatch_funnel_stage_weight: float,
+) -> EnsembleIntentClassifier:
+    return EnsembleIntentClassifier(
+        providers=[
+            MockIntentProvider(name="claude_haiku"),
+            MockIntentProvider(name="openai_gpt_5_4_mini"),
+            MockIntentProvider(name="deepseek_v3"),
+        ],
+        decision_layer=DecisionLayer(
+            trimatch_funnel_stage_weight=trimatch_funnel_stage_weight,
+        ),
+        timeout_seconds=timeout_seconds,
+    )

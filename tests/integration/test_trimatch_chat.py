@@ -19,11 +19,15 @@ def test_chat_records_trimatch_vote_without_changing_final_haiku_intent() -> Non
     thread_id = body["thread_id"]
     events = app.state.chat_service.threads[UUID(thread_id)].events
     trimatch_events = [event for event in events if event["event_type"] == "trimatch.voted"]
+    intent_events = [event for event in events if event["event_type"] == "intent.classified"]
 
     assert trimatch_events
     payload = trimatch_events[0]["payload"]
     assert payload["query_primary"] == "pricing_question"
     assert payload["service_primary"] == "ghostwriting"
+    decision = intent_events[0]["payload"]["decision"]
+    assert len(decision["provider_votes"]) == 3
+    assert decision["audit_trail"]
 
 
 def test_trimatch_funnel_stage_does_not_mutate_thread_sales_stage() -> None:

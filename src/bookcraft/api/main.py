@@ -11,7 +11,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from bookcraft.api.chat import router as chat_router
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
-from bookcraft.components.intent import HaikuIntentClassifier
+from bookcraft.components.intent import build_mock_ensemble_classifier
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
@@ -122,7 +122,10 @@ def build_chat_service(settings: Settings) -> ChatService:
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
-        intent_classifier=HaikuIntentClassifier(),
+        intent_classifier=build_mock_ensemble_classifier(
+            timeout_seconds=settings.intent_ensemble_timeout_seconds,
+            trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
+        ),
         extractor=CombinedExtractor(),
         state_applier=StateApplier(),
         response_generator=SonnetResponseGenerator(),

@@ -8,7 +8,7 @@ from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
-from bookcraft.components.intent import HaikuIntentClassifier
+from bookcraft.components.intent import EnsembleIntentClassifier
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import SharedPreprocessor
 from bookcraft.components.pricing import (
@@ -42,7 +42,7 @@ class ThreadMemory:
 class ChatService:
     language_guard: LanguageGuard
     preprocessor: SharedPreprocessor
-    intent_classifier: HaikuIntentClassifier
+    intent_classifier: EnsembleIntentClassifier
     extractor: CombinedExtractor
     state_applier: StateApplier
     response_generator: SonnetResponseGenerator
@@ -83,6 +83,7 @@ class ChatService:
                 )
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
+            trimatch_result = None
             if self.trimatch_engine is not None:
                 trimatch_result = self.trimatch_engine.classify(processed)
                 event_ids.append(
@@ -93,13 +94,21 @@ class ChatService:
                         trimatch_result.model_dump(mode="json"),
                     )
                 )
-            intent = await self.intent_classifier.classify(processed, memory.state)
+            intent = await self.intent_classifier.classify(
+                processed,
+                memory.state,
+                trimatch_result=trimatch_result,
+            )
+            decision = self.intent_classifier.last_decision
             event_ids.append(
                 self._append_event(
                     memory,
                     thread_id,
                     "intent.classified",
-                    {"intent": intent.model_dump(mode="json")},
+                    {
+                        "intent": intent.model_dump(mode="json"),
+                        "decision": decision.model_dump(mode="json") if decision else None,
+                    },
                 )
             )
             extraction = await self.extractor.extract(processed, memory.state)
