@@ -11,11 +11,13 @@ make install
 make lint
 make type
 make test
-make run
 make up
+make migrate
+make run
 make down
 make smoke
 make acceptance
+make chat-probe
 make verifier-gates
 make ci-local
 ```
@@ -47,6 +49,7 @@ This exercises the Phase 14 customer journey in process: ghostwriting inquiry, p
 Pricing v2.2 values are gated by default. The chatbot must not emit customer-facing pricing or timeline numbers unless approved values are explicitly enabled through configuration.
 
 See `docs/runbooks/final-acceptance.md` for the release checklist and current constraints.
+See `docs/runbooks/complex-chat-testing-and-ai-keys.md` for complex test messages and live AI key setup.
 
 ## Canonical Documents
 

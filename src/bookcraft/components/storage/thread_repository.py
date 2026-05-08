@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col, select
 
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.models import ThreadEvent, ThreadRecord, utc_now
@@ -141,18 +141,12 @@ class ThreadRepository:
     ) -> tuple[int, str | None]:
         result = await session.execute(
             select(ThreadEvent)
-            .where(ThreadEvent.thread_id == thread_id)
-            .order_by(ThreadEvent.sequence.desc())
+            .where(col(ThreadEvent.thread_id) == thread_id)
+            .order_by(col(ThreadEvent.sequence).desc())
             .limit(1)
         )
         last_event = result.scalar_one_or_none()
 
-        count_result = await session.execute(
-            select(ThreadEvent.sequence)
-            .where(ThreadEvent.thread_id == thread_id)
-            .order_by(ThreadEvent.sequence.desc())
-            .limit(1)
-        )
-        last_sequence = count_result.scalar_one_or_none()
-
-        return int(last_sequence or 0), last_event.event_hash if last_event else None
+        if last_event is None:
+            return 0, None
+        return last_event.sequence, last_event.event_hash

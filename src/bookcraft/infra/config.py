@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     readiness_check_externals: bool = False
     language_guard_enabled: bool = True
 
-    database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:5432/bookcraft"
+    database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:55432/bookcraft"
     database_replica_url: str | None = None
     database_pool_size: int = 20
     database_max_overflow: int = 10
@@ -42,10 +42,14 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"
+    anthropic_haiku_model: str = "claude-haiku-4-5"
+    anthropic_sonnet_model: str = "claude-sonnet-4-5"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
+    openai_intent_model: str = "gpt-5.4-mini"
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "http://deepseek-internal:8000/v1"
+    deepseek_intent_model: str = "deepseek-chat"
     llm_provider_mode: Literal["mock", "live"] = "mock"
     llm_request_timeout_seconds: float = 8.0
 

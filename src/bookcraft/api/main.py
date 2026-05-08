@@ -12,8 +12,14 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from bookcraft.api.chat import router as chat_router
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
-from bookcraft.components.intent import build_mock_ensemble_classifier
+from bookcraft.components.intent import (
+    EnsembleIntentClassifier,
+    LLMIntentProvider,
+    build_live_ensemble_classifier,
+    build_mock_ensemble_classifier,
+)
 from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
@@ -59,7 +65,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app_env=resolved_settings.app_env,
         )
         yield
-        await app.state.db_engine.dispose()
+        db_engine = getattr(app.state, "db_engine", None)
+        if db_engine is not None:
+            await db_engine.dispose()
         structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(
@@ -69,10 +77,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
-    db_engine = create_engine(resolved_settings)
-    session_factory = create_session_factory(db_engine)
-    thread_repository = ThreadRepository(session_factory=session_factory)
-    app.state.db_engine = db_engine
+    thread_repository = None
+    if resolved_settings.app_env != "test":
+        db_engine = create_engine(resolved_settings)
+        session_factory = create_session_factory(db_engine)
+        thread_repository = ThreadRepository(session_factory=session_factory)
+        app.state.db_engine = db_engine
     app.state.chat_service = build_chat_service(
         resolved_settings,
         thread_repository=thread_repository,
@@ -147,10 +157,7 @@ def build_chat_service(
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
-        intent_classifier=build_mock_ensemble_classifier(
-            timeout_seconds=settings.intent_ensemble_timeout_seconds,
-            trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
-        ),
+        intent_classifier=build_intent_classifier(settings),
         extractor=CombinedExtractor(),
         state_applier=StateApplier(),
         response_generator=SonnetResponseGenerator(),
@@ -184,6 +191,53 @@ def build_trimatch_engine(settings: Settings) -> TriMatchEngine:
         shortcut_threshold=settings.trimatch_shortcut_threshold,
         funnel_stage_weight=settings.trimatch_funnel_stage_weight,
         fuzzy_enabled=settings.trimatch_fuzzy_enabled,
+    )
+
+
+def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
+    if settings.llm_provider_mode == "mock":
+        return build_mock_ensemble_classifier(
+            timeout_seconds=settings.intent_ensemble_timeout_seconds,
+            trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
+        )
+    if not settings.anthropic_api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER_MODE=live")
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER_MODE=live")
+    return build_live_ensemble_classifier(
+        providers=[
+            LLMIntentProvider(
+                name="claude_haiku",
+                adapter=AnthropicAdapter(
+                    api_key=settings.anthropic_api_key,
+                    base_url=settings.anthropic_base_url,
+                    timeout_seconds=settings.llm_request_timeout_seconds,
+                    model=settings.anthropic_haiku_model,
+                    name="claude_haiku",
+                ),
+            ),
+            LLMIntentProvider(
+                name="openai_gpt_5_4_mini",
+                adapter=OpenAIAdapter(
+                    api_key=settings.openai_api_key,
+                    base_url=settings.openai_base_url,
+                    timeout_seconds=settings.llm_request_timeout_seconds,
+                    model=settings.openai_intent_model,
+                    name="openai_gpt_5_4_mini",
+                ),
+            ),
+            LLMIntentProvider(
+                name="deepseek_v3",
+                adapter=DeepSeekAdapter(
+                    api_key=settings.deepseek_api_key or "",
+                    base_url=settings.deepseek_base_url,
+                    timeout_seconds=settings.deepseek_timeout_seconds,
+                    model=settings.deepseek_intent_model,
+                ),
+            ),
+        ],
+        timeout_seconds=settings.intent_ensemble_timeout_seconds,
+        trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
     )
 
 

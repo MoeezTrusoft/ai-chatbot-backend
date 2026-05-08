@@ -82,6 +82,7 @@ def _allowed_assignment(match: re.Match[str]) -> bool:
     return (
         value == ""
         or value.casefold() in PLACEHOLDER_VALUES
+        or value.startswith(("settings.", "self.", "config."))
         or value.startswith("${")
         or value[0].isupper()
     )
