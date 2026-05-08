@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 
 from elasticsearch import AsyncElasticsearch
 
@@ -9,23 +10,52 @@ from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 from bookcraft.infra.config import get_settings
 
 
+async def embed_query(tei_url: str, text: str, timeout_seconds: float) -> list[float]:
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        response = await client.post(
+            f"{tei_url.rstrip('/')}/embed",
+            json={"inputs": text},
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    if not isinstance(data, list) or not data or not isinstance(data[0], list):
+        raise ValueError(f"Invalid TEI embedding response: {data!r}")
+
+    return [float(value) for value in data[0]]
+
+
 async def async_main() -> int:
     settings = get_settings()
+    query = "Tell me about ghostwriting"
+    embedding = await embed_query(
+        settings.tei_url,
+        query,
+        settings.tei_timeout_seconds,
+    )
+
+    if len(embedding) != settings.embedding_dimensions:
+        print(
+            f"embedding dimension mismatch: "
+            f"{len(embedding)} != {settings.embedding_dimensions}"
+        )
+        return 1
+
     client = AsyncElasticsearch(settings.elasticsearch_url)
     try:
         retriever = RagRetriever(client=client, index_alias=settings.rag_index_alias)
         chunks = await retriever.retrieve(
             ProcessedMessage(
-                raw="Tell me about ghostwriting",
-                normalized="Tell me about ghostwriting",
+                raw=query,
+                normalized=query.lower(),
                 tokens=[],
                 negation_spans=[],
                 hedge_spans=[],
                 counterfactual_spans=[],
                 deterministic_atoms={"services": ["ghostwriting"]},
-                embedding=[0.0] * settings.embedding_dimensions,
+                embedding=embedding,
                 language="en",
-                char_count=26,
+                char_count=len(query),
             ),
             IntentVote(
                 query_primary=QueryIntentType.SERVICE_QUESTION,
@@ -39,10 +69,14 @@ async def async_main() -> int:
         )
     finally:
         await client.close()
+
     if not chunks:
         print("rag smoke returned no chunks")
         return 1
+
     print(f"rag smoke returned {len(chunks)} chunks")
+    for chunk in chunks:
+        print(f"- {chunk.title} / {chunk.section} / {chunk.chunk_id}")
     return 0
 
 
