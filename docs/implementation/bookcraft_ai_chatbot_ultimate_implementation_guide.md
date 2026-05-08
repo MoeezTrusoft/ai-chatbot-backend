@@ -28,7 +28,7 @@ You are implementing the BookCraft AI Chatbot from the approved architecture. Tr
 - Elasticsearch/RAG contains service descriptions, FAQs, policies, process documentation, and portfolio metadata, but never numeric prices or concrete service timelines.
 - Pricing and timeline numbers belong only to the Pricing & Timeline Engine.
 - Legal documents use strict templates and typed parameters. LLMs must never write legal clauses.
-- Tri-Match classifies query/service intent only. Funnel stage uses LLM ensemble + Funnel Signal Engine, not Tri-Match.
+- D-081: Tri-Match classifies query intent, service intent, and funnel stage. Funnel-stage output launches shadow-only with Decision Layer weight 0.
 - Funnel Signal Engine launches in shadow mode with weight 0.
 - Prometheus, Grafana, logs, traces, and alerts must be built alongside each component.
 - No phase can begin until the prior phase exit criteria pass.
@@ -1801,9 +1801,10 @@ llm_vendor_circuit_open_total{vendor}
 Tri-Match is a deterministic classifier for:
 
 - query intent,
-- service intent.
+- service intent,
+- funnel stage.
 
-Tri-Match must **not** classify funnel stage. That belongs to the LLM ensemble and Funnel Signal Engine.
+Per D-081, Tri-Match funnel-stage output is shadow-only at launch with Decision Layer weight 0. It must not mutate `ThreadState.sales_stage` directly.
 
 ### 12.2 Rule layers
 
@@ -3071,9 +3072,9 @@ Control: all tools go through dispatcher, validation, gating, idempotency, audit
 
 ### 23.4 Funnel/Tri-Match confusion loophole
 
-Problem: Tri-Match starts classifying funnel stage.
+Problem: Tri-Match funnel-stage output directly changes conversation stage before calibration.
 
-Control: Tri-Match only query/service; Funnel Signal only stage; Decision Layer combines.
+Control: D-081 allows funnel-stage voting but keeps it shadow-only with Decision Layer weight 0 until calibration.
 
 ### 23.5 Ghostwriting sample confidentiality loophole
 
@@ -3341,4 +3342,3 @@ And run a smoke conversation:
 User: Hi, I need editing for my 60,000-word romance novel. How much would it cost?
 Expected: Bot recognizes editing + pricing intent, calls pricing tool if rules are configured, or asks for missing pricing inputs. It must not invent prices.
 ```
-

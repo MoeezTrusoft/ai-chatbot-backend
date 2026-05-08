@@ -1,0 +1,17 @@
+{
+  "version": "service_intent_rules.v1",
+  "rules": [
+    {"id": "SI-GHOST-001", "layer": "exact", "target": {"service_intent": "ghostwriting"}, "phrases": ["ghostwriting"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-GHOST-002", "layer": "regex", "target": {"service_intent": "ghostwriting"}, "regex": "\\b(ghostwriting|ghost writer|write my book)\\b", "confidence": 0.97, "shortcut_allowed": true},
+    {"id": "SI-GHOST-003", "layer": "pattern", "target": {"service_intent": "ghostwriting"}, "pattern": ["write", "my", "book"], "confidence": 0.97, "shortcut_allowed": true},
+    {"id": "SI-EDIT-001", "layer": "exact", "target": {"service_intent": "editing_proofreading"}, "phrases": ["editing"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-COVER-001", "layer": "exact", "target": {"service_intent": "cover_design_illustration"}, "phrases": ["cover design"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-FORMAT-001", "layer": "exact", "target": {"service_intent": "interior_formatting"}, "phrases": ["interior formatting"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-AUDIO-001", "layer": "exact", "target": {"service_intent": "audiobook_production"}, "phrases": ["audiobook"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-PUBLISH-001", "layer": "exact", "target": {"service_intent": "publishing_distribution"}, "phrases": ["publishing distribution"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-MARKETING-001", "layer": "exact", "target": {"service_intent": "marketing_promotion"}, "phrases": ["marketing promotion"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-WEBSITE-001", "layer": "exact", "target": {"service_intent": "author_website"}, "phrases": ["author website"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-TRAILER-001", "layer": "exact", "target": {"service_intent": "video_trailer"}, "phrases": ["video trailer"], "confidence": 0.98, "shortcut_allowed": true},
+    {"id": "SI-SEM-001", "layer": "semantic", "target": {"service_intent": "cover_design_illustration"}, "semantic_examples": ["I need artwork for my book jacket"], "confidence": 0.70}
+  ]
+}

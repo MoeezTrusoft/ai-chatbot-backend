@@ -16,6 +16,12 @@ from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.trimatch import (
+    RuleRepository,
+    TriMatchEngine,
+    TriMatchLayer,
+    TriMatchMode,
+)
 from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_client
 from bookcraft.infra.config import Settings, get_settings
 from bookcraft.infra.logging import configure_logging
@@ -125,6 +131,23 @@ def build_chat_service(settings: Settings) -> ChatService:
             Path(settings.pricing_v2_config_dir),
             values_approved=settings.pricing_v2_values_approved,
         ),
+        trimatch_engine=build_trimatch_engine(settings),
+    )
+
+
+def build_trimatch_engine(settings: Settings) -> TriMatchEngine:
+    shortcut_layers = {
+        TriMatchLayer(layer.strip())
+        for layer in settings.trimatch_shortcut_layers.split(",")
+        if layer.strip()
+    }
+    return TriMatchEngine(
+        rule_pack=RuleRepository(settings.trimatch_rule_dir).load_active_rules(),
+        mode=TriMatchMode(settings.trimatch_mode),
+        shortcut_layers=shortcut_layers,
+        shortcut_threshold=settings.trimatch_shortcut_threshold,
+        funnel_stage_weight=settings.trimatch_funnel_stage_weight,
+        fuzzy_enabled=settings.trimatch_fuzzy_enabled,
     )
 
 

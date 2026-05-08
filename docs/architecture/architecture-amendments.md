@@ -16,6 +16,10 @@
 | Cross-reference style | `AR §N.M` for Architecture Reference, `IG §N.M` for Implementation Guide, `D-NNN` for decisions |
 | Net architectural impact | One new component (Funnel Signal Engine), one new principle (engine-owns-numbers), revised cost projections, formalized preprocessor contract, CD verification requirement |
 
+> **D-081 update:** Tri-Match now emits funnel-stage votes in shadow mode with Decision Layer weight 0.
+> This supersedes D-070/D-022 only for the question of whether Tri-Match may classify funnel
+> stage. The original D-070 rationale remains historical context.
+
 ### How to read this document
 
 1. **§1 Cover Note** — high-level summary by stakeholder domain (read first if you only have 5 minutes)
@@ -311,7 +315,7 @@ This section enumerates the specific edits required in the canonical Architectur
 | §5 (Per-Turn Flow) | In Phase 2, add parallel Funnel Signal Engine classification alongside Tri-Match. | D-070 |
 | §6.2 (TRG) | Clarify that TRG produces relations and compliance scores; **does not** produce funnel-stage signals. Funnel signals come from the LLM ensemble and the new Funnel Signal Engine. | D-070 |
 | §6.4.1 (Tri-Match) | Add subsection "Cross-service disambiguation patterns" covering the genre-rule lookahead pattern. | D-080 |
-| §6.4.1 (Tri-Match) | Add language confirming Tri-Match does not classify funnel stage; D-022 stands as written. | D-070 |
+| §6.4.1 (Tri-Match) | Superseded by D-081: Tri-Match emits funnel-stage votes in shadow mode with Decision Layer weight 0. | D-081 |
 | §6.5 (Extraction) | Update D-036 reference to point to D-074's negation/hedge/counterfactual contract. | D-074 |
 | §6.11 (Decision Layer) | Add Funnel Signal Engine as a fourth source. Initial weight 0. Update source weights table. | D-070 |
 | §6.13 (Shared Preprocessing) | Replace input contract with the formal sidecar contract: `_negation_cues.json`, `_typography_normalization.json`, `_compound_word_variants.json`. Specify `ProcessedMessage` gains `hedge_spans` and `counterfactual_spans`. | D-074, D-079 |

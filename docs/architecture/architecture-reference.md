@@ -659,7 +659,7 @@ This component has three sub-components: Tri-Match engine (§6.4.1), LLM ensembl
 
 **TRG integration:** Conditional rules fire based on TRG context (previous bot turn relation, repetition count, outstanding questions). The same "yes" gets different intent depending on what AI just asked.
 
-**Output:** `query_intent` and `service_intent` only. **Funnel stage is NOT classified by Tri-Match** — that's contextual and stays LLM-only (D-022).
+**Output:** `query_intent`, `service_intent`, and `funnel_stage`. Per D-081, funnel-stage output launches shadow-only with Decision Layer weight 0 and does not directly mutate thread state.
 
 **Mode flag (`.env`-driven):**
 
@@ -1859,7 +1859,7 @@ Every locked decision, numbered for cross-reference.
 - **D-019:** Tri-Match mode: shadow by default.
 - **D-020:** `.env`-driven flag (`TRIMATCH_SHORTCUT_LAYERS`) for layer-by-layer shortcut promotion.
 - **D-021:** Tri-Match never shortcuts on `semantic` or `fuzzy` layers.
-- **D-022:** Tri-Match does NOT classify funnel stage (LLM-only).
+- **D-022:** Superseded by D-081 for funnel-stage output. Tri-Match emits funnel-stage votes in shadow mode with Decision Layer weight 0.
 - **D-023:** Tri-Match shortcut threshold: 0.95 (when enabled).
 - **D-024:** Tri-Match preprocessing: state-of-the-art (lemmatization, negation, evidence pool), NOT simple regex+fuzzy+semantic cascade.
 - **D-025:** OpenAI model: GPT-5.4 mini (not nano).

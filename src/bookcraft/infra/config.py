@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     trimatch_shortcut_threshold: float = 0.95
     trimatch_autocorrect_enabled: bool = False
     trimatch_autoapprove_enabled: bool = False
+    trimatch_rule_dir: str = "data/trimatch/rules"
+    trimatch_eval_dir: str = "data/trimatch/eval"
+    trimatch_funnel_stage_weight: float = 0.0
+    trimatch_fuzzy_enabled: bool = False
 
     funnel_signal_mode: Literal["shadow", "vote_only"] = "shadow"
     preprocessor_sidecar_dir: str = "data/trimatch/sidecars"

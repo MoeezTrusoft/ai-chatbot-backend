@@ -20,6 +20,7 @@ from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.trg import TemporalRelationGraphEngine
+from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, Source
 from bookcraft.domain.state import ThreadState
 
@@ -49,6 +50,7 @@ class ChatService:
     rag_retriever: RagRetriever | None = None
     pricing_engine: PricingTimelineEngine | None = None
     trg_engine: TemporalRelationGraphEngine | None = None
+    trimatch_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
@@ -81,6 +83,16 @@ class ChatService:
                 )
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
+            if self.trimatch_engine is not None:
+                trimatch_result = self.trimatch_engine.classify(processed)
+                event_ids.append(
+                    self._append_event(
+                        memory,
+                        thread_id,
+                        "trimatch.voted",
+                        trimatch_result.model_dump(mode="json"),
+                    )
+                )
             intent = await self.intent_classifier.classify(processed, memory.state)
             event_ids.append(
                 self._append_event(

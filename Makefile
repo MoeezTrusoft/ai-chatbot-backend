@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke
+.PHONY: install lint type test run up down smoke compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke
 
 PYTHON ?= python3
 UV ?= $(PYTHON) -m uv
@@ -56,3 +56,12 @@ portfolio-verify:
 
 portfolio-smoke:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/portfolio_smoke.py
+
+trimatch-verify:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_trimatch_rules.py
+
+trimatch-eval:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/trimatch_eval.py
+
+trimatch-smoke:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/trimatch_smoke.py
