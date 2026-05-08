@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     agreement_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
     nda_template_version: str = "v1.0"
     agreement_template_version: str = "v1.0"
+    document_template_dir: str = "data/templates"
+    document_output_dir: str = "data/generated/documents"
+    document_pdf_rendering_enabled: bool = False
     document_retraction_hours: int = 24
     s3_documents_bucket: str = "bookcraft-documents"
     s3_region: str = "us-east-1"
