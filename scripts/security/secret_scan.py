@@ -25,6 +25,9 @@ EXCLUDED_SUFFIXES = {
     ".pyc",
     ".sqlite",
 }
+EXCLUDED_FILENAMES = {
+    ".env",
+}
 SECRET_PATTERNS = {
     "private_key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     "openai_key": re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
@@ -69,6 +72,8 @@ def main() -> int:
 
 
 def _excluded(path: Path) -> bool:
+    if path.name in EXCLUDED_FILENAMES:
+        return True
     if path.suffix.lower() in EXCLUDED_SUFFIXES:
         return True
     parts = set(path.parts)

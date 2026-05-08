@@ -56,6 +56,47 @@ For full responses:
 UV_CACHE_DIR=.uv-cache python3 -m uv run python scripts/dev/complex_chat_probe.py --json
 ```
 
+## Run Diagnostic Report
+
+After the API is running, use the 10-turn diagnostic runner:
+
+```bash
+make chat-diagnostics
+```
+
+It writes JSON and Markdown reports under:
+
+```bash
+reports/chat-diagnostics/
+```
+
+The report includes:
+
+- health and readiness snapshots,
+- provider configuration flags without secrets,
+- per-turn latency, status code, thread ID, correlation ID, language, intent, service, response text, and debug event IDs,
+- safety findings for price/timeline/legal-template/raw-JSON leakage,
+- expected-behavior findings for each complex scenario,
+- aggregate pass/fail and latency summary.
+
+To point at another server:
+
+```bash
+BOOKCRAFT_CHAT_BASE_URL=http://localhost:8000 make chat-diagnostics
+```
+
+To continue after failures and print the full report:
+
+```bash
+UV_CACHE_DIR=.uv-cache python3 -m uv run python scripts/dev/complex_chat_diagnostics.py --continue-on-error --print-json
+```
+
+To make findings fail a CI job:
+
+```bash
+UV_CACHE_DIR=.uv-cache python3 -m uv run python scripts/dev/complex_chat_diagnostics.py --continue-on-error --fail-on-findings
+```
+
 ## Add AI API Keys
 
 Create a local `.env` from the example and fill only local secrets:
