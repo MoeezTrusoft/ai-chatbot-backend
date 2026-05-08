@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     trimatch_fuzzy_enabled: bool = False
 
     funnel_signal_mode: Literal["shadow", "vote_only"] = "shadow"
+    funnel_rule_source_path: str = "data/funnel/funnel_stage_intents.sample.json"
+    funnel_rule_build_dir: str = "data/funnel/build"
     preprocessor_sidecar_dir: str = "data/trimatch/sidecars"
 
     rag_top_k: int = 8

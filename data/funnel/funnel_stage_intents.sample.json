@@ -1,0 +1,45 @@
+{
+  "version": "funnel_stage_intents.sample.v1",
+  "rules": [
+    {
+      "id": "FS-USER-001",
+      "section": "Inbound Message - user language",
+      "stage": "service_discovery",
+      "layer": "exact",
+      "phrases": ["what services do you offer", "can you help with my book"],
+      "confidence": 0.9
+    },
+    {
+      "id": "FS-USER-002",
+      "section": "Chat Widget Buyer Communications",
+      "stage": "scoping",
+      "layer": "pattern",
+      "pattern": ["manuscript", "word count"],
+      "confidence": 0.87
+    },
+    {
+      "id": "FS-USER-003",
+      "section": "Prospect message",
+      "stage": "quote_requested",
+      "layer": "regex",
+      "regex": "\\b(quote|estimate)\\b",
+      "confidence": 0.88
+    },
+    {
+      "id": "FS-CRM-001",
+      "section": "Internal CRM lifecycle",
+      "stage": "quoted",
+      "layer": "exact",
+      "phrases": ["proposal_sent"],
+      "confidence": 0.95
+    },
+    {
+      "id": "FS-INI-051",
+      "section": "Metadata - session length",
+      "stage": "exploring",
+      "layer": "regex",
+      "regex": "session_duration_seconds>=600",
+      "confidence": 0.75
+    }
+  ]
+}
