@@ -13,6 +13,10 @@ make verifier-gates
 docker compose config
 ```
 
+The local Docker stack maps Postgres to host port `55432` by default. Use
+`POSTGRES_HOST_PORT=<free-port>` to override it when needed. Container-to-container
+traffic still uses Postgres port `5432`.
+
 The acceptance script runs the chat loop in process with deterministic test settings. It covers:
 
 - initial ghostwriting inquiry,

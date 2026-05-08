@@ -20,6 +20,12 @@ make verifier-gates
 make ci-local
 ```
 
+Docker Compose maps Postgres to host port `55432` by default to avoid conflicts with a local Postgres on `5432`. Host-side tools should use:
+
+```bash
+DATABASE_URL=postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:55432/bookcraft
+```
+
 ## Endpoints
 
 - `GET /healthz`
