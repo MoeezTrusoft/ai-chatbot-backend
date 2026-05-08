@@ -132,3 +132,37 @@ class DeferredToolInvocation(SQLModel, table=True):
     decision_notes: str | None = None
     invocation_result: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     expires_at: datetime
+
+
+class GraphNodeRecord(SQLModel, table=True):
+    __tablename__ = "graph_nodes"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    node_type: str = Field(max_length=64, index=True)
+    label: str = Field(max_length=255)
+    text: str | None = None
+    turn_sequence: int = Field(index=True)
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column("metadata", JSON, nullable=False),
+    )
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class GraphEdgeRecord(SQLModel, table=True):
+    __tablename__ = "graph_edges"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    source_node_id: UUID = Field(index=True)
+    target_node_id: UUID = Field(index=True)
+    relation_type: str = Field(max_length=64, index=True)
+    confidence: float = 1.0
+    compliance_score: float = 1.0
+    evidence: str | None = None
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column("metadata", JSON, nullable=False),
+    )
+    created_at: datetime = Field(default_factory=utc_now, index=True)

@@ -19,6 +19,7 @@ from bookcraft.components.pricing import (
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
+from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.domain.enums import QueryIntentType, Source
 from bookcraft.domain.state import ThreadState
 
@@ -47,6 +48,7 @@ class ChatService:
     formatter: ResponseFormatter
     rag_retriever: RagRetriever | None = None
     pricing_engine: PricingTimelineEngine | None = None
+    trg_engine: TemporalRelationGraphEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
@@ -89,6 +91,7 @@ class ChatService:
                 )
             )
             extraction = await self.extractor.extract(processed, memory.state)
+            previous_state = memory.state.model_copy(deep=True)
             memory.state = self.state_applier.apply(memory.state, extraction)
             STATE_UPDATES.labels(result="applied").inc()
             event_ids.append(
@@ -143,6 +146,28 @@ class ChatService:
                 pricing_missing_question=pricing_missing_question,
             )
             bubbles = self.formatter.format(draft.text)
+            if self.trg_engine is not None:
+                trg_result = await self.trg_engine.update_after_turn(
+                    thread_id=thread_id,
+                    turn_sequence=len(memory.events) + 1,
+                    user_text=payload.message,
+                    assistant_text=draft.text,
+                    previous_state=previous_state,
+                    state_deltas=extraction.state_deltas,
+                )
+                event_ids.append(
+                    self._append_event(
+                        memory,
+                        thread_id,
+                        "trg.updated",
+                        {
+                            "node_count": len(trg_result.graph.nodes),
+                            "edge_count": len(trg_result.graph.edges),
+                            "unresolved_question_count": trg_result.unresolved_question_count,
+                            "contradiction_count": trg_result.contradiction_count,
+                        },
+                    )
+                )
             event_ids.append(
                 self._append_event(
                     memory,
