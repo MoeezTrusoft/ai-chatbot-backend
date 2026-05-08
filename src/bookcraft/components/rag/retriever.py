@@ -74,7 +74,9 @@ class RagRetriever:
         return _hits_by_id(dict(response))
 
     async def _vector(self, request: RagRetrievalRequest) -> dict[str, dict[str, Any]]:
-        if not request.query_embedding or not any(abs(value) > 0 for value in request.query_embedding):
+        if not request.query_embedding or not any(
+            abs(value) > 0 for value in request.query_embedding
+        ):
             return {}
         filters = _filters(request.service_intent)
         response = await self.client.search(

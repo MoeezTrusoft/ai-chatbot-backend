@@ -1,6 +1,6 @@
 import asyncio
-import httpx
 
+import httpx
 from elasticsearch import AsyncElasticsearch
 
 from bookcraft.components.intent.schemas import IntentVote

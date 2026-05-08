@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch, helpers
+from elasticsearch.helpers import BulkIndexError
 
 from bookcraft.components.rag.schemas import RagChunk
 
@@ -62,7 +63,11 @@ class RagIndexManager:
             for chunk in chunks
         ]
         if actions:
-            await helpers.async_bulk(self.client, actions)
+            try:
+                await helpers.async_bulk(self.client, actions)
+            except BulkIndexError as exc:
+                first_error = exc.errors[0] if exc.errors else {}
+                raise RuntimeError(f"Bulk indexing failed. First error: {first_error}") from exc
         await self.client.indices.refresh(index=self.index_name)
 
     async def promote_alias(self) -> None:

@@ -44,12 +44,32 @@ services:
       retries: 10
 
   tei:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
-    command: ["--model-id", "BAAI/bge-small-en-v1.5", "--port", "8080"]
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command:
+      - "--model-id"
+      - "BAAI/bge-small-en-v1.5"
+      - "--hostname"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
     ports:
       - "8080:8080"
+    environment:
+      HF_HOME: /data
+      HF_HUB_CACHE: /data/hub
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
     volumes:
       - tei-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python - <<'PY'\nimport urllib.request, json\nreq=urllib.request.Request('http://localhost:8080/embed', data=json.dumps({'inputs':'hello'}).encode(), headers={'Content-Type':'application/json'})\nurllib.request.urlopen(req, timeout=10)\nPY"
+        ]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
 
   prometheus:
     image: prom/prometheus:latest
