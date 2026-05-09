@@ -168,7 +168,11 @@ def match_rule(rule: TriMatchRule, message: ProcessedMessage) -> str | None:
     text = message.normalized.casefold()
     if rule.layer == TriMatchLayer.EXACT:
         for phrase in rule.phrases:
-            if text == phrase.casefold() or phrase.casefold() in text:
+            normalized_phrase = phrase.casefold()
+            if text == normalized_phrase or re.search(
+                rf"(?<!\w){re.escape(normalized_phrase)}(?!\w)",
+                text,
+            ):
                 return phrase
         return None
     if rule.layer == TriMatchLayer.REGEX:

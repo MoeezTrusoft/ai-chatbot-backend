@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
@@ -14,6 +15,25 @@ from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.response import ResponseFormatter, ResponseRouter, SonnetResponseGenerator
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 from bookcraft.domain.state import ThreadState
+
+
+class FakeResponseAdapter:
+    name = "fake_sonnet"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.calls: list[dict[str, str]] = []
+
+    async def structured(
+        self,
+        *,
+        system: str,
+        user: str,
+        output_model: type[BaseModel],
+        purpose: str,
+    ) -> BaseModel:
+        self.calls.append({"system": system, "user": user, "purpose": purpose})
+        return output_model.model_validate({"text": self.text})
 
 
 def vote(query: QueryIntentType) -> IntentVote:
@@ -103,3 +123,40 @@ async def test_document_status_never_generates_legal_text() -> None:
 
     assert draft.source == "nda"
     assert "approved template" in draft.text
+
+
+@pytest.mark.asyncio
+async def test_live_response_adapter_receives_guarded_prompt() -> None:
+    adapter = FakeResponseAdapter("Please share the manuscript stage and preferred service.")
+    draft = await SonnetResponseGenerator(
+        provider_name="claude_sonnet",
+        adapter=adapter,
+    ).generate(
+        message=processed(),
+        state=ThreadState(),
+        intent=vote(QueryIntentType.SERVICE_QUESTION),
+        extraction=CombinedExtraction(),
+    )
+
+    assert draft.source == "claude_sonnet"
+    assert "preferred service" in draft.text
+    assert adapter.calls[0]["purpose"] == "response"
+    assert "Do not invent prices" in adapter.calls[0]["system"]
+    assert "normalized_message" in adapter.calls[0]["user"]
+
+
+@pytest.mark.asyncio
+async def test_live_response_fails_closed_on_price_shape() -> None:
+    adapter = FakeResponseAdapter("This will cost $100 and take 2 weeks.")
+    draft = await SonnetResponseGenerator(
+        provider_name="claude_sonnet",
+        adapter=adapter,
+    ).generate(
+        message=processed(),
+        state=ThreadState(),
+        intent=vote(QueryIntentType.SERVICE_QUESTION),
+        extraction=CombinedExtraction(),
+    )
+
+    assert "$100" not in draft.text
+    assert "approved workflow" in draft.text

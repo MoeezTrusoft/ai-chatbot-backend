@@ -122,6 +122,34 @@ def test_decision_layer_keeps_trimatch_funnel_stage_shadow_weight_zero() -> None
     assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
 
 
+def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
+    trimatch = TriMatchResult(
+        query_primary=QueryIntentType.PRICING_QUESTION,
+        service_primary=ServiceCategory.GHOSTWRITING,
+        funnel_stage=SalesStage.QUOTE_REQUESTED,
+        confidence=0.88,
+        mode=TriMatchMode.SHADOW,
+        shadow_only_dimensions=["funnel_stage"],
+    )
+
+    result = DecisionLayer(trimatch_funnel_stage_weight=0.0).decide(
+        provider_votes=[
+            ProviderIntentVote(
+                provider="claude_haiku",
+                status=IntentProviderStatus.FAILED,
+                error="schema",
+            )
+        ],
+        trimatch_result=trimatch,
+    )
+
+    assert result.final_vote.query_primary == QueryIntentType.PRICING_QUESTION
+    assert result.final_vote.service_primary == ServiceCategory.GHOSTWRITING
+    assert result.final_vote.funnel_stage == SalesStage.NEW
+    assert "trimatch_query_service_fallback" in result.audit_trail
+    assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+
+
 @pytest.mark.asyncio
 async def test_ensemble_timeout_and_provider_down_still_decide_from_remaining_vote() -> None:
     classifier = EnsembleIntentClassifier(
@@ -145,6 +173,36 @@ async def test_ensemble_timeout_and_provider_down_still_decide_from_remaining_vo
     assert IntentProviderStatus.SUCCEEDED in statuses
     assert IntentProviderStatus.TIMED_OUT in statuses
     assert IntentProviderStatus.FAILED in statuses
+
+
+@pytest.mark.asyncio
+async def test_ensemble_rejects_greeting_vote_for_substantive_message() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "claude_haiku",
+                vote(
+                    QueryIntentType.GREETING,
+                    SalesStage.SERVICE_DISCOVERY,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    result = await classifier.classify(
+        processed("Hi, I need ghostwriting help for a fantasy novel."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert result.service_primary == ServiceCategory.GHOSTWRITING
+    assert classifier.last_decision is not None
+    provider_vote = classifier.last_decision.provider_votes[0].vote
+    assert provider_vote is not None
+    assert "greeting_vote_rejected_for_substantive_message" in provider_vote.evidence
 
 
 @pytest.mark.asyncio

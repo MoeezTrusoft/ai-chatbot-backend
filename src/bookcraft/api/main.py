@@ -160,7 +160,7 @@ def build_chat_service(
         intent_classifier=build_intent_classifier(settings),
         extractor=CombinedExtractor(),
         state_applier=StateApplier(),
-        response_generator=SonnetResponseGenerator(),
+        response_generator=build_response_generator(settings),
         formatter=ResponseFormatter(),
         pricing_engine=PricingTimelineEngine.from_config_dir(
             Path(settings.pricing_v2_config_dir),
@@ -195,7 +195,7 @@ def build_trimatch_engine(settings: Settings) -> TriMatchEngine:
 
 
 def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
-    if settings.llm_provider_mode == "mock":
+    if settings.app_env == "test" or settings.llm_provider_mode == "mock":
         return build_mock_ensemble_classifier(
             timeout_seconds=settings.intent_ensemble_timeout_seconds,
             trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
@@ -238,6 +238,23 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
         ],
         timeout_seconds=settings.intent_ensemble_timeout_seconds,
         trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
+    )
+
+
+def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
+    if settings.app_env == "test" or settings.llm_provider_mode == "mock":
+        return SonnetResponseGenerator()
+    if not settings.anthropic_api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER_MODE=live")
+    return SonnetResponseGenerator(
+        provider_name="claude_sonnet",
+        adapter=AnthropicAdapter(
+            api_key=settings.anthropic_api_key,
+            base_url=settings.anthropic_base_url,
+            timeout_seconds=settings.llm_request_timeout_seconds,
+            model=settings.anthropic_sonnet_model,
+            name="claude_sonnet",
+        ),
     )
 
 

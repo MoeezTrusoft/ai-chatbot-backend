@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -105,8 +106,21 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
         if isinstance(content, list) and content:
             first = content[0]
             if isinstance(first, dict) and isinstance(first.get("text"), str):
-                payload = json.loads(first["text"])
+                payload = _loads_json_object(first["text"])
     if isinstance(payload, dict) and "choices" in payload:
         content = payload["choices"][0]["message"]["content"]
-        payload = json.loads(content)
+        payload = _loads_json_object(content)
     return output_model.model_validate(payload)
+
+
+def _loads_json_object(text: str) -> object:
+    stripped = text.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        decode_error = exc
+        pass
+    match = re.search(r"\{.*\}", stripped, flags=re.S)
+    if match is None:
+        raise decode_error
+    return json.loads(match.group(0))

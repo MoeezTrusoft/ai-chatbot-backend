@@ -17,6 +17,12 @@ class ResponseDraft(BaseModel):
     approved_urls: list[str] = Field(default_factory=list)
 
 
+class GeneratedResponseText(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=3000)
+
+
 class FormattedBubble(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
