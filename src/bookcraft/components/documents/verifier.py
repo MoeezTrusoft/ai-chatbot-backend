@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
+from bookcraft.components.documents.safety import rendered_document_safety_errors
 from bookcraft.components.documents.schemas import DocumentGenerationResult, DocumentKind
 
 
@@ -39,4 +40,5 @@ class DocumentVerifier:
             errors.append("rendered document is not an HTML document")
         if result.rendered_hash == result.parameter_hash:
             errors.append("rendered hash unexpectedly matches parameter hash")
+        errors.extend(rendered_document_safety_errors(rendered_html))
         return errors

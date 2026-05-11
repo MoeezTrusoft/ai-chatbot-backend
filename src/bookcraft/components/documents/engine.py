@@ -9,6 +9,10 @@ from prometheus_client import Counter
 
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.renderer import StrictTemplateRenderer
+from bookcraft.components.documents.safety import (
+    safe_document_output_path,
+    safe_output_root,
+)
 from bookcraft.components.documents.schemas import (
     AgreementParams,
     DocumentGenerationResult,
@@ -39,7 +43,7 @@ class DocumentEngine:
         pdf_rendering_enabled: bool = False,
     ) -> None:
         self.registry = registry
-        self.output_dir = Path(output_dir)
+        self.output_dir = safe_output_root(output_dir)
         self.pdf_rendering_enabled = pdf_rendering_enabled
         self.renderer = StrictTemplateRenderer()
         self.verifier = DocumentVerifier()
@@ -60,15 +64,24 @@ class DocumentEngine:
         parameter_hash = _hash_json(params)
         rendered_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
         document_id = f"{kind.value}_{uuid4()}"
-        target_dir = self.output_dir / kind.value
-        target_dir.mkdir(parents=True, exist_ok=True)
-        html_path = target_dir / f"{document_id}.html"
+        html_path = safe_document_output_path(
+            output_root=self.output_dir,
+            kind=kind,
+            document_id=document_id,
+            suffix="html",
+        )
+        html_path.parent.mkdir(parents=True, exist_ok=True)
         html_path.write_text(rendered, encoding="utf-8")
         pdf_path: Path | None = None
         if self.pdf_rendering_enabled:
             from weasyprint import HTML  # type: ignore[import-untyped]
 
-            pdf_path = target_dir / f"{document_id}.pdf"
+            pdf_path = safe_document_output_path(
+                output_root=self.output_dir,
+                kind=kind,
+                document_id=document_id,
+                suffix="pdf",
+            )
             HTML(string=rendered, base_url=str(record.path.parent)).write_pdf(pdf_path)
         result = DocumentGenerationResult(
             document_id=document_id,

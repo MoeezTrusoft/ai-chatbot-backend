@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from bookcraft.components.documents.safety import reject_placeholder_like_value
+
 
 class DocumentKind(StrEnum):
     NDA = "nda"
@@ -90,9 +92,16 @@ class AgreementParams(BaseModel):
     @field_validator("final_fee", "total_fee")
     @classmethod
     def require_engine_sourced_amount_string(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("fee fields must be provided from deterministic quote output")
-        return value
+        return reject_placeholder_like_value(value, field_name="agreement fee field")
+
+    @field_validator(
+        "installment_amount",
+        "initial_amount",
+        "remaining_amount",
+    )
+    @classmethod
+    def reject_placeholder_payment_amounts(cls, value: str) -> str:
+        return reject_placeholder_like_value(value, field_name="agreement payment field")
 
     @field_validator("client_email")
     @classmethod
