@@ -8,11 +8,13 @@ import sentry_sdk
 import structlog
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.chat import router as chat_router
+from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
@@ -46,6 +48,7 @@ from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter, RedisRateLimitStore
 from bookcraft.infra.readiness import ReadinessChecker
+from bookcraft.infra.redaction import redact_text
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
 from bookcraft.tools import (
@@ -113,16 +116,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.rate_limit_client = rate_limit_client
     app.state.rate_limiter = (
-        InMemoryRateLimiter(
-        limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute
+        InMemoryRateLimiter(limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute)
+        if rate_limit_client is None
+        else RedisRateLimiter(
+            store=RedisRateLimitStore(rate_limit_client),
+            keys=CacheKeyBuilder(environment=resolved_settings.app_env),
+            limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute,
+        )
     )
-    if rate_limit_client is None
-    else RedisRateLimiter(
-        store=RedisRateLimitStore(rate_limit_client),
-        keys=CacheKeyBuilder(environment=resolved_settings.app_env),
-        limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute,
-    )
-)
     thread_repository = None
     session_factory = None
     if resolved_settings.app_env != "test":
@@ -142,9 +143,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         correlation_id = request.headers.get("x-correlation-id") or str(uuid4())
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
-        response = await call_next(request)
+
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            structlog.get_logger(__name__).exception(
+                "unhandled_http_exception",
+                correlation_id=correlation_id,
+                method=request.method,
+                path=request.url.path,
+                exception_class=exc.__class__.__name__,
+                error=redact_text(str(exc)),
+            )
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content=ErrorResponse(
+                    error="internal_error",
+                    correlation_id=correlation_id,
+                ).model_dump(mode="json"),
+                headers={"x-correlation-id": correlation_id},
+            )
+
         response.headers["x-correlation-id"] = correlation_id
         return response
+
+    if resolved_settings.app_env == "test":
+
+        @app.get("/_test/crash", include_in_schema=False)
+        async def test_crash() -> None:
+            raise RuntimeError("boom author@example.com +92 300 1234567")
 
     @app.get("/healthz", response_model=HealthResponse, tags=["system"])
     async def healthz() -> HealthResponse:
