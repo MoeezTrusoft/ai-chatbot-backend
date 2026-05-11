@@ -7,11 +7,13 @@ from uuid import uuid4
 import sentry_sdk
 import structlog
 from fastapi import FastAPI, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.chat import router as chat_router
+from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
@@ -54,10 +56,6 @@ from bookcraft.tools import (
     ToolGatingPolicy,
     ToolRegistry,
 )
-
-from fastapi.middleware.cors import CORSMiddleware
-
-from bookcraft.api.security import parse_allowed_origins
 
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
@@ -242,7 +240,6 @@ def build_tool_dispatcher(
         if session_factory is None or settings.app_env == "test"
         else DbToolAuditSink(session_factory=session_factory)
     )
-    
     return ToolDispatcher(
         registry=registry,
         idempotency_store=IdempotencyStore(
@@ -250,9 +247,7 @@ def build_tool_dispatcher(
             keys=key_builder,
             ttl_seconds=settings.redis_idempotency_ttl_hours * 3600,
         ),
-        
         audit_sink=audit_sink,
-        
         gating_policy=ToolGatingPolicy(
             nda_mode=settings.nda_mode,
             agreement_mode=settings.agreement_mode,
