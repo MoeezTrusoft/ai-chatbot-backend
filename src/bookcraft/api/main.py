@@ -86,9 +86,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db_engine = getattr(app.state, "db_engine", None)
         if db_engine is not None:
             await db_engine.dispose()
-            rate_limit_client = getattr(app.state, "rate_limit_client", None)
-            if rate_limit_client is not None:
-                await rate_limit_client.aclose()
+        rate_limit_client = getattr(app.state, "rate_limit_client", None)
+        if rate_limit_client is not None:
+            await rate_limit_client.aclose()
         structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(

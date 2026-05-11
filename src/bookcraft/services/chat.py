@@ -31,6 +31,7 @@ from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.state import ThreadState
+from bookcraft.infra.redaction import redact_mapping
 from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
@@ -100,7 +101,7 @@ class ChatService:
                     bubbles=bubbles,
                     intent=None,
                     language_status=language.language,
-                    debug_event_ids=event_ids,
+                    debug_event_ids=self._debug_event_ids(event_ids),
                 )
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
@@ -253,7 +254,7 @@ class ChatService:
                 bubbles=bubbles,
                 intent=intent,
                 language_status=language.language,
-                debug_event_ids=event_ids,
+                debug_event_ids=self._debug_event_ids(event_ids),
             )
 
     @staticmethod
@@ -263,20 +264,21 @@ class ChatService:
         event_type: str,
         payload: dict[str, object],
     ) -> str:
+        safe_payload = redact_mapping(payload) or {}
         sequence = len(memory.events) + 1
         previous_hash = str(memory.events[-1]["event_hash"]) if memory.events else None
         event_hash = calculate_event_hash(
             thread_id=thread_id,
             sequence=sequence,
             event_type=event_type,
-            payload=payload,
+            payload=safe_payload,
             previous_hash=previous_hash,
         )
         memory.events.append(
             {
                 "sequence": sequence,
                 "event_type": event_type,
-                "payload": payload,
+                "payload": safe_payload,
                 "previous_hash": previous_hash,
                 "event_hash": event_hash,
             }
@@ -293,15 +295,18 @@ class ChatService:
                 version=0,
                 turn_count=len(memory.events),
                 event_count=len(memory.events),
-                last_event_hash=str(memory.events[-1]["event_hash"])
-                if memory.events
-                else None,
+                last_event_hash=str(memory.events[-1]["event_hash"]) if memory.events else None,
             )
 
         return await self.thread_repository.load_or_create(
             thread_id=payload.thread_id,
             customer_id=payload.customer_id,
         )
+
+    def _debug_event_ids(self, event_ids: list[str]) -> list[str]:
+        if self.environment in {"test", "dev"}:
+            return event_ids
+        return []
 
     async def _append_thread_event(
         self,
@@ -312,16 +317,17 @@ class ChatService:
         event_type: str,
         payload: dict[str, object],
     ) -> tuple[str, int, str]:
+        safe_payload = redact_mapping(payload) or {}
         if self.thread_repository is None:
             memory = self.threads.setdefault(thread_id, ThreadMemory())
-            event_hash = self._append_event(memory, thread_id, event_type, payload)
+            event_hash = self._append_event(memory, thread_id, event_type, safe_payload)
             return event_hash, len(memory.events), event_hash
 
         event_hash = await self.thread_repository.append_event(
             thread_id=thread_id,
             sequence=sequence + 1,
             event_type=event_type,
-            payload=payload,
+            payload=safe_payload,
             previous_hash=previous_hash,
         )
         return event_hash, sequence + 1, event_hash

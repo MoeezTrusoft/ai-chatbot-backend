@@ -13,6 +13,7 @@ from prometheus_client import Counter, Histogram
 from pydantic import BaseModel, ValidationError
 
 from bookcraft.domain.enums import ToolClass, ToolInvocationStatus
+from bookcraft.infra.redaction import redact_mapping, redact_text
 from bookcraft.tools.gating import ToolGatingPolicy
 from bookcraft.tools.idempotency import IdempotencyStore
 from bookcraft.tools.schemas import ToolContext, ToolResultEnvelope
@@ -115,15 +116,18 @@ class MemoryAuditSink(AuditSink):
         error: str | None = None,
         duration_ms: int | None = None,
     ) -> None:
+        safe_params = redact_mapping(params) or {}
+        safe_result = redact_mapping(result) if result is not None else None
+        safe_error = redact_text(error) if error else None
         self.records.append(
             {
                 "context": context.model_dump(mode="json"),
                 "tool_name": tool_name,
                 "params_hash": params_hash,
-                "params": params,
+                "params": safe_params,
                 "status": status.value,
-                "result": result,
-                "error": error,
+                "result": safe_result,
+                "error": safe_error,
                 "duration_ms": duration_ms,
             }
         )
