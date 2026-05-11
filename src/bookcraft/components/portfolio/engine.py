@@ -5,6 +5,7 @@ from prometheus_client import Counter
 from bookcraft.domain.enums import ServiceCategory
 
 from .registry import PortfolioRegistry
+from .safety import is_safe_portfolio_url
 from .schemas import PortfolioRequest, PortfolioResponse, PortfolioStatus
 
 PORTFOLIO_REQUESTS = Counter(
@@ -52,7 +53,11 @@ class PortfolioEngine:
 
         by_genre = self.registry.for_service(request.service)
         for candidate in self.registry.candidate_genres(request.genre):
-            samples = by_genre.get(candidate, [])
+            samples = [
+                sample
+                for sample in by_genre.get(candidate, [])
+                if is_safe_portfolio_url(sample.url) and is_safe_portfolio_url(sample.cover_image)
+            ]
             if samples:
                 response = PortfolioResponse(
                     service=request.service,

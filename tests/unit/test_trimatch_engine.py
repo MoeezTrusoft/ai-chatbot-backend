@@ -94,6 +94,13 @@ def test_negation_suppresses_matching_evidence() -> None:
     assert all(item.target != "audiobook_production" for item in result.evidence)
 
 
+def test_exact_match_does_not_match_inside_other_words() -> None:
+    result = _engine().classify(_processed("Which publishing platforms do you support?"))
+
+    assert result.query_primary == QueryIntentType.PUBLISHING_PLATFORM_QUESTION
+    assert all(item.target != QueryIntentType.GREETING.value for item in result.evidence)
+
+
 def test_hedge_damps_evidence_but_keeps_signal() -> None:
     text = "I might need ghostwriting"
     start = text.index("might")

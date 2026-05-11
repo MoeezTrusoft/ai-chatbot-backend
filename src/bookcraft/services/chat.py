@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import structlog
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
+from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRequest, PortfolioResponse
@@ -21,10 +25,16 @@ from bookcraft.components.pricing import (
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.events import calculate_event_hash
+from bookcraft.components.storage.thread_repository import (
+    LoadedThread,
+    ThreadRepository,
+)
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.state import ThreadState
+from bookcraft.infra.redaction import redact_mapping
+from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
     from bookcraft.api.chat import ChatTurnRequest, ChatTurnResponse
@@ -52,83 +62,120 @@ class ChatService:
     rag_retriever: RagRetriever | None = None
     pricing_engine: PricingTimelineEngine | None = None
     portfolio_engine: PortfolioEngine | None = None
+    tool_dispatcher: ToolDispatcher | None = None
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
+    thread_repository: ThreadRepository | None = None
+    environment: str = "dev"
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
         CHAT_TURNS_TOTAL.inc()
         with CHAT_TURN_LATENCY.time():
-            thread_id = payload.thread_id or uuid4()
-            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            thread = await self._load_thread(payload)
+            thread_id = thread.thread_id
+            state = thread.state
+            event_sequence = thread.event_count
+            previous_event_hash = thread.last_event_hash
             language = self.language_guard.detect(payload.message, cached_language="en")
-            event_ids = [
-                self._append_event(memory, thread_id, "user.message", {"text": payload.message})
-            ]
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="user.message",
+                payload={"text": payload.message},
+            )
+            event_ids = [event_id]
             if not language.is_english:
                 bubbles = self.formatter.format(language.redirect_message or "")
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "assistant.redirect",
-                        {"language": language.language},
-                    )
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="assistant.redirect",
+                    payload={"language": language.language},
                 )
+                event_ids.append(event_id)
                 return ChatTurnResponse(
                     thread_id=thread_id,
                     bubbles=bubbles,
                     intent=None,
                     language_status=language.language,
-                    debug_event_ids=event_ids,
+                    debug_event_ids=self._debug_event_ids(event_ids),
                 )
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
             trimatch_result = None
             if self.trimatch_engine is not None:
                 trimatch_result = self.trimatch_engine.classify(processed)
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "trimatch.voted",
-                        trimatch_result.model_dump(mode="json"),
-                    )
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.voted",
+                    payload=trimatch_result.model_dump(mode="json"),
                 )
+                event_ids.append(event_id)
             intent = await self.intent_classifier.classify(
                 processed,
-                memory.state,
+                state,
                 trimatch_result=trimatch_result,
             )
+            intent = harden_intent_from_message(intent, processed)
             decision = self.intent_classifier.last_decision
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "intent.classified",
-                    {
-                        "intent": intent.model_dump(mode="json"),
-                        "decision": decision.model_dump(mode="json") if decision else None,
-                    },
-                )
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="intent.classified",
+                payload={
+                    "intent": intent.model_dump(mode="json"),
+                    "decision": decision.model_dump(mode="json") if decision else None,
+                },
             )
-            extraction = await self.extractor.extract(processed, memory.state)
-            previous_state = memory.state.model_copy(deep=True)
-            memory.state = self.state_applier.apply(memory.state, extraction)
+            event_ids.append(event_id)
+            extraction = await self.extractor.extract(processed, state)
+            previous_state = state.model_copy(deep=True)
+            state = self.state_applier.apply(state, extraction)
             STATE_UPDATES.labels(result="applied").inc()
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "extraction.applied",
-                    {"delta_count": len(extraction.state_deltas)},
-                )
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="extraction.applied",
+                payload={"delta_count": len(extraction.state_deltas)},
             )
+            event_ids.append(event_id)
             rag_chunks = []
             if self.rag_retriever is not None and _allow_rag_for_intent(intent):
-                rag_chunks = await self.rag_retriever.retrieve(processed, intent)
+                try:
+                    rag_chunks = await self.rag_retriever.retrieve(processed, intent)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "rag_retrieval_failed",
+                        thread_id=str(thread_id),
+                        query_intent=intent.query_primary.value,
+                        service_intent=intent.service_primary.value
+                        if intent.service_primary
+                        else None,
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="rag.failed",
+                        payload={
+                            "query_intent": intent.query_primary.value,
+                            "service_intent": intent.service_primary.value
+                            if intent.service_primary
+                            else None,
+                            "exception_class": exc.__class__.__name__,
+                        },
+                    )
+                    event_ids.append(event_id)
             pricing_quote: PricingTimelineQuote | None = None
             timeline_estimate: PricingTimelineQuote | None = None
             pricing_missing_question: str | None = None
@@ -136,16 +183,19 @@ class ChatService:
                 QueryIntentType.PRICING_QUESTION,
                 QueryIntentType.TIMELINE_QUESTION,
             }:
-                pricing_quote, timeline_estimate, pricing_missing_question = self._price_turn(
+                pricing_quote, timeline_estimate, pricing_missing_question = await self._price_turn(
                     thread_id=thread_id,
-                    state=memory.state,
+                    customer_id=payload.customer_id,
+                    turn_sequence=event_sequence + 1,
+                    correlation_id=payload.correlation_id,
+                    state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
                     confidence=intent.confidence,
                 )
                 if pricing_quote is not None:
-                    memory.state = self.state_applier.apply(
-                        memory.state,
+                    state = self.state_applier.apply(
+                        state,
                         CombinedExtraction(
                             state_deltas=[
                                 StateDelta(
@@ -161,15 +211,19 @@ class ChatService:
                     )
             portfolio_response: PortfolioResponse | None = None
             if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
-                portfolio_response = self._portfolio_turn(
-                    state=memory.state,
+                portfolio_response = await self._portfolio_turn(
+                    thread_id=thread_id,
+                    customer_id=payload.customer_id,
+                    turn_sequence=event_sequence + 1,
+                    correlation_id=payload.correlation_id,
+                    state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
             document_status_message = _document_status_message(intent)
             draft = await self.response_generator.generate(
                 message=processed,
-                state=memory.state,
+                state=state,
                 intent=intent,
                 extraction=extraction,
                 rag_chunks=rag_chunks,
@@ -181,45 +235,69 @@ class ChatService:
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
-                trg_result = await self.trg_engine.update_after_turn(
-                    thread_id=thread_id,
-                    turn_sequence=len(memory.events) + 1,
-                    user_text=payload.message,
-                    assistant_text=draft.text,
-                    previous_state=previous_state,
-                    state_deltas=extraction.state_deltas,
-                )
-                event_ids.append(
-                    self._append_event(
-                        memory,
-                        thread_id,
-                        "trg.updated",
-                        {
+                try:
+                    trg_result = await self.trg_engine.update_after_turn(
+                        thread_id=thread_id,
+                        turn_sequence=event_sequence + 1,
+                        user_text=payload.message,
+                        assistant_text=draft.text,
+                        previous_state=previous_state,
+                        state_deltas=extraction.state_deltas,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trg.updated",
+                        payload={
                             "node_count": len(trg_result.graph.nodes),
                             "edge_count": len(trg_result.graph.edges),
                             "unresolved_question_count": trg_result.unresolved_question_count,
                             "contradiction_count": trg_result.contradiction_count,
                         },
                     )
-                )
-            event_ids.append(
-                self._append_event(
-                    memory,
-                    thread_id,
-                    "assistant.response",
-                    {
-                        "intent": intent.model_dump(mode="json"),
-                        "bubble_count": len(bubbles),
-                        "source": draft.source,
-                    },
-                )
+                    event_ids.append(event_id)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "trg_update_failed",
+                        thread_id=str(thread_id),
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trg.failed",
+                        payload={"exception_class": exc.__class__.__name__},
+                    )
+                    event_ids.append(event_id)
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="assistant.response",
+                payload={
+                    "intent": intent.model_dump(mode="json"),
+                    "bubble_count": len(bubbles),
+                    "source": draft.source,
+                },
             )
+            event_ids.append(event_id)
+            if self.thread_repository is not None:
+                await self.thread_repository.save_state(
+                    thread_id=thread_id,
+                    state=state,
+                    expected_version=thread.version,
+                    language=language.language,
+                )
+            else:
+                self.threads[thread_id].state = state
             return ChatTurnResponse(
                 thread_id=thread_id,
                 bubbles=bubbles,
                 intent=intent,
                 language_status=language.language,
-                debug_event_ids=event_ids,
+                debug_event_ids=self._debug_event_ids(event_ids),
             )
 
     @staticmethod
@@ -229,30 +307,81 @@ class ChatService:
         event_type: str,
         payload: dict[str, object],
     ) -> str:
+        safe_payload = redact_mapping(payload) or {}
         sequence = len(memory.events) + 1
         previous_hash = str(memory.events[-1]["event_hash"]) if memory.events else None
         event_hash = calculate_event_hash(
             thread_id=thread_id,
             sequence=sequence,
             event_type=event_type,
-            payload=payload,
+            payload=safe_payload,
             previous_hash=previous_hash,
         )
         memory.events.append(
             {
                 "sequence": sequence,
                 "event_type": event_type,
-                "payload": payload,
+                "payload": safe_payload,
                 "previous_hash": previous_hash,
                 "event_hash": event_hash,
             }
         )
         return event_hash
 
-    def _price_turn(
+    async def _load_thread(self, payload: ChatTurnRequest) -> LoadedThread:
+        if self.thread_repository is None:
+            thread_id = payload.thread_id or uuid4()
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            return LoadedThread(
+                thread_id=thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=len(memory.events),
+                event_count=len(memory.events),
+                last_event_hash=str(memory.events[-1]["event_hash"]) if memory.events else None,
+            )
+
+        return await self.thread_repository.load_or_create(
+            thread_id=payload.thread_id,
+            customer_id=payload.customer_id,
+        )
+
+    def _debug_event_ids(self, event_ids: list[str]) -> list[str]:
+        if self.environment in {"test", "dev"}:
+            return event_ids
+        return []
+
+    async def _append_thread_event(
         self,
         *,
         thread_id: UUID,
+        sequence: int,
+        previous_hash: str | None,
+        event_type: str,
+        payload: dict[str, object],
+    ) -> tuple[str, int, str]:
+        safe_payload = redact_mapping(payload) or {}
+        if self.thread_repository is None:
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            event_hash = self._append_event(memory, thread_id, event_type, safe_payload)
+            return event_hash, len(memory.events), event_hash
+
+        event_hash = await self.thread_repository.append_event(
+            thread_id=thread_id,
+            sequence=sequence + 1,
+            event_type=event_type,
+            payload=safe_payload,
+            previous_hash=previous_hash,
+        )
+        return event_hash, sequence + 1, event_hash
+
+    async def _price_turn(
+        self,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
         state: ThreadState,
         intent_service: object,
         message: str,
@@ -268,7 +397,14 @@ class ChatService:
             else None
         )
         if service is None:
-            return None, None, "Which BookCraft service should I price?"
+            return (
+                None,
+                None,
+                "Which BookCraft service and scope should I price through the "
+                "deterministic quote engine? I cannot promise discounts or guarantees, "
+                "and customer-facing pricing values must be approved before numbers "
+                "are shown.",
+            )
         word_count = state.project.word_count.value
         page_count = state.project.page_count.value
         genre = state.project.genre.value or _genre_from_text(message)
@@ -277,8 +413,20 @@ class ChatService:
                 None,
                 None,
                 "To use the deterministic quote engine, approximately how many words "
-                "or pages is your manuscript?",
+                "or pages is your manuscript? BookCraft cannot show pricing, discounts, "
+                "payment plans, or timing until the approved engine has enough scope.",
             )
+        confirmation_question = _pricing_confirmation_question(
+            service=str(service),
+            state=state,
+            message=message,
+            word_count=word_count,
+            page_count=page_count,
+            genre=genre,
+        )
+        if confirmation_question is not None:
+            return None, None, confirmation_question
+
         request = PricingQuoteRequest.model_validate(
             {
                 "thread_id": str(thread_id),
@@ -297,21 +445,74 @@ class ChatService:
                     "page_count": page_count,
                     "manuscript_status": state.project.manuscript_status.value,
                 },
+                "field_meta_snapshot": _pricing_field_meta_snapshot(
+                    service=str(service),
+                    state=state,
+                    message=message,
+                    word_count=word_count,
+                    page_count=page_count,
+                    genre=genre,
+                ),
             }
         )
         if "timeline" in message.lower() or "how long" in message.lower():
-            timeline = self.pricing_engine.quote(request)
+            timeline = await self._invoke_pricing_quote(
+                request=request,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                correlation_id=correlation_id,
+            )
             if timeline.missing_inputs:
                 return None, None, timeline.missing_inputs[0].question
             return None, timeline, None
-        quote = self.pricing_engine.quote(request)
+        quote = await self._invoke_pricing_quote(
+            request=request,
+            thread_id=thread_id,
+            customer_id=customer_id,
+            turn_sequence=turn_sequence,
+            correlation_id=correlation_id,
+        )
         if quote.missing_inputs:
             return None, None, quote.missing_inputs[0].question
         return quote, None, None
 
-    def _portfolio_turn(
+    async def _invoke_pricing_quote(
         self,
         *,
+        request: PricingQuoteRequest,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
+    ) -> PricingTimelineQuote:
+        if self.tool_dispatcher is None:
+            if self.pricing_engine is None:
+                msg = "Pricing engine is not configured."
+                raise RuntimeError(msg)
+            return self.pricing_engine.quote(request)
+        raw_input = request.model_dump(mode="json")
+        envelope = await self.tool_dispatcher.invoke(
+            tool_name="pricing.quote.estimate.v2",
+            raw_input=raw_input,
+            context=self._tool_context(
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                tool_name="pricing.quote.estimate.v2",
+                raw_input=raw_input,
+                correlation_id=correlation_id,
+            ),
+        )
+        return PricingTimelineQuote.model_validate(envelope.result)
+
+    async def _portfolio_turn(
+        self,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
         state: ThreadState,
         intent_service: ServiceCategory | None,
         message: str,
@@ -326,12 +527,60 @@ class ChatService:
         )
         if service is None:
             return None
-        return self.portfolio_engine.request_samples(
-            PortfolioRequest(
-                service=ServiceCategory(str(service)),
-                genre=state.project.genre.value or _genre_from_text(message),
-                limit=3,
-            )
+        request = PortfolioRequest(
+            service=ServiceCategory(str(service)),
+            genre=state.project.genre.value or _genre_from_text(message),
+            limit=3,
+        )
+        if self.tool_dispatcher is None:
+            return self.portfolio_engine.request_samples(request)
+        raw_input = request.model_dump(mode="json")
+        envelope = await self.tool_dispatcher.invoke(
+            tool_name="portfolio.request_samples.v1",
+            raw_input=raw_input,
+            context=self._tool_context(
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                tool_name="portfolio.request_samples.v1",
+                raw_input=raw_input,
+                correlation_id=correlation_id,
+            ),
+        )
+        return PortfolioResponse.model_validate(envelope.result)
+
+    def _tool_context(
+        self,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        tool_name: str,
+        raw_input: dict[str, object],
+        correlation_id: str | None,
+    ) -> ToolContext:
+        idempotency_material = {
+            "thread_id": str(thread_id),
+            "turn_sequence": turn_sequence,
+            "tool_name": tool_name,
+            "raw_input": raw_input,
+        }
+        idempotency_key = hashlib.sha256(
+            json.dumps(
+                idempotency_material,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        return ToolContext(
+            thread_id=thread_id,
+            customer_id=customer_id,
+            turn_sequence=turn_sequence,
+            invoked_by="chat_service",
+            correlation_id=correlation_id or str(thread_id),
+            idempotency_key=idempotency_key,
+            environment=self.environment,
         )
 
 
@@ -359,6 +608,193 @@ def _document_status_message(intent: IntentVote) -> str | None:
             "deterministic quote before the agreement can enter the document queue."
         )
     return None
+
+
+def _pricing_confirmation_question(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> str | None:
+    assumptions = _unsafe_pricing_defaults(
+        service=service,
+        state=state,
+        message=message,
+        word_count=word_count,
+        page_count=page_count,
+        genre=genre,
+    )
+    if not assumptions:
+        return None
+
+    assumption_list = "; ".join(assumptions)
+    return (
+        "I can run the deterministic quote engine after you confirm these scoping "
+        f"details first: {assumption_list}. BookCraft cannot show approved pricing, "
+        "discounts, payment plans, or timelines until the scope is confirmed. "
+        "Please confirm or correct them so I do not price the project using hidden "
+        "assumptions."
+    )
+
+
+def _unsafe_pricing_defaults(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> list[str]:
+    lowered = message.casefold()
+    assumptions: list[str] = []
+
+    if genre is None:
+        assumptions.append("genre/category")
+
+    if service == "ghostwriting":
+        if not _mentions_any(lowered, ["full ghostwriting", "full book", "from scratch"]):
+            assumptions.append("ghostwriting scope = full ghostwriting")
+        if not state.project.manuscript_status.value and not _mentions_any(
+            lowered,
+            ["outline", "outline ready", "draft", "idea", "manuscript ready", "not written"],
+        ):
+            assumptions.append("manuscript status = outline ready")
+
+    elif service == "editing_proofreading":
+        if not _mentions_any(
+            lowered,
+            ["proofreading", "copy editing", "copyediting", "line editing", "developmental"],
+        ):
+            assumptions.append("editing type = copy editing")
+        if not _mentions_any(lowered, ["clean draft", "rough draft", "average", "heavy edit"]):
+            assumptions.append("manuscript condition = average")
+
+    elif service == "interior_formatting":
+        if page_count is None:
+            assumptions.append("page count inferred from word count")
+        if not _mentions_any(lowered, ["print", "ebook", "e-book", "kindle", "kdp"]):
+            assumptions.append("format target = print + ebook")
+
+    elif service == "cover_design_illustration":
+        if not _mentions_any(lowered, ["ebook", "e-book", "print", "paperback", "hardcover"]):
+            assumptions.append("cover format = ebook + print")
+        if not _mentions_any(lowered, ["front cover", "full cover", "back cover", "spine"]):
+            assumptions.append("cover scope = front cover")
+        if not _mentions_any(lowered, ["simple", "standard", "complex", "illustrated", "premium"]):
+            assumptions.append("cover complexity = standard")
+
+    elif service == "audiobook_production":
+        if word_count is None:
+            assumptions.append("audiobook length inferred from manuscript size")
+        if not _mentions_any(lowered, ["single narrator", "dual narrator", "voice cast"]):
+            assumptions.append("narration model = single narrator")
+
+    elif service == "publishing_distribution":
+        if not _mentions_any(lowered, ["ebook", "e-book", "print", "paperback", "hardcover"]):
+            assumptions.append("publishing package = ebook + print")
+        if not _mentions_any(lowered, ["basic", "professional", "premium"]):
+            assumptions.append("publishing tier = professional")
+
+    elif service == "marketing_promotion":
+        if not _mentions_any(lowered, ["launch", "reviews", "visibility", "ads", "social"]):
+            assumptions.append("campaign goal = launch support")
+        if not _mentions_any(lowered, ["1 month", "2 months", "3 months", "90 days"]):
+            assumptions.append("campaign duration = standard campaign duration")
+
+    elif service == "author_website":
+        if not _mentions_any(lowered, ["landing page", "book launch", "author site", "website"]):
+            assumptions.append("website type = book launch")
+        if not _mentions_any(lowered, ["basic", "professional", "premium"]):
+            assumptions.append("website tier = professional")
+
+    elif service == "video_trailer":
+        if not _mentions_any(lowered, ["30 second", "30-second", "60 second", "60-second"]):
+            assumptions.append("video length = 60 seconds")
+        if not _mentions_any(lowered, ["simple motion", "cinematic", "animated", "live action"]):
+            assumptions.append("production style = simple motion")
+
+    return assumptions
+
+
+def _pricing_field_meta_snapshot(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> dict[str, object]:
+    snapshot: dict[str, object] = {
+        "service": _pricing_field_meta(
+            value=service,
+            confidence=0.9,
+            source="ai_extracted",
+            raw_excerpt=message[:240],
+        ),
+        "pricing_safety": _pricing_field_meta(
+            value={
+                "hidden_defaults_allowed": False,
+                "raw_message_char_count": len(message),
+            },
+            confidence=1.0,
+            source="system",
+            raw_excerpt=None,
+        ),
+    }
+    if word_count is not None:
+        snapshot["word_count"] = _pricing_field_meta(
+            value=word_count,
+            confidence=state.project.word_count.confidence or 0.9,
+            source="user_stated",
+            raw_excerpt=state.project.word_count.raw_excerpt,
+        )
+    if page_count is not None:
+        snapshot["page_count"] = _pricing_field_meta(
+            value=page_count,
+            confidence=state.project.page_count.confidence or 0.9,
+            source="user_stated",
+            raw_excerpt=state.project.page_count.raw_excerpt,
+        )
+    if genre is not None:
+        snapshot["genre"] = _pricing_field_meta(
+            value=genre,
+            confidence=state.project.genre.confidence or 0.85,
+            source="ai_extracted",
+            raw_excerpt=message[:240],
+        )
+    if state.project.manuscript_status.value:
+        snapshot["manuscript_status"] = _pricing_field_meta(
+            value=state.project.manuscript_status.value,
+            confidence=state.project.manuscript_status.confidence or 0.85,
+            source="user_stated",
+            raw_excerpt=state.project.manuscript_status.raw_excerpt,
+        )
+    return snapshot
+
+
+def _pricing_field_meta(
+    *,
+    value: object,
+    confidence: float,
+    source: str,
+    raw_excerpt: str | None,
+) -> dict[str, object]:
+    return {
+        "value": value,
+        "confidence": confidence,
+        "source": source,
+        "extracted_by": "chat_service.pricing_assumption_safety",
+        "raw_excerpt": raw_excerpt,
+    }
+
+
+def _mentions_any(text: str, fragments: list[str]) -> bool:
+    return any(fragment in text for fragment in fragments)
 
 
 def _genre_from_text(text: str) -> str | None:

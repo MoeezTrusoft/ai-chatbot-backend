@@ -52,9 +52,22 @@ def test_phase_14_customer_journey_acceptance(client: TestClient) -> None:
     assert any(term in quote_missing_text.lower() for term in ["service", "words", "pages"])
     assert "$" not in quote_missing_text
 
-    quote_gated = _chat(
+    quote_assumption_check = _chat(
         client,
         "Ghostwriting for a 50000 word fantasy manuscript. Please price it and timeline it.",
+        thread_id=thread_id,
+    )
+    quote_assumption_text = _joined_text(quote_assumption_check["bubbles"])
+    assert "confirm" in quote_assumption_text.lower()
+    assert "hidden assumptions" in quote_assumption_text.lower()
+    assert "$" not in quote_assumption_text
+
+    quote_gated = _chat(
+        client,
+        (
+            "Full ghostwriting from scratch for a 50000 word fantasy manuscript, "
+            "outline ready. Please price it and timeline it."
+        ),
         thread_id=thread_id,
     )
     quote_gated_text = _joined_text(quote_gated["bubbles"])

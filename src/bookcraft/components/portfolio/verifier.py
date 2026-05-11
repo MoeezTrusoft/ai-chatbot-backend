@@ -5,6 +5,7 @@ from collections import Counter
 from bookcraft.domain.enums import ServiceCategory
 
 from .registry import PortfolioRegistry
+from .safety import unsafe_portfolio_url_reason
 from .schemas import PortfolioVerificationResult
 
 
@@ -28,6 +29,12 @@ class PortfolioVerifier:
                         errors.append(f"{sample.source_id}: missing title")
                     if not sample.url and not sample.cover_image:
                         errors.append(f"{sample.source_id}: missing url and cover_image")
+                    url_reason = unsafe_portfolio_url_reason(sample.url)
+                    if url_reason:
+                        errors.append(f"{sample.source_id}: unsafe url: {url_reason}")
+                    cover_reason = unsafe_portfolio_url_reason(sample.cover_image)
+                    if cover_reason:
+                        errors.append(f"{sample.source_id}: unsafe cover_image: {cover_reason}")
 
         required_with_samples = {
             ServiceCategory.COVER_DESIGN_ILLUSTRATION,

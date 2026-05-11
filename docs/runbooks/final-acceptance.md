@@ -44,3 +44,9 @@ The acceptance script runs the chat loop in process with deterministic test sett
 - Pricing v2.2 values are imported but not customer-approved by default, so local chat must not emit customer-facing quote numbers unless `PRICING_V2_VALUES_APPROVED=true` is intentionally enabled with approved business values.
 - Document generation is available through the strict template engine and dispatcher gating. Chat routing only starts the request and reports required fields/status.
 - Local tests use in-memory thread state and audit sinks. Production durable quote/document/audit persistence remains a deployment hardening item.
+
+## Local Docker Security Note
+
+The local Docker Compose stack must remain bound to `127.0.0.1` by default via `DOCKER_BIND_HOST`. This protects local Postgres, Redis, Elasticsearch, TEI, Prometheus, Grafana, Loki, and OTEL ports from accidental LAN exposure.
+
+Before any staging or production deployment, replace local Compose defaults with hardened infrastructure: authenticated services, TLS, private networking, secret management, and environment-specific deployment manifests.

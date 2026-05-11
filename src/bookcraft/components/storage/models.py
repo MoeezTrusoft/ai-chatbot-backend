@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column
+from sqlalchemy import Column, String
 from sqlalchemy.types import JSON
 from sqlmodel import Field, SQLModel
 
@@ -11,7 +11,7 @@ from bookcraft.domain.state import ThreadState
 
 
 def utc_now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Customer(SQLModel, table=True):
@@ -41,7 +41,10 @@ class ThreadRecord(SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
-    sales_stage: SalesStage = Field(default=SalesStage.NEW, index=True)
+    sales_stage: SalesStage = Field(
+        default=SalesStage.NEW,
+        sa_column=Column("sales_stage", String(32), nullable=False, index=True),
+    )
     priority: str = Field(default="medium", max_length=16)
     language: str = Field(default="en", max_length=8)
     is_lead_created: bool = False

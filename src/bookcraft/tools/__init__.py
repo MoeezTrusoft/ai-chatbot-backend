@@ -1,5 +1,6 @@
 """Typed tool dispatcher skeleton."""
 
+from bookcraft.tools.db_audit import DbToolAuditSink
 from bookcraft.tools.dispatcher import (
     MemoryAuditSink,
     RetryPolicy,
@@ -29,4 +30,5 @@ __all__ = [
     "ToolRegistry",
     "ToolResultEnvelope",
     "ToolValidationError",
+    "DbToolAuditSink",
 ]

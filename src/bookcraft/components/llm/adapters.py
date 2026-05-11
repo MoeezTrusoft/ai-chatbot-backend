@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -30,6 +31,7 @@ class AnthropicAdapter:
     api_key: str
     base_url: str
     timeout_seconds: float
+    model: str = "claude-haiku-4-5"
     name: str = "anthropic"
 
     async def structured(
@@ -47,7 +49,7 @@ class AnthropicAdapter:
                     f"{self.base_url.rstrip('/')}/v1/messages",
                     headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
                     json={
-                        "model": "claude-haiku-4-5",
+                        "model": self.model,
                         "max_tokens": 1024,
                         "system": system,
                         "messages": [{"role": "user", "content": user}],
@@ -62,6 +64,7 @@ class OpenAIAdapter:
     api_key: str
     base_url: str
     timeout_seconds: float
+    model: str = "gpt-5.4-mini"
     name: str = "openai"
 
     async def structured(
@@ -79,7 +82,7 @@ class OpenAIAdapter:
                     f"{self.base_url.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     json={
-                        "model": "gpt-5.4-mini",
+                        "model": self.model,
                         "messages": [
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},
@@ -98,8 +101,26 @@ class DeepSeekAdapter(OpenAIAdapter):
 
 def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseModel:
     payload = json.loads(raw)
+    if isinstance(payload, dict) and "content" in payload:
+        content = payload["content"]
+        if isinstance(content, list) and content:
+            first = content[0]
+            if isinstance(first, dict) and isinstance(first.get("text"), str):
+                payload = _loads_json_object(first["text"])
     if isinstance(payload, dict) and "choices" in payload:
         content = payload["choices"][0]["message"]["content"]
-        payload = json.loads(content)
+        payload = _loads_json_object(content)
     return output_model.model_validate(payload)
 
+
+def _loads_json_object(text: str) -> object:
+    stripped = text.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        decode_error = exc
+        pass
+    match = re.search(r"\{.*\}", stripped, flags=re.S)
+    if match is None:
+        raise decode_error
+    return json.loads(match.group(0))

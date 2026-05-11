@@ -1,4 +1,4 @@
-.PHONY: install lint type test run up down smoke acceptance compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify prompt-verify eval-verify ci-cd-verify security-scan dependency-scan verifier-gates ci-local
+.PHONY: install lint type test run migrate up down smoke acceptance chat-probe chat-diagnostics compose-config rag-build rag-verify rag-index rag-smoke pricing-verify pricing-smoke portfolio-verify portfolio-smoke trimatch-verify trimatch-eval trimatch-smoke funnel-partition funnel-verify funnel-smoke documents-verify documents-smoke monitoring-verify prompt-verify eval-verify ci-cd-verify security-scan dependency-scan verifier-gates ci-local
 
 PYTHON ?= python3
 UV ?= uv
@@ -20,6 +20,9 @@ test:
 run:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run uvicorn $(APP) --host 0.0.0.0 --port 8000
 
+migrate:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run alembic upgrade head
+
 up:
 	docker compose up -d
 
@@ -34,6 +37,12 @@ smoke:
 
 acceptance:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/final_acceptance.py
+
+chat-probe:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/complex_chat_probe.py
+
+chat-diagnostics:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/complex_chat_diagnostics.py --continue-on-error
 
 rag-build:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/extract_bookcraft_knowledge.py
@@ -102,6 +111,6 @@ security-scan:
 dependency-scan:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/dependency_scan.py
 
-verifier-gates: rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
+verifier-gates: rag-build rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
 
 ci-local: lint type test verifier-gates security-scan dependency-scan compose-config

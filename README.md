@@ -4,6 +4,15 @@ Production-grade AI sales assistant for BookCraft Publishers.
 
 This repository is being implemented phase by phase from the locked architecture and implementation guide. It now includes the local app shell, guarded chat loop, RAG verifier/retriever, deterministic pricing engine, portfolio registry, template-only document generation, Tri-Match with ADR-gated funnel-stage shadow output, monitoring assets, governance gates, and final acceptance coverage.
 
+## Local Docker Security Defaults
+
+`docker-compose.yml` is for local development only. By default, infrastructure ports are bound to `127.0.0.1` through `DOCKER_BIND_HOST` so Postgres, Redis, Elasticsearch, TEI, Prometheus, Grafana, Loki, and OTEL are not exposed on the LAN.
+
+Keep this default unless you intentionally need controlled lab access. Do not reuse the local Compose file for staging or production without service authentication, TLS, secret management, network isolation, and hardened deployment configuration.
+
+Grafana uses `GRAFANA_ADMIN_PASSWORD` from `.env` / `.env.example`. Change it before sharing a running environment.
+
+
 ## Local Commands
 
 ```bash
@@ -11,11 +20,14 @@ make install
 make lint
 make type
 make test
-make run
 make up
+make migrate
+make run
 make down
 make smoke
 make acceptance
+make chat-probe
+make chat-diagnostics
 make verifier-gates
 make ci-local
 ```
@@ -47,6 +59,15 @@ This exercises the Phase 14 customer journey in process: ghostwriting inquiry, p
 Pricing v2.2 values are gated by default. The chatbot must not emit customer-facing pricing or timeline numbers unless approved values are explicitly enabled through configuration.
 
 See `docs/runbooks/final-acceptance.md` for the release checklist and current constraints.
+See `docs/runbooks/complex-chat-testing-and-ai-keys.md` for complex test messages and live AI key setup.
+
+For a deeper 25-turn diagnostic report after the API is running:
+
+```bash
+make chat-diagnostics
+```
+
+JSON, Markdown, and Word `.docx` reports are written to `reports/chat-diagnostics/`.
 
 ## Canonical Documents
 

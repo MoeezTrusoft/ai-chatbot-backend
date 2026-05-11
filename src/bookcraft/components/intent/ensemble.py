@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from bookcraft.components.intent.schemas import (
     IntentVote,
     ProviderIntentVote,
 )
+from bookcraft.components.llm.protocols import LLMProvider
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.trimatch.schemas import TriMatchResult
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
@@ -82,6 +84,23 @@ class MockIntentProvider:
 
 
 @dataclass(slots=True)
+class LLMIntentProvider:
+    name: str
+    adapter: LLMProvider
+
+    async def classify(self, message: ProcessedMessage, state: ThreadState) -> IntentVote:
+        system = _intent_system_prompt()
+        user = _intent_user_prompt(message, state)
+        result = await self.adapter.structured(
+            system=system,
+            user=user,
+            output_model=IntentVote,
+            purpose="intent",
+        )
+        return IntentVote.model_validate(result)
+
+
+@dataclass(slots=True)
 class DecisionLayer:
     provider_weights: dict[str, float] = field(
         default_factory=lambda: {
@@ -101,6 +120,46 @@ class DecisionLayer:
     ) -> DecisionLayerResult:
         successful = [vote for vote in provider_votes if vote.vote is not None]
         if not successful:
+            if trimatch_result is not None and (
+                trimatch_result.query_primary is not None
+                or trimatch_result.service_primary is not None
+            ):
+                query = _normalize_trimatch_query(trimatch_result, trimatch_result.query_primary)
+                service = trimatch_result.service_primary
+                funnel = SalesStage.NEW
+                final = IntentVote(
+                    query_primary=query,
+                    service_primary=service,
+                    funnel_stage=funnel,
+                    needs_clarification=query == QueryIntentType.UNCLEAR,
+                    confidence=trimatch_result.confidence,
+                    rationale=(
+                        "Decision Layer fallback: provider votes unavailable; "
+                        "using Tri-Match query/service shadow evidence."
+                    ),
+                    evidence=["no_provider_votes", "trimatch_fallback_query_service"],
+                )
+                INTENT_DECISIONS.labels(
+                    query_intent=query.value,
+                    funnel_stage=funnel.value,
+                ).inc()
+                return DecisionLayerResult(
+                    final_vote=final,
+                    provider_votes=list(provider_votes),
+                    needs_clarification=final.needs_clarification,
+                    audit_trail=[
+                        "no_provider_votes",
+                        "trimatch_query_service_fallback",
+                        "trimatch_funnel_stage_shadow_weight_zero",
+                    ],
+                    query_scores={query.value: trimatch_result.confidence},
+                    service_scores={
+                        service.value: trimatch_result.confidence
+                    }
+                    if service is not None
+                    else {},
+                    funnel_stage_scores={},
+                )
             fallback = IntentVote(
                 query_primary=QueryIntentType.UNCLEAR,
                 service_primary=None,
@@ -284,6 +343,7 @@ class EnsembleIntentClassifier:
                     provider.classify(message, state),
                     timeout=self.timeout_seconds,
                 )
+                vote = _normalize_provider_vote(vote, message)
         except TimeoutError:
             breaker.record_failure()
             return self._failed_vote(
@@ -337,6 +397,50 @@ class EnsembleIntentClassifier:
         )
 
 
+def _normalize_provider_vote(vote: IntentVote, message: ProcessedMessage) -> IntentVote:
+    if vote.query_primary != QueryIntentType.GREETING:
+        return vote
+    if _is_greeting_only(message.normalized):
+        return vote
+    corrected_query = (
+        QueryIntentType.SERVICE_QUESTION
+        if vote.service_primary is not None
+        else QueryIntentType.UNCLEAR
+    )
+    return vote.model_copy(
+        update={
+            "query_primary": corrected_query,
+            "needs_clarification": corrected_query == QueryIntentType.UNCLEAR,
+            "rationale": "Corrected provider greeting vote: message contains substantive text.",
+            "evidence": [*vote.evidence, "greeting_vote_rejected_for_substantive_message"],
+        }
+    )
+
+
+def _normalize_trimatch_query(
+    trimatch_result: TriMatchResult,
+    query: QueryIntentType | None,
+) -> QueryIntentType:
+    if query != QueryIntentType.GREETING:
+        return query or QueryIntentType.UNCLEAR
+    matched_text = " ".join(evidence.matched_text for evidence in trimatch_result.evidence)
+    if _is_greeting_only(matched_text):
+        return QueryIntentType.GREETING
+    if trimatch_result.service_primary is not None:
+        return QueryIntentType.SERVICE_QUESTION
+    return QueryIntentType.UNCLEAR
+
+
+def _is_greeting_only(text: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"\s*(hi|hello|hey|good (morning|afternoon|evening))[!.?]*\s*",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def build_mock_ensemble_classifier(
     *,
     timeout_seconds: float,
@@ -352,4 +456,54 @@ def build_mock_ensemble_classifier(
             trimatch_funnel_stage_weight=trimatch_funnel_stage_weight,
         ),
         timeout_seconds=timeout_seconds,
+    )
+
+
+def build_live_ensemble_classifier(
+    *,
+    providers: Sequence[IntentVoteProvider],
+    timeout_seconds: float,
+    trimatch_funnel_stage_weight: float,
+) -> EnsembleIntentClassifier:
+    return EnsembleIntentClassifier(
+        providers=providers,
+        decision_layer=DecisionLayer(
+            trimatch_funnel_stage_weight=trimatch_funnel_stage_weight,
+        ),
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _intent_system_prompt() -> str:
+    query_values = ", ".join(item.value for item in QueryIntentType)
+    service_values = ", ".join(item.value for item in ServiceCategory)
+    stage_values = ", ".join(item.value for item in SalesStage)
+    return (
+        "You classify BookCraft sales-chat intent only. Return strict JSON matching the "
+        "provided schema. Do not call tools. Do not calculate or mention prices, timelines, "
+        "discounts, sample URLs, legal clauses, or guarantees. "
+        f"Allowed query_primary values: {query_values}. "
+        f"Allowed service_primary values: {service_values}. "
+        f"Allowed funnel_stage values: {stage_values}. "
+        "Use null when service_primary is unclear. Keep rationale short."
+    )
+
+
+def _intent_user_prompt(message: ProcessedMessage, state: ThreadState) -> str:
+    state_snapshot = {
+        "known_email": state.personal.email.value,
+        "known_phone": state.personal.phone.value,
+        "word_count": state.project.word_count.value,
+        "page_count": state.project.page_count.value,
+        "genre": state.project.genre.value,
+        "manuscript_status": state.project.manuscript_status.value,
+        "sales_stage": state.sales_stage.value.value if state.sales_stage.value else None,
+    }
+    return (
+        "Classify this inbound message.\n"
+        f"Normalized message: {message.normalized}\n"
+        f"Deterministic atoms: {message.deterministic_atoms}\n"
+        f"Thread state snapshot: {state_snapshot}\n"
+        "Required JSON fields: query_primary, query_secondary, service_primary, "
+        "service_secondary, funnel_stage, needs_clarification, confidence, rationale, evidence."
     )

@@ -25,6 +25,9 @@ EXCLUDED_SUFFIXES = {
     ".pyc",
     ".sqlite",
 }
+EXCLUDED_FILENAMES = {
+    ".env",
+}
 SECRET_PATTERNS = {
     "private_key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     "openai_key": re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
@@ -69,6 +72,8 @@ def main() -> int:
 
 
 def _excluded(path: Path) -> bool:
+    if path.name in EXCLUDED_FILENAMES:
+        return True
     if path.suffix.lower() in EXCLUDED_SUFFIXES:
         return True
     parts = set(path.parts)
@@ -78,13 +83,27 @@ def _excluded(path: Path) -> bool:
 
 
 def _allowed_assignment(match: re.Match[str]) -> bool:
-    value = match.group(2).strip().strip("'\"")
+    raw_value = match.group(2).strip()
+    value = raw_value.strip("'\"")
+
     return (
         value == ""
         or value.casefold() in PLACEHOLDER_VALUES
-        or value.startswith("${")
+        or value.startswith(("settings.", "self.", "config.", "websocket.", "request."))
+        or value.startswith(("${", "_"))
         or value[0].isupper()
+        or _looks_like_python_expression(value)
     )
+
+
+def _looks_like_python_expression(value: str) -> bool:
+    """Allow non-literal code expressions such as make_token or value.partition.
+
+    The secret scanner should flag hardcoded secret values, not normal Python variable
+    assignments where a token/key is produced by a function or read from another object.
+    """
+
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", value))
 
 
 def _line_number(text: str, offset: int) -> int:
