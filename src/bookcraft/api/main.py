@@ -55,6 +55,10 @@ from bookcraft.tools import (
     ToolRegistry,
 )
 
+from fastapi.middleware.cors import CORSMiddleware
+
+from bookcraft.api.security import parse_allowed_origins
+
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
     "Total HTTP requests handled by the BookCraft API.",
@@ -89,6 +93,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="BookCraft AI Chatbot",
         version="0.1.0",
         lifespan=lifespan,
+    )
+
+    allowed_origins = sorted(parse_allowed_origins(resolved_settings))
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)

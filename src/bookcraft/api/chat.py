@@ -7,6 +7,11 @@ from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
 from bookcraft.services.chat import ChatService
 
+from starlette.websockets import WebSocketState
+
+from bookcraft.api.security import is_origin_allowed
+from bookcraft.infra.config import Settings
+
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 
@@ -37,6 +42,13 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
 
 @router.websocket("/ws/{thread_id}")
 async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
+    settings: Settings = websocket.app.state.settings
+    origin = websocket.headers.get("origin")
+
+    if not is_origin_allowed(origin, settings):
+        await websocket.close(code=1008, reason="Origin not allowed")
+        return
+
     await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
     try:
