@@ -9,6 +9,7 @@ from sqlmodel import col, select
 
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.models import ThreadEvent, ThreadRecord, utc_now
+from bookcraft.components.storage.state_sanitizer import sanitize_thread_state_for_persistence
 from bookcraft.domain.state import ThreadState
 
 
@@ -121,7 +122,7 @@ class ThreadRepository:
                     f"expected {expected_version}, found {record.version}"
                 )
 
-            record.state = state.model_dump(mode="json")
+            record.state = sanitize_thread_state_for_persistence(state)
             record.version += 1
             record.turn_count += 1
             record.language = language
