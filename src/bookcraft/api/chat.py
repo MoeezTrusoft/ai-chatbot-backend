@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
@@ -19,7 +20,7 @@ class ChatTurnRequest(BaseModel):
     thread_id: UUID | None = None
     customer_id: UUID | None = None
     message: str = Field(min_length=1, max_length=8000)
-    correlation_id: str | None = None
+    correlation_id: str | None = Field(default=None, max_length=128)
 
 
 class ChatTurnResponse(BaseModel):
@@ -51,6 +52,9 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
             headers={"Retry-After": str(decision.reset_after_seconds)},
         )
 
+    payload = payload.model_copy(
+        update={"correlation_id": sanitize_correlation_id(payload.correlation_id)}
+    )
     service: ChatService = request.app.state.chat_service
     return await service.handle_turn(payload)
 
@@ -87,13 +91,13 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
             if not isinstance(message, str) or not message.strip():
                 await websocket.send_json({"type": "error", "message": "message is required"})
                 continue
+            corr_id = data.get("correlation_id")
+            raw_corr = corr_id if isinstance(corr_id, str) else None
             response = await service.handle_turn(
                 ChatTurnRequest(
                     thread_id=thread_id,
                     message=message,
-                    correlation_id=data.get("correlation_id")
-                    if isinstance(data.get("correlation_id"), str)
-                    else None,
+                    correlation_id=sanitize_correlation_id(raw_corr),
                 )
             )
             for bubble in response.bubbles:
@@ -114,4 +118,3 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
             )
     except WebSocketDisconnect:
         return
-

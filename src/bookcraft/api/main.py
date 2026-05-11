@@ -2,7 +2,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
-from uuid import uuid4
 
 import sentry_sdk
 import structlog
@@ -14,6 +13,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.chat import router as chat_router
+from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
@@ -141,7 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]
-        correlation_id = request.headers.get("x-correlation-id") or str(uuid4())
+        correlation_id = sanitize_correlation_id(request.headers.get("x-correlation-id"))
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
 

@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from bookcraft.api.main import create_app
 from bookcraft.infra.config import Settings
@@ -75,7 +76,7 @@ def test_websocket_rejects_unconfigured_origin() -> None:
     )
     client = TestClient(app)
 
-    with pytest.raises(Exception):
+    with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect(
             f"/api/v1/chat/ws/{uuid4()}",
             headers={"Origin": "https://evil.example"},
