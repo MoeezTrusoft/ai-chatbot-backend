@@ -44,7 +44,7 @@ from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_cli
 from bookcraft.infra.config import Settings, get_settings
 from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
-from bookcraft.infra.rate_limit import InMemoryRateLimiter
+from bookcraft.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter, RedisRateLimitStore
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
@@ -86,6 +86,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db_engine = getattr(app.state, "db_engine", None)
         if db_engine is not None:
             await db_engine.dispose()
+            rate_limit_client = getattr(app.state, "rate_limit_client", None)
+            if rate_limit_client is not None:
+                await rate_limit_client.aclose()
         structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(
@@ -104,9 +107,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
-    app.state.rate_limiter = InMemoryRateLimiter(
+    rate_limit_client = None
+    if resolved_settings.app_env != "test":
+        rate_limit_client = create_redis_client(resolved_settings)
+
+    app.state.rate_limit_client = rate_limit_client
+    app.state.rate_limiter = (
+        InMemoryRateLimiter(
         limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute
     )
+    if rate_limit_client is None
+    else RedisRateLimiter(
+        store=RedisRateLimitStore(rate_limit_client),
+        keys=CacheKeyBuilder(environment=resolved_settings.app_env),
+        limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute,
+    )
+)
     thread_repository = None
     session_factory = None
     if resolved_settings.app_env != "test":

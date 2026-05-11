@@ -7,7 +7,7 @@ from bookcraft.api.security import is_origin_allowed
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
 from bookcraft.infra.config import Settings
-from bookcraft.infra.rate_limit import InMemoryRateLimiter, client_ip_from_scope
+from bookcraft.infra.rate_limit import RateLimiter, client_ip_from_scope
 from bookcraft.services.chat import ChatService
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
@@ -34,9 +34,9 @@ class ChatTurnResponse(BaseModel):
 
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
-    limiter: InMemoryRateLimiter = request.app.state.rate_limiter
+    limiter: RateLimiter = request.app.state.rate_limiter
     client_host = request.client.host if request.client else None
-    decision = limiter.check(
+    decision = await limiter.check(
         f"http:chat_turn:{client_ip_from_scope(client_host)}",
         scope="http_chat_turn",
     )
@@ -66,13 +66,13 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
 
     await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
-    limiter: InMemoryRateLimiter = websocket.app.state.rate_limiter
+    limiter: RateLimiter = websocket.app.state.rate_limiter
     client_host = websocket.client.host if websocket.client else None
     rate_key = f"ws:chat:{client_ip_from_scope(client_host)}"
     try:
         while True:
             data = await websocket.receive_json()
-            decision = limiter.check(rate_key, scope="ws_chat_message")
+            decision = await limiter.check(rate_key, scope="ws_chat_message")
             if not decision.allowed:
                 await websocket.send_json(
                     {
