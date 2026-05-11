@@ -125,7 +125,21 @@ def _query_from_text(text: str) -> QueryIntentType | None:
 
 
 def _service_from_text(text: str) -> ServiceCategory | None:
-    # Order matters: prefer the positive requested service over a negated service.
+    # Order matters: prefer explicit high-signal service nouns over generic layout words.
+    if _mentions_any(
+        text,
+        [
+            "cover design",
+            "cover might",
+            "full illustration",
+            "illustration",
+            "custom typography",
+            "front cover",
+            "book cover",
+        ],
+    ):
+        return ServiceCategory.COVER_DESIGN_ILLUSTRATION
+
     if _mentions_any(
         text,
         [
@@ -179,9 +193,6 @@ def _service_from_text(text: str) -> ServiceCategory | None:
         ],
     ):
         return ServiceCategory.VIDEO_TRAILER
-
-    if _mentions_any(text, ["cover", "cover design", "illustration", "custom typography"]):
-        return ServiceCategory.COVER_DESIGN_ILLUSTRATION
 
     if _mentions_any(text, ["author website", "website", "blog", "newsletter", "lead magnet"]):
         return ServiceCategory.AUTHOR_WEBSITE

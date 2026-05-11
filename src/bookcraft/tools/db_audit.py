@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bookcraft.components.storage.models import ToolInvocationLog
+from bookcraft.components.storage.models import ToolInvocationLog, utc_now
 from bookcraft.domain.enums import ToolInvocationStatus
 from bookcraft.infra.redaction import redact_mapping, redact_text
 from bookcraft.tools.dispatcher import AuditSink
@@ -48,7 +47,7 @@ class DbToolAuditSink(AuditSink):
                     error_kind=_error_kind(safe_error) if safe_error else None,
                     error_detail=safe_error,
                     duration_ms=duration_ms,
-                    completed_at=datetime.now(UTC),
+                    completed_at=utc_now(),
                 )
             )
             await session.commit()
