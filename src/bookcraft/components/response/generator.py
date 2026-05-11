@@ -134,6 +134,15 @@ class SonnetResponseGenerator:
                 "I can help start the service agreement request. Agreement text must come from "
                 "the approved template, not from the language model."
             )
+        if intent.query_primary == QueryIntentType.CONSULTATION_REQUEST:
+            return (
+                "A human consultant should review the service mix, missing scope fields, "
+                "pricing readiness, NDA requirements, agreement readiness, and production "
+                "planning next. Before pricing, NDA, agreement, or production planning can "
+                "move forward, BookCraft still needs the exact services, manuscript status, "
+                "word or page count, genre, deadline, contact details, and any approved "
+                "quote or document requirements."
+            )
         if rag_chunks:
             first = rag_chunks[0]
             return f"{first.content}\n\nSource: {first.title}, section: {first.section}."

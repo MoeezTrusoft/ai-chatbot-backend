@@ -12,6 +12,7 @@ from prometheus_client import Counter, Histogram
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
+from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRequest, PortfolioResponse
@@ -122,6 +123,7 @@ class ChatService:
                 state,
                 trimatch_result=trimatch_result,
             )
+            intent = harden_intent_from_message(intent, processed)
             decision = self.intent_classifier.last_decision
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -395,7 +397,14 @@ class ChatService:
             else None
         )
         if service is None:
-            return None, None, "Which BookCraft service should I price?"
+            return (
+                None,
+                None,
+                "Which BookCraft service and scope should I price through the "
+                "deterministic quote engine? I cannot promise discounts or guarantees, "
+                "and customer-facing pricing values must be approved before numbers "
+                "are shown.",
+            )
         word_count = state.project.word_count.value
         page_count = state.project.page_count.value
         genre = state.project.genre.value or _genre_from_text(message)
@@ -404,7 +413,8 @@ class ChatService:
                 None,
                 None,
                 "To use the deterministic quote engine, approximately how many words "
-                "or pages is your manuscript?",
+                "or pages is your manuscript? BookCraft cannot show pricing, discounts, "
+                "payment plans, or timing until the approved engine has enough scope.",
             )
         confirmation_question = _pricing_confirmation_question(
             service=str(service),
