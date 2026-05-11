@@ -633,8 +633,10 @@ def _pricing_confirmation_question(
     assumption_list = "; ".join(assumptions)
     return (
         "I can run the deterministic quote engine after you confirm these scoping "
-        f"details first: {assumption_list}. Please confirm or correct them so I do "
-        "not price the project using hidden assumptions."
+        f"details first: {assumption_list}. BookCraft cannot show approved pricing, "
+        "discounts, payment plans, or timelines until the scope is confirmed. "
+        "Please confirm or correct them so I do not price the project using hidden "
+        "assumptions."
     )
 
 
@@ -701,7 +703,7 @@ def _unsafe_pricing_defaults(
         if not _mentions_any(lowered, ["launch", "reviews", "visibility", "ads", "social"]):
             assumptions.append("campaign goal = launch support")
         if not _mentions_any(lowered, ["1 month", "2 months", "3 months", "90 days"]):
-            assumptions.append("campaign duration = 3 months")
+            assumptions.append("campaign duration = standard campaign duration")
 
     elif service == "author_website":
         if not _mentions_any(lowered, ["landing page", "book launch", "author site", "website"]):
