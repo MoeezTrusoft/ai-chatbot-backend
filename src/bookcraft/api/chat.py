@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.api.auth import authenticate_websocket, require_http_auth
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
 from bookcraft.components.intent.schemas import IntentVote
@@ -35,6 +36,11 @@ class ChatTurnResponse(BaseModel):
 
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
+    settings: Settings = request.app.state.settings
+    principal = require_http_auth(request, settings)
+    if payload.customer_id is None and principal.customer_id is not None:
+        payload = payload.model_copy(update={"customer_id": principal.customer_id})
+
     limiter: RateLimiter = request.app.state.rate_limiter
     client_host = request.client.host if request.client else None
     decision = await limiter.check(
@@ -68,6 +74,12 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
         await websocket.close(code=1008, reason="Origin not allowed")
         return
 
+    try:
+        principal = authenticate_websocket(websocket, settings)
+    except Exception:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
     await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
     limiter: RateLimiter = websocket.app.state.rate_limiter
@@ -96,6 +108,7 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
             response = await service.handle_turn(
                 ChatTurnRequest(
                     thread_id=thread_id,
+                    customer_id=principal.customer_id,
                     message=message,
                     correlation_id=sanitize_correlation_id(raw_corr),
                 )

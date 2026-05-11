@@ -121,6 +121,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "console"] = "json"
 
+    api_auth_mode: Literal["off", "jwt"] = "off"
     jwt_signing_key: str | None = None
     jwt_ttl_hours: int = 24
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
