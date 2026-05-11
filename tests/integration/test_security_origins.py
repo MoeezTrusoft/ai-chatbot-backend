@@ -52,7 +52,7 @@ def test_cors_rejects_unconfigured_origin() -> None:
 def test_websocket_allows_configured_origin() -> None:
     app = create_app(
         Settings(
-            app_env="dev",
+            app_env="test",
             ws_allowed_origins="http://localhost:3000",
         )
     )
@@ -71,6 +71,7 @@ def test_websocket_rejects_unconfigured_origin() -> None:
     app = create_app(
         Settings(
             app_env="dev",
+            redis_url="redis://localhost:1/0",
             ws_allowed_origins="http://localhost:3000",
         )
     )

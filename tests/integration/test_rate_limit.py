@@ -33,7 +33,7 @@ def test_http_chat_turn_rate_limit_blocks_after_limit() -> None:
 def test_websocket_message_rate_limit_returns_error_frame() -> None:
     app = create_app(
         Settings(
-            app_env="dev",
+            app_env="test",
             ws_allowed_origins="http://localhost:3000",
             rate_limit_per_ip_per_minute=1,
         )
