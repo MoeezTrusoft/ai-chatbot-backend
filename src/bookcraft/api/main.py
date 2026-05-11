@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.chat import router as chat_router
 from bookcraft.api.errors import ErrorResponse
+from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
@@ -193,8 +194,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return result
 
     @app.get("/metrics", tags=["system"])
-    async def metrics() -> Response:
+    async def metrics(request: Request) -> Response:
         REQUESTS_TOTAL.labels(path="/metrics").inc()
+        if not is_metrics_request_allowed(request, resolved_settings):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "metrics_forbidden"},
+            )
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app

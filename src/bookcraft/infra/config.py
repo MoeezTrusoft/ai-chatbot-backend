@@ -116,6 +116,8 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     sentry_dsn: str | None = None
     sentry_environment: str = "dev"
+    metrics_public: bool = False
+    metrics_bearer_token: str | None = None
     log_level: str = "INFO"
     log_format: Literal["json", "console"] = "json"
 
