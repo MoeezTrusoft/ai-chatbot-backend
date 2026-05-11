@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.chat import router as chat_router
 from bookcraft.components.documents.engine import DocumentEngine
@@ -45,6 +46,7 @@ from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
 from bookcraft.tools import (
+    DbToolAuditSink,
     IdempotencyStore,
     MemoryAuditSink,
     MemoryCache,
@@ -91,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
     thread_repository = None
+    session_factory = None
     if resolved_settings.app_env != "test":
         db_engine = create_engine(resolved_settings)
         session_factory = create_session_factory(db_engine)
@@ -99,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.chat_service = build_chat_service(
         resolved_settings,
         thread_repository=thread_repository,
+        session_factory=session_factory,
     )
     app.include_router(chat_router)
 
@@ -153,6 +157,7 @@ def build_chat_service(
     settings: Settings,
     *,
     thread_repository: ThreadRepository | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
     cache_client = None
@@ -188,7 +193,12 @@ def build_chat_service(
         formatter=ResponseFormatter(),
         pricing_engine=pricing_engine,
         portfolio_engine=portfolio_engine,
-        tool_dispatcher=build_tool_dispatcher(settings, pricing_engine, portfolio_engine),
+        tool_dispatcher=build_tool_dispatcher(
+            settings,
+            pricing_engine,
+            portfolio_engine,
+            session_factory=session_factory,
+        ),
         environment=settings.app_env,
         trimatch_engine=build_trimatch_engine(settings),
         thread_repository=thread_repository,
@@ -199,6 +209,8 @@ def build_tool_dispatcher(
     settings: Settings,
     pricing_engine: PricingTimelineEngine,
     portfolio_engine: PortfolioEngine,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> ToolDispatcher:
     registry = ToolRegistry()
     register_pricing_tools(registry, pricing_engine)
@@ -212,6 +224,12 @@ def build_tool_dispatcher(
         ),
     )
     key_builder = CacheKeyBuilder(environment=settings.app_env)
+    audit_sink = (
+        MemoryAuditSink()
+        if session_factory is None or settings.app_env == "test"
+        else DbToolAuditSink(session_factory=session_factory)
+    )
+    
     return ToolDispatcher(
         registry=registry,
         idempotency_store=IdempotencyStore(
@@ -219,7 +237,9 @@ def build_tool_dispatcher(
             keys=key_builder,
             ttl_seconds=settings.redis_idempotency_ttl_hours * 3600,
         ),
-        audit_sink=MemoryAuditSink(),
+        
+        audit_sink=audit_sink,
+        
         gating_policy=ToolGatingPolicy(
             nda_mode=settings.nda_mode,
             agreement_mode=settings.agreement_mode,
