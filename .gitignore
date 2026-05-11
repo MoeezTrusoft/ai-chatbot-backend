@@ -25,4 +25,4 @@ data/rag-corpus/source_markdown/
 data/rag-corpus/build/
 reports/
 
-*.sh
+/*.sh
