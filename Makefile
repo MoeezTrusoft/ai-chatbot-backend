@@ -111,6 +111,6 @@ security-scan:
 dependency-scan:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/dependency_scan.py
 
-verifier-gates: rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
+verifier-gates: rag-build rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
 
 ci-local: lint type test verifier-gates security-scan dependency-scan compose-config
