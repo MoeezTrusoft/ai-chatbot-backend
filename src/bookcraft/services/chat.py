@@ -406,6 +406,17 @@ class ChatService:
                 "To use the deterministic quote engine, approximately how many words "
                 "or pages is your manuscript?",
             )
+        confirmation_question = _pricing_confirmation_question(
+            service=str(service),
+            state=state,
+            message=message,
+            word_count=word_count,
+            page_count=page_count,
+            genre=genre,
+        )
+        if confirmation_question is not None:
+            return None, None, confirmation_question
+
         request = PricingQuoteRequest.model_validate(
             {
                 "thread_id": str(thread_id),
@@ -424,6 +435,14 @@ class ChatService:
                     "page_count": page_count,
                     "manuscript_status": state.project.manuscript_status.value,
                 },
+                "field_meta_snapshot": _pricing_field_meta_snapshot(
+                    service=str(service),
+                    state=state,
+                    message=message,
+                    word_count=word_count,
+                    page_count=page_count,
+                    genre=genre,
+                ),
             }
         )
         if "timeline" in message.lower() or "how long" in message.lower():
@@ -579,6 +598,191 @@ def _document_status_message(intent: IntentVote) -> str | None:
             "deterministic quote before the agreement can enter the document queue."
         )
     return None
+
+
+def _pricing_confirmation_question(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> str | None:
+    assumptions = _unsafe_pricing_defaults(
+        service=service,
+        state=state,
+        message=message,
+        word_count=word_count,
+        page_count=page_count,
+        genre=genre,
+    )
+    if not assumptions:
+        return None
+
+    assumption_list = "; ".join(assumptions)
+    return (
+        "I can run the deterministic quote engine after you confirm these scoping "
+        f"details first: {assumption_list}. Please confirm or correct them so I do "
+        "not price the project using hidden assumptions."
+    )
+
+
+def _unsafe_pricing_defaults(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> list[str]:
+    lowered = message.casefold()
+    assumptions: list[str] = []
+
+    if genre is None:
+        assumptions.append("genre/category")
+
+    if service == "ghostwriting":
+        if not _mentions_any(lowered, ["full ghostwriting", "full book", "from scratch"]):
+            assumptions.append("ghostwriting scope = full ghostwriting")
+        if not state.project.manuscript_status.value and not _mentions_any(
+            lowered,
+            ["outline", "outline ready", "draft", "idea", "manuscript ready", "not written"],
+        ):
+            assumptions.append("manuscript status = outline ready")
+
+    elif service == "editing_proofreading":
+        if not _mentions_any(
+            lowered,
+            ["proofreading", "copy editing", "copyediting", "line editing", "developmental"],
+        ):
+            assumptions.append("editing type = copy editing")
+        if not _mentions_any(lowered, ["clean draft", "rough draft", "average", "heavy edit"]):
+            assumptions.append("manuscript condition = average")
+
+    elif service == "interior_formatting":
+        if page_count is None:
+            assumptions.append("page count inferred from word count")
+        if not _mentions_any(lowered, ["print", "ebook", "e-book", "kindle", "kdp"]):
+            assumptions.append("format target = print + ebook")
+
+    elif service == "cover_design_illustration":
+        if not _mentions_any(lowered, ["ebook", "e-book", "print", "paperback", "hardcover"]):
+            assumptions.append("cover format = ebook + print")
+        if not _mentions_any(lowered, ["front cover", "full cover", "back cover", "spine"]):
+            assumptions.append("cover scope = front cover")
+        if not _mentions_any(lowered, ["simple", "standard", "complex", "illustrated", "premium"]):
+            assumptions.append("cover complexity = standard")
+
+    elif service == "audiobook_production":
+        if word_count is None:
+            assumptions.append("audiobook length inferred from manuscript size")
+        if not _mentions_any(lowered, ["single narrator", "dual narrator", "voice cast"]):
+            assumptions.append("narration model = single narrator")
+
+    elif service == "publishing_distribution":
+        if not _mentions_any(lowered, ["ebook", "e-book", "print", "paperback", "hardcover"]):
+            assumptions.append("publishing package = ebook + print")
+        if not _mentions_any(lowered, ["basic", "professional", "premium"]):
+            assumptions.append("publishing tier = professional")
+
+    elif service == "marketing_promotion":
+        if not _mentions_any(lowered, ["launch", "reviews", "visibility", "ads", "social"]):
+            assumptions.append("campaign goal = launch support")
+        if not _mentions_any(lowered, ["1 month", "2 months", "3 months", "90 days"]):
+            assumptions.append("campaign duration = 3 months")
+
+    elif service == "author_website":
+        if not _mentions_any(lowered, ["landing page", "book launch", "author site", "website"]):
+            assumptions.append("website type = book launch")
+        if not _mentions_any(lowered, ["basic", "professional", "premium"]):
+            assumptions.append("website tier = professional")
+
+    elif service == "video_trailer":
+        if not _mentions_any(lowered, ["30 second", "30-second", "60 second", "60-second"]):
+            assumptions.append("video length = 60 seconds")
+        if not _mentions_any(lowered, ["simple motion", "cinematic", "animated", "live action"]):
+            assumptions.append("production style = simple motion")
+
+    return assumptions
+
+
+def _pricing_field_meta_snapshot(
+    *,
+    service: str,
+    state: ThreadState,
+    message: str,
+    word_count: int | None,
+    page_count: int | None,
+    genre: str | None,
+) -> dict[str, object]:
+    snapshot: dict[str, object] = {
+        "service": _pricing_field_meta(
+            value=service,
+            confidence=0.9,
+            source="ai_extracted",
+            raw_excerpt=message[:240],
+        ),
+        "pricing_safety": _pricing_field_meta(
+            value={
+                "hidden_defaults_allowed": False,
+                "raw_message_char_count": len(message),
+            },
+            confidence=1.0,
+            source="system",
+            raw_excerpt=None,
+        ),
+    }
+    if word_count is not None:
+        snapshot["word_count"] = _pricing_field_meta(
+            value=word_count,
+            confidence=state.project.word_count.confidence or 0.9,
+            source="user_stated",
+            raw_excerpt=state.project.word_count.raw_excerpt,
+        )
+    if page_count is not None:
+        snapshot["page_count"] = _pricing_field_meta(
+            value=page_count,
+            confidence=state.project.page_count.confidence or 0.9,
+            source="user_stated",
+            raw_excerpt=state.project.page_count.raw_excerpt,
+        )
+    if genre is not None:
+        snapshot["genre"] = _pricing_field_meta(
+            value=genre,
+            confidence=state.project.genre.confidence or 0.85,
+            source="ai_extracted",
+            raw_excerpt=message[:240],
+        )
+    if state.project.manuscript_status.value:
+        snapshot["manuscript_status"] = _pricing_field_meta(
+            value=state.project.manuscript_status.value,
+            confidence=state.project.manuscript_status.confidence or 0.85,
+            source="user_stated",
+            raw_excerpt=state.project.manuscript_status.raw_excerpt,
+        )
+    return snapshot
+
+
+def _pricing_field_meta(
+    *,
+    value: object,
+    confidence: float,
+    source: str,
+    raw_excerpt: str | None,
+) -> dict[str, object]:
+    return {
+        "value": value,
+        "confidence": confidence,
+        "source": source,
+        "extracted_by": "chat_service.pricing_assumption_safety",
+        "raw_excerpt": raw_excerpt,
+    }
+
+
+def _mentions_any(text: str, fragments: list[str]) -> bool:
+    return any(fragment in text for fragment in fragments)
 
 
 def _genre_from_text(text: str) -> str | None:

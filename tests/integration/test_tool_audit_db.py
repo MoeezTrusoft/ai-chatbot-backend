@@ -1,4 +1,5 @@
 """Integration test: tool audit records persist to a SQLite DB via DbToolAuditSink."""
+
 from __future__ import annotations
 
 import pytest
@@ -33,7 +34,10 @@ async def test_pricing_tool_audit_persists_to_db(tmp_path: pytest.TempPathFactor
 
     await service.handle_turn(
         ChatTurnRequest(
-            message="How much does ghostwriting cost for a 50000 word fantasy novel?",
+            message=(
+                "How much for full ghostwriting from scratch for a fantasy novel, "
+                "50000 words, outline ready?"
+            ),
             correlation_id="db-tool-audit-test",
         )
     )
