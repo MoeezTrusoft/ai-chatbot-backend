@@ -24,3 +24,5 @@ data/generated/
 data/rag-corpus/source_markdown/
 data/rag-corpus/build/
 reports/
+
+harden-local.sh
