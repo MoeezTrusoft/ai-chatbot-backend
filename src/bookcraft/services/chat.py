@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import structlog
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
@@ -147,7 +148,32 @@ class ChatService:
             event_ids.append(event_id)
             rag_chunks = []
             if self.rag_retriever is not None and _allow_rag_for_intent(intent):
-                rag_chunks = await self.rag_retriever.retrieve(processed, intent)
+                try:
+                    rag_chunks = await self.rag_retriever.retrieve(processed, intent)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "rag_retrieval_failed",
+                        thread_id=str(thread_id),
+                        query_intent=intent.query_primary.value,
+                        service_intent=intent.service_primary.value
+                        if intent.service_primary
+                        else None,
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="rag.failed",
+                        payload={
+                            "query_intent": intent.query_primary.value,
+                            "service_intent": intent.service_primary.value
+                            if intent.service_primary
+                            else None,
+                            "exception_class": exc.__class__.__name__,
+                        },
+                    )
+                    event_ids.append(event_id)
             pricing_quote: PricingTimelineQuote | None = None
             timeline_estimate: PricingTimelineQuote | None = None
             pricing_missing_question: str | None = None

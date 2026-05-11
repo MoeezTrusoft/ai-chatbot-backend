@@ -5,6 +5,7 @@ from typing import cast
 
 import sentry_sdk
 import structlog
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -34,6 +35,7 @@ from bookcraft.components.portfolio.tools import register_portfolio_tools
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.pricing.tools import register_pricing_tools
+from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.db import create_engine, create_session_factory
 from bookcraft.components.storage.thread_repository import ThreadRepository
@@ -93,6 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rate_limit_client = getattr(app.state, "rate_limit_client", None)
         if rate_limit_client is not None:
             await rate_limit_client.aclose()
+        elasticsearch_client = getattr(app.state, "elasticsearch_client", None)
+        if elasticsearch_client is not None:
+            await elasticsearch_client.close()
         structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(
@@ -127,15 +132,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     thread_repository = None
     session_factory = None
+    rag_retriever = None
     if resolved_settings.app_env != "test":
         db_engine = create_engine(resolved_settings)
         session_factory = create_session_factory(db_engine)
         thread_repository = ThreadRepository(session_factory=session_factory)
         app.state.db_engine = db_engine
+
+        elasticsearch_client = AsyncElasticsearch(
+            hosts=[resolved_settings.elasticsearch_url],
+            basic_auth=(
+                resolved_settings.elasticsearch_user,
+                resolved_settings.elasticsearch_password,
+            )
+            if resolved_settings.elasticsearch_user and resolved_settings.elasticsearch_password
+            else None,
+            request_timeout=resolved_settings.tei_timeout_seconds,
+        )
+        app.state.elasticsearch_client = elasticsearch_client
+        rag_retriever = RagRetriever(
+            client=elasticsearch_client,
+            index_alias=resolved_settings.rag_index_alias,
+        )
+
     app.state.chat_service = build_chat_service(
         resolved_settings,
         thread_repository=thread_repository,
         session_factory=session_factory,
+        rag_retriever=rag_retriever,
     )
     app.include_router(chat_router)
 
@@ -222,6 +246,7 @@ def build_chat_service(
     *,
     thread_repository: ThreadRepository | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    rag_retriever: RagRetriever | None = None,
 ) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
     cache_client = None
@@ -255,6 +280,7 @@ def build_chat_service(
         state_applier=StateApplier(),
         response_generator=build_response_generator(settings),
         formatter=ResponseFormatter(),
+        rag_retriever=rag_retriever,
         pricing_engine=pricing_engine,
         portfolio_engine=portfolio_engine,
         tool_dispatcher=build_tool_dispatcher(
