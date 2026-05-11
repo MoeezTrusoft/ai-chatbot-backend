@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -29,6 +31,7 @@ from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.state import ThreadState
+from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
     from bookcraft.api.chat import ChatTurnRequest, ChatTurnResponse
@@ -56,10 +59,12 @@ class ChatService:
     rag_retriever: RagRetriever | None = None
     pricing_engine: PricingTimelineEngine | None = None
     portfolio_engine: PortfolioEngine | None = None
+    tool_dispatcher: ToolDispatcher | None = None
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
+    environment: str = "dev"
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
@@ -149,8 +154,11 @@ class ChatService:
                 QueryIntentType.PRICING_QUESTION,
                 QueryIntentType.TIMELINE_QUESTION,
             }:
-                pricing_quote, timeline_estimate, pricing_missing_question = self._price_turn(
+                pricing_quote, timeline_estimate, pricing_missing_question = await self._price_turn(
                     thread_id=thread_id,
+                    customer_id=payload.customer_id,
+                    turn_sequence=event_sequence + 1,
+                    correlation_id=payload.correlation_id,
                     state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
@@ -174,7 +182,11 @@ class ChatService:
                     )
             portfolio_response: PortfolioResponse | None = None
             if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
-                portfolio_response = self._portfolio_turn(
+                portfolio_response = await self._portfolio_turn(
+                    thread_id=thread_id,
+                    customer_id=payload.customer_id,
+                    turn_sequence=event_sequence + 1,
+                    correlation_id=payload.correlation_id,
                     state=state,
                     intent_service=intent.service_primary,
                     message=payload.message,
@@ -314,10 +326,13 @@ class ChatService:
         )
         return event_hash, sequence + 1, event_hash
 
-    def _price_turn(
+    async def _price_turn(
         self,
         *,
         thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
         state: ThreadState,
         intent_service: object,
         message: str,
@@ -365,18 +380,63 @@ class ChatService:
             }
         )
         if "timeline" in message.lower() or "how long" in message.lower():
-            timeline = self.pricing_engine.quote(request)
+            timeline = await self._invoke_pricing_quote(
+                request=request,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                correlation_id=correlation_id,
+            )
             if timeline.missing_inputs:
                 return None, None, timeline.missing_inputs[0].question
             return None, timeline, None
-        quote = self.pricing_engine.quote(request)
+        quote = await self._invoke_pricing_quote(
+            request=request,
+            thread_id=thread_id,
+            customer_id=customer_id,
+            turn_sequence=turn_sequence,
+            correlation_id=correlation_id,
+        )
         if quote.missing_inputs:
             return None, None, quote.missing_inputs[0].question
         return quote, None, None
 
-    def _portfolio_turn(
+    async def _invoke_pricing_quote(
         self,
         *,
+        request: PricingQuoteRequest,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
+    ) -> PricingTimelineQuote:
+        if self.tool_dispatcher is None:
+            if self.pricing_engine is None:
+                msg = "Pricing engine is not configured."
+                raise RuntimeError(msg)
+            return self.pricing_engine.quote(request)
+        raw_input = request.model_dump(mode="json")
+        envelope = await self.tool_dispatcher.invoke(
+            tool_name="pricing.quote.estimate.v2",
+            raw_input=raw_input,
+            context=self._tool_context(
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                tool_name="pricing.quote.estimate.v2",
+                raw_input=raw_input,
+                correlation_id=correlation_id,
+            ),
+        )
+        return PricingTimelineQuote.model_validate(envelope.result)
+
+    async def _portfolio_turn(
+        self,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        correlation_id: str | None,
         state: ThreadState,
         intent_service: ServiceCategory | None,
         message: str,
@@ -391,12 +451,60 @@ class ChatService:
         )
         if service is None:
             return None
-        return self.portfolio_engine.request_samples(
-            PortfolioRequest(
-                service=ServiceCategory(str(service)),
-                genre=state.project.genre.value or _genre_from_text(message),
-                limit=3,
-            )
+        request = PortfolioRequest(
+            service=ServiceCategory(str(service)),
+            genre=state.project.genre.value or _genre_from_text(message),
+            limit=3,
+        )
+        if self.tool_dispatcher is None:
+            return self.portfolio_engine.request_samples(request)
+        raw_input = request.model_dump(mode="json")
+        envelope = await self.tool_dispatcher.invoke(
+            tool_name="portfolio.request_samples.v1",
+            raw_input=raw_input,
+            context=self._tool_context(
+                thread_id=thread_id,
+                customer_id=customer_id,
+                turn_sequence=turn_sequence,
+                tool_name="portfolio.request_samples.v1",
+                raw_input=raw_input,
+                correlation_id=correlation_id,
+            ),
+        )
+        return PortfolioResponse.model_validate(envelope.result)
+
+    def _tool_context(
+        self,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        turn_sequence: int,
+        tool_name: str,
+        raw_input: dict[str, object],
+        correlation_id: str | None,
+    ) -> ToolContext:
+        idempotency_material = {
+            "thread_id": str(thread_id),
+            "turn_sequence": turn_sequence,
+            "tool_name": tool_name,
+            "raw_input": raw_input,
+        }
+        idempotency_key = hashlib.sha256(
+            json.dumps(
+                idempotency_material,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        return ToolContext(
+            thread_id=thread_id,
+            customer_id=customer_id,
+            turn_sequence=turn_sequence,
+            invoked_by="chat_service",
+            correlation_id=correlation_id or str(thread_id),
+            idempotency_key=idempotency_key,
+            environment=self.environment,
         )
 
 

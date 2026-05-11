@@ -11,6 +11,9 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from bookcraft.api.chat import router as chat_router
+from bookcraft.components.documents.engine import DocumentEngine
+from bookcraft.components.documents.registry import DocumentTemplateRegistry
+from bookcraft.components.documents.tools import register_document_tools
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.intent import (
     EnsembleIntentClassifier,
@@ -21,8 +24,10 @@ from bookcraft.components.intent import (
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
+from bookcraft.components.portfolio.tools import register_portfolio_tools
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
+from bookcraft.components.pricing.tools import register_pricing_tools
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.db import create_engine, create_session_factory
 from bookcraft.components.storage.thread_repository import ThreadRepository
@@ -39,6 +44,14 @@ from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
+from bookcraft.tools import (
+    IdempotencyStore,
+    MemoryAuditSink,
+    MemoryCache,
+    ToolDispatcher,
+    ToolGatingPolicy,
+    ToolRegistry,
+)
 
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
@@ -154,6 +167,17 @@ def build_chat_service(
         cache=cache_client,
         keys=key_builder,
     )
+    pricing_engine = PricingTimelineEngine.from_config_dir(
+        Path(settings.pricing_v2_config_dir),
+        values_approved=settings.pricing_v2_values_approved,
+    )
+    portfolio_engine = PortfolioEngine(
+        PortfolioRegistry.from_files(
+            samples_registry_path=settings.portfolio_samples_registry_path,
+            genre_hierarchy_path=settings.portfolio_genre_hierarchy_path,
+            portfolio_docx_path=settings.portfolio_samples_docx_path,
+        )
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -162,19 +186,44 @@ def build_chat_service(
         state_applier=StateApplier(),
         response_generator=build_response_generator(settings),
         formatter=ResponseFormatter(),
-        pricing_engine=PricingTimelineEngine.from_config_dir(
-            Path(settings.pricing_v2_config_dir),
-            values_approved=settings.pricing_v2_values_approved,
-        ),
-        portfolio_engine=PortfolioEngine(
-            PortfolioRegistry.from_files(
-                samples_registry_path=settings.portfolio_samples_registry_path,
-                genre_hierarchy_path=settings.portfolio_genre_hierarchy_path,
-                portfolio_docx_path=settings.portfolio_samples_docx_path,
-            )
-        ),
+        pricing_engine=pricing_engine,
+        portfolio_engine=portfolio_engine,
+        tool_dispatcher=build_tool_dispatcher(settings, pricing_engine, portfolio_engine),
+        environment=settings.app_env,
         trimatch_engine=build_trimatch_engine(settings),
         thread_repository=thread_repository,
+    )
+
+
+def build_tool_dispatcher(
+    settings: Settings,
+    pricing_engine: PricingTimelineEngine,
+    portfolio_engine: PortfolioEngine,
+) -> ToolDispatcher:
+    registry = ToolRegistry()
+    register_pricing_tools(registry, pricing_engine)
+    register_portfolio_tools(registry, portfolio_engine)
+    register_document_tools(
+        registry,
+        DocumentEngine(
+            registry=DocumentTemplateRegistry(settings.document_template_dir),
+            output_dir=settings.document_output_dir,
+            pdf_rendering_enabled=settings.document_pdf_rendering_enabled,
+        ),
+    )
+    key_builder = CacheKeyBuilder(environment=settings.app_env)
+    return ToolDispatcher(
+        registry=registry,
+        idempotency_store=IdempotencyStore(
+            client=MemoryCache(),
+            keys=key_builder,
+            ttl_seconds=settings.redis_idempotency_ttl_hours * 3600,
+        ),
+        audit_sink=MemoryAuditSink(),
+        gating_policy=ToolGatingPolicy(
+            nda_mode=settings.nda_mode,
+            agreement_mode=settings.agreement_mode,
+        ),
     )
 
 
