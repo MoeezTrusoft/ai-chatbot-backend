@@ -233,27 +233,42 @@ class ChatService:
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
-                trg_result = await self.trg_engine.update_after_turn(
-                    thread_id=thread_id,
-                    turn_sequence=event_sequence + 1,
-                    user_text=payload.message,
-                    assistant_text=draft.text,
-                    previous_state=previous_state,
-                    state_deltas=extraction.state_deltas,
-                )
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trg.updated",
-                    payload={
-                        "node_count": len(trg_result.graph.nodes),
-                        "edge_count": len(trg_result.graph.edges),
-                        "unresolved_question_count": trg_result.unresolved_question_count,
-                        "contradiction_count": trg_result.contradiction_count,
-                    },
-                )
-                event_ids.append(event_id)
+                try:
+                    trg_result = await self.trg_engine.update_after_turn(
+                        thread_id=thread_id,
+                        turn_sequence=event_sequence + 1,
+                        user_text=payload.message,
+                        assistant_text=draft.text,
+                        previous_state=previous_state,
+                        state_deltas=extraction.state_deltas,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trg.updated",
+                        payload={
+                            "node_count": len(trg_result.graph.nodes),
+                            "edge_count": len(trg_result.graph.edges),
+                            "unresolved_question_count": trg_result.unresolved_question_count,
+                            "contradiction_count": trg_result.contradiction_count,
+                        },
+                    )
+                    event_ids.append(event_id)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "trg_update_failed",
+                        thread_id=str(thread_id),
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trg.failed",
+                        payload={"exception_class": exc.__class__.__name__},
+                    )
+                    event_ids.append(event_id)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
                 sequence=event_sequence,

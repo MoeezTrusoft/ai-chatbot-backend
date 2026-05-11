@@ -39,6 +39,11 @@ from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.db import create_engine, create_session_factory
 from bookcraft.components.storage.thread_repository import ThreadRepository
+from bookcraft.components.trg import (
+    InMemoryGraphRepository,
+    RedisHotGraphStore,
+    TemporalRelationGraphEngine,
+)
 from bookcraft.components.trimatch import (
     RuleRepository,
     TriMatchEngine,
@@ -133,6 +138,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     thread_repository = None
     session_factory = None
     rag_retriever = None
+    trg_engine = build_trg_engine(
+        resolved_settings,
+        cache_client=cast(CacheClient, rate_limit_client)
+        if rate_limit_client is not None
+        else None,
+    )
     if resolved_settings.app_env != "test":
         db_engine = create_engine(resolved_settings)
         session_factory = create_session_factory(db_engine)
@@ -160,6 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         thread_repository=thread_repository,
         session_factory=session_factory,
         rag_retriever=rag_retriever,
+        trg_engine=trg_engine,
     )
     app.include_router(chat_router)
 
@@ -247,6 +259,7 @@ def build_chat_service(
     thread_repository: ThreadRepository | None = None,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     rag_retriever: RagRetriever | None = None,
+    trg_engine: TemporalRelationGraphEngine | None = None,
 ) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
     cache_client = None
@@ -290,6 +303,7 @@ def build_chat_service(
             session_factory=session_factory,
         ),
         environment=settings.app_env,
+        trg_engine=trg_engine,
         trimatch_engine=build_trimatch_engine(settings),
         thread_repository=thread_repository,
     )
@@ -331,6 +345,26 @@ def build_tool_dispatcher(
             nda_mode=settings.nda_mode,
             agreement_mode=settings.agreement_mode,
         ),
+    )
+
+
+def build_trg_engine(
+    settings: Settings,
+    *,
+    cache_client: CacheClient | None = None,
+) -> TemporalRelationGraphEngine:
+    repository = (
+        InMemoryGraphRepository()
+        if cache_client is None
+        else RedisHotGraphStore(
+            client=cache_client,
+            keys=CacheKeyBuilder(environment=settings.app_env),
+            ttl_seconds=settings.redis_hot_ttl_hours * 3600,
+        )
+    )
+    return TemporalRelationGraphEngine(
+        repository=repository,
+        compact_keep=settings.trg_compact_keep,
     )
 
 
