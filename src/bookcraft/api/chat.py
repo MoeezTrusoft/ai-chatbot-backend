@@ -1,16 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.api.security import is_origin_allowed
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
-from bookcraft.services.chat import ChatService
-
-from starlette.websockets import WebSocketState
-
-from bookcraft.api.security import is_origin_allowed
 from bookcraft.infra.config import Settings
+from bookcraft.infra.rate_limit import InMemoryRateLimiter, client_ip_from_scope
+from bookcraft.services.chat import ChatService
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -36,6 +34,23 @@ class ChatTurnResponse(BaseModel):
 
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
+    limiter: InMemoryRateLimiter = request.app.state.rate_limiter
+    client_host = request.client.host if request.client else None
+    decision = limiter.check(
+        f"http:chat_turn:{client_ip_from_scope(client_host)}",
+        scope="http_chat_turn",
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "limit": decision.limit,
+                "reset_after_seconds": decision.reset_after_seconds,
+            },
+            headers={"Retry-After": str(decision.reset_after_seconds)},
+        )
+
     service: ChatService = request.app.state.chat_service
     return await service.handle_turn(payload)
 
@@ -51,9 +66,23 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
 
     await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
+    limiter: InMemoryRateLimiter = websocket.app.state.rate_limiter
+    client_host = websocket.client.host if websocket.client else None
+    rate_key = f"ws:chat:{client_ip_from_scope(client_host)}"
     try:
         while True:
             data = await websocket.receive_json()
+            decision = limiter.check(rate_key, scope="ws_chat_message")
+            if not decision.allowed:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "code": "rate_limited",
+                        "message": "Too many messages. Please wait before sending another message.",
+                        "retry_after_seconds": decision.reset_after_seconds,
+                    }
+                )
+                continue
             message = data.get("message")
             if not isinstance(message, str) or not message.strip():
                 await websocket.send_json({"type": "error", "message": "message is required"})

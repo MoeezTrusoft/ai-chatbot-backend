@@ -44,6 +44,7 @@ from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_cli
 from bookcraft.infra.config import Settings, get_settings
 from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
+from bookcraft.infra.rate_limit import InMemoryRateLimiter
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
@@ -103,6 +104,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved_settings
     app.state.readiness_checker = ReadinessChecker(resolved_settings)
+    app.state.rate_limiter = InMemoryRateLimiter(
+        limit_per_minute=resolved_settings.rate_limit_per_ip_per_minute
+    )
     thread_repository = None
     session_factory = None
     if resolved_settings.app_env != "test":
