@@ -33,3 +33,6 @@ bookcraft-ai-flow-frontend
 /trimatch_rules_army_v2.zip
 /data.zip
 .env.production.live.local
+/.env.production.live.local
+bookcraft-ai-flow-frontend/node_modules/
+**/node_modules/
