@@ -1,0 +1,4442 @@
+{
+  "version": "query_intent_rules.v2.rules_army",
+  "rules": [
+    {
+      "id": "QUERY-GREETING-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "hello"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "hi"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "hey"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "good morning"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "good afternoon"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "good evening"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "salam"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "assalam o alaikum"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "hola"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "bonjour"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "can you help me"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "I need help"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "phrases": [
+        "I have a question"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-GREETING-RX-014",
+      "layer": "regex",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "regex": "^(hi|hey|hello|good\\s+(morning|afternoon|evening))\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "can",
+        "you",
+        "help"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "i",
+        "need",
+        "help"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-SM-017",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "semantic_examples": [
+        "The user is opening the conversation or greeting the assistant"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "tell me about your services"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "what services do you offer"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "which service do I need"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "service options"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "can you handle this"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "do you offer"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "what can BookCraft do"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "help me choose a service"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "what package fits"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "service path"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "which team handles this"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "phrases": [
+        "what should I prepare"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SERVICE-RX-013",
+      "layer": "regex",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "regex": "\\b(what|which)\\s+(service|package|option)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-RX-014",
+      "layer": "regex",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "regex": "\\b(do\\s+you\\s+(offer|handle|provide)|can\\s+you\\s+help)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-RX-015",
+      "layer": "regex",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "regex": "\\b(help\\s+me\\s+(choose|decide|understand))\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "which",
+        "service"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-PT-017",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "do",
+        "you",
+        "offer"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-PT-018",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "help",
+        "me",
+        "choose"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "what",
+        "should",
+        "prepare"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE-SM-020",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "semantic_examples": [
+        "The user wants to understand services or fit"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "price"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "pricing"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "cost"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "quote"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "estimate"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "budget"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "how much"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "what does it cost"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "pricing quote"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "formal quote"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "ballpark cost"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "payment amount"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "fee"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "package price"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-015",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "project cost"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-016",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "quote engine"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-017",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "deterministic quote"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-EX-018",
+      "layer": "exact",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "phrases": [
+        "approved quote"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PRICE-RX-019",
+      "layer": "regex",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "regex": "\\b(how\\s+much|what\\s+(does|would)\\s+it\\s+cost|cost\\s+for|price\\s+for|pricing\\s+for|quote\\s+for)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-RX-020",
+      "layer": "regex",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "regex": "\\b(quote|estimate|budget|fee|pricing|price|cost)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-RX-021",
+      "layer": "regex",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "regex": "\\b(approved|deterministic)\\s+quote\\s+engine\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-PT-022",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "how",
+        "much"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-PT-023",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "quote",
+        "for"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-PT-024",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "pricing",
+        "for"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-PT-025",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "approved",
+        "quote",
+        "engine"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICE-SM-026",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "semantic_examples": [
+        "The user is asking about cost or a quote"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "timeline"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "turnaround"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "delivery time"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "how long"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "deadline"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "rush"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "urgent"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "launch date"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "delivery estimate"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "schedule"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "project schedule"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "completion time"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "when can it be done"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "fast track"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-EX-015",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "expedite"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-016",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "timeframe"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-EX-017",
+      "layer": "exact",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "phrases": [
+        "production time"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-TIME-RX-018",
+      "layer": "regex",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "regex": "\\b(how\\s+long|when\\s+can|delivery\\s+(time|estimate)|turnaround|timeline|deadline|rush|urgent)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-RX-019",
+      "layer": "regex",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "regex": "\\b(expedite|fast[- ]track|timeframe|completion\\s+time)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "how",
+        "long"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-PT-021",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "delivery",
+        "time"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-PT-022",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "rush",
+        "deadline"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-PT-023",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "launch",
+        "date"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIME-SM-024",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "semantic_examples": [
+        "The user asks how long the work will take"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "portfolio"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "samples"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "examples"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "case studies"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "previous work"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "past projects"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "show me samples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "sample links"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "safe public links"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "cover samples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "formatting samples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "ghostwriting samples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "marketing examples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "registry"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-EX-015",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "anonymized samples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-EX-016",
+      "layer": "exact",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "phrases": [
+        "work examples"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PORT-RX-017",
+      "layer": "regex",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "regex": "\\b(portfolio|samples?|examples?|case\\s+studies|previous\\s+work|past\\s+projects)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-RX-018",
+      "layer": "regex",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "regex": "\\b(show|send|share)\\s+(me\\s+)?(samples?|examples?|links?)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-RX-019",
+      "layer": "regex",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "regex": "\\b(safe\\s+public\\s+links?|registry|anonymized\\s+samples?)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "show",
+        "samples"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-PT-021",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "portfolio",
+        "links"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-PT-022",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "safe",
+        "public",
+        "links"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORT-SM-023",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "semantic_examples": [
+        "The user wants proof or examples of previous work"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "consultation"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "book a consultation"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "schedule a call"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "talk to a consultant"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "human consultant"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "expert review"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "discovery call"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "strategy call"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "call me"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "contact me"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "consultant handoff"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "human review"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "speak with someone"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "phrases": [
+        "set up a meeting"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONSULT-RX-015",
+      "layer": "regex",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "regex": "\\b(book|schedule|set\\s+up)\\s+(a\\s+)?(call|consultation|meeting)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-RX-016",
+      "layer": "regex",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "regex": "\\b(human\\s+consultant|consultant\\s+handoff|expert\\s+review|strategy\\s+call)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-RX-017",
+      "layer": "regex",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "regex": "\\b(call\\s+me|contact\\s+me|speak\\s+with\\s+someone)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-PT-018",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "schedule",
+        "call"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "human",
+        "consultant"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "consultant",
+        "handoff"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULT-SM-021",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "semantic_examples": [
+        "The user wants a human consultant or meeting"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "NDA"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "non disclosure"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "non-disclosure"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "confidentiality agreement"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "confidentiality"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "privacy agreement"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "protect my manuscript"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "before I upload"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "keep it confidential"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "send NDA"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "NDA packet"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "confidential review"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "legal confidentiality"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "phrases": [
+        "document privacy"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-NDA-RX-015",
+      "layer": "regex",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "regex": "\\b(NDA|non[- ]disclosure|confidentiality\\s+agreement|confidentiality)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-RX-016",
+      "layer": "regex",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "regex": "\\b(protect|keep)\\s+(my\\s+)?(manuscript|idea|book)\\s+(confidential|private)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-RX-017",
+      "layer": "regex",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "regex": "\\b(before\\s+I\\s+upload|NDA\\s+packet|confidential\\s+review)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-PT-018",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "send",
+        "nda"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "confidentiality",
+        "agreement"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "protect",
+        "manuscript"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA-SM-021",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "semantic_examples": [
+        "The user asks about confidentiality or an NDA"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "service agreement"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "agreement"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "contract"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "statement of work"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "SOW"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "scope of work"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "terms"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "contract packet"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "agreement packet"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "sign today"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "legal terms"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "prepare agreement"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "draft agreement"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "service contract"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-EX-015",
+      "layer": "exact",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "phrases": [
+        "contract readiness"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-AGREE-RX-016",
+      "layer": "regex",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "regex": "\\b(service\\s+agreement|contract|statement\\s+of\\s+work|SOW|scope\\s+of\\s+work)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-RX-017",
+      "layer": "regex",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "regex": "\\b(agreement|contract)\\s+(packet|readiness|terms|draft)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-RX-018",
+      "layer": "regex",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "regex": "\\b(sign\\s+(today|now)|prepare\\s+(the\\s+)?agreement)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "service",
+        "agreement"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "contract",
+        "packet"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-PT-021",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "scope",
+        "of",
+        "work"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-PT-022",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "sign",
+        "today"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREE-SM-023",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "semantic_examples": [
+        "The user wants contract or service agreement handling"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "revisions"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "revision rounds"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "changes"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "feedback rounds"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "unlimited revisions"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "edit rounds"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "cover revisions"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "formatting revisions"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "how many revisions"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "phrases": [
+        "extra rounds"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-REV-RX-011",
+      "layer": "regex",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "regex": "\\b(revisions?|revision\\s+rounds?|feedback\\s+rounds?|unlimited\\s+revisions?)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-RX-012",
+      "layer": "regex",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "regex": "\\b(how\\s+many\\s+revisions|extra\\s+rounds|changes\\s+included)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-PT-013",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "how",
+        "many",
+        "revisions"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-PT-014",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "unlimited",
+        "revisions"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "feedback",
+        "rounds"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REV-SM-016",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "semantic_examples": [
+        "The user asks about revision policy"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "payment"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "payment plan"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "payment schedule"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "installments"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "milestones"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "invoice"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "deposit"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "split payment"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "pay later"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "upfront payment"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "payment options"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "company invoice"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PAY-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "phrases": [
+        "billing"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-RX-014",
+      "layer": "regex",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "regex": "\\b(payment|invoice|billing|deposit|installments?|milestones?)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-RX-015",
+      "layer": "regex",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "regex": "\\b(split\\s+payment|payment\\s+plan|payment\\s+schedule|company\\s+invoice)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "payment",
+        "plan"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-PT-017",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "split",
+        "payment"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-PT-018",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "company",
+        "invoice"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "payment",
+        "milestones"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAY-SM-020",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "semantic_examples": [
+        "The user asks how payment works"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "Amazon KDP"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "IngramSpark"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "ISBN"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "metadata"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "categories"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "keywords"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "BISAC"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "retailer"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "publishing platforms"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "Kobo"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "Apple Books"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "Draft2Digital"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-EX-013",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "distribution platform"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-EX-014",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "KDP account"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-EX-015",
+      "layer": "exact",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "phrases": [
+        "retailer setup"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-PLAT-RX-016",
+      "layer": "regex",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "regex": "\\b(Amazon\\s+KDP|KDP|IngramSpark|ISBN|BISAC|Kobo|Apple\\s+Books|Draft2Digital)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-RX-017",
+      "layer": "regex",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "regex": "\\b(metadata|categories|keywords|retailer|publishing\\s+platforms?)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-PT-018",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "amazon",
+        "kdp"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-PT-019",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "isbn",
+        "metadata"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-PT-020",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "keywords",
+        "categories"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PLAT-SM-021",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "semantic_examples": [
+        "The user asks about specific publishing platforms or metadata"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "my manuscript is finished"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "completed manuscript"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "rough draft"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "first draft"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "outline ready"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "partial draft"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "three chapters"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "edited manuscript"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "final draft"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "manuscript status"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "draft is complete"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "phrases": [
+        "book is written"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-MS-RX-013",
+      "layer": "regex",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "regex": "\\b(completed|finished|final|rough|partial|first)\\s+(draft|manuscript)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-RX-014",
+      "layer": "regex",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "regex": "\\b(outline\\s+ready|three\\s+chapters|book\\s+is\\s+written|manuscript\\s+status)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "manuscript",
+        "finished"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "outline",
+        "ready"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-PT-017",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "rough",
+        "draft"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MS-SM-018",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "semantic_examples": [
+        "The user gives manuscript readiness information"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "my email is"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "my phone is"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "phone number"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "email address"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "contact me at"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "author name is"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "book title is"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "secondary email"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "call me at"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-CONTACT-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "phrases": [
+        "WhatsApp"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-RX-011",
+      "layer": "regex",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "regex": "\\b(my\\s+)?email\\s+(is|address)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-RX-012",
+      "layer": "regex",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "regex": "\\b(my\\s+)?phone\\s+(is|number)|call\\s+me\\s+at|WhatsApp\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-RX-013",
+      "layer": "regex",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "regex": "\\b(author\\s+name\\s+is|book\\s+title\\s+is|contact\\s+me\\s+at)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-PT-014",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "my",
+        "email",
+        "is"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "phone",
+        "number"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "author",
+        "name",
+        "is"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT-SM-017",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "semantic_examples": [
+        "The user provides contact or identity details"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "too expensive"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "not happy"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "I am disappointed"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "that is wrong"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "I disagree"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "too slow"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "not what I asked"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "concern"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "objection"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "problem with this"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-011",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "bad answer"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-EX-012",
+      "layer": "exact",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "phrases": [
+        "not useful"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OBJ-RX-013",
+      "layer": "regex",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "regex": "\\b(too\\s+expensive|not\\s+happy|disappointed|I\\s+disagree|too\\s+slow)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-RX-014",
+      "layer": "regex",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "regex": "\\b(not\\s+what\\s+I\\s+asked|bad\\s+answer|not\\s+useful|problem\\s+with\\s+this)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "too",
+        "expensive"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-PT-016",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "not",
+        "happy"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-PT-017",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "i",
+        "disagree"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OBJ-SM-018",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "semantic_examples": [
+        "The user raises an objection or complaint"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "ready to start"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "ready to proceed"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "let us start"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "send the next steps"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "I want to move forward"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "start the project"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "I am ready"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "how do we begin"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "begin onboarding"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "phrases": [
+        "proceed with BookCraft"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-READY-RX-011",
+      "layer": "regex",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "regex": "\\b(ready\\s+to\\s+(start|proceed)|move\\s+forward|start\\s+the\\s+project|how\\s+do\\s+we\\s+begin)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-RX-012",
+      "layer": "regex",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "regex": "\\b(begin\\s+onboarding|send\\s+the\\s+next\\s+steps|proceed\\s+with)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-PT-013",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "ready",
+        "start"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-PT-014",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "move",
+        "forward"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-PT-015",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "next",
+        "steps"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY-SM-016",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "semantic_examples": [
+        "The user is ready to start the process"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "not sure"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "maybe later"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "I do not know"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "confused"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "unclear"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "still thinking"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "just browsing"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "maybe"
+      ],
+      "confidence": 0.965,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-009",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "not decided"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-EX-010",
+      "layer": "exact",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "phrases": [
+        "I am exploring"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-UNCLEAR-RX-011",
+      "layer": "regex",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "regex": "\\b(not\\s+sure|do\\s+not\\s+know|don\\'t\\s+know|confused|unclear|still\\s+thinking|just\\s+browsing)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-012",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "not",
+        "sure"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-013",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "still",
+        "thinking"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-014",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "just",
+        "browsing"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-SM-015",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "semantic_examples": [
+        "The user is ambiguous or not yet committed"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "buy followers now"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "crypto investment"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "casino bonus"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "free money"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "click this link"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "SEO backlinks cheap"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "adult content"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "phrases": [
+        "spam offer"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-SPAM-RX-009",
+      "layer": "regex",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "regex": "\\b(buy\\s+followers|casino\\s+bonus|free\\s+money|crypto\\s+investment|click\\s+this\\s+link|SEO\\s+backlinks)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM-PT-010",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "buy",
+        "followers"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM-PT-011",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "free",
+        "money"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM-PT-012",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "casino",
+        "bonus"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM-SM-013",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "semantic_examples": [
+        "The message appears spam or abusive"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF-EX-001",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "what is the weather"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-002",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "tell me a joke"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-003",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "solve my math homework"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-004",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "medical diagnosis"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-005",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "legal advice unrelated"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-006",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "restaurant near me"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-007",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "stock tips"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-EX-008",
+      "layer": "exact",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "phrases": [
+        "football score"
+      ],
+      "confidence": 0.985,
+      "enabled": true,
+      "shortcut_allowed": true
+    },
+    {
+      "id": "QUERY-OFF-RX-009",
+      "layer": "regex",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "regex": "\\b(weather|math\\s+homework|medical\\s+diagnosis|stock\\s+tips|football\\s+score|restaurant\\s+near\\s+me)\\b",
+      "confidence": 0.955,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF-PT-010",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "what",
+        "weather"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF-PT-011",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "tell",
+        "joke"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF-PT-012",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "stock",
+        "tips"
+      ],
+      "confidence": 0.93,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF-SM-013",
+      "layer": "semantic",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "semantic_examples": [
+        "The user asks something outside BookCraft sales scope"
+      ],
+      "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    }
+  ]
+}

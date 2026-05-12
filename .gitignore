@@ -28,3 +28,8 @@ reports/
 /*.sh
 bookcraft-ai-flow-frontend
 .env.production.local
+
+/trimatch_rules_army_v2/
+/trimatch_rules_army_v2.zip
+/data.zip
+.env.production.live.local

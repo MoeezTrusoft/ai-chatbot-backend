@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tri-Match Rule Candidate",
+  "type": "object",
+  "required": [
+    "candidate_id",
+    "candidate_type",
+    "target_layer",
+    "target_label",
+    "source",
+    "positive_examples",
+    "negative_examples",
+    "risk_note",
+    "status"
+  ],
+  "properties": {
+    "candidate_id": {
+      "type": "string"
+    },
+    "candidate_type": {
+      "enum": [
+        "phrase",
+        "regex",
+        "pattern",
+        "semantic_cluster",
+        "fuzzy_variant",
+        "negation_cue",
+        "counterfactual_cue",
+        "context_rule"
+      ]
+    },
+    "target_layer": {
+      "enum": [
+        "service_intent",
+        "query_intent",
+        "funnel_stage",
+        "preprocessor_context"
+      ]
+    },
+    "target_label": {
+      "type": "string"
+    },
+    "phrase": {
+      "type": "string"
+    },
+    "pattern": {
+      "type": [
+        "string",
+        "array"
+      ]
+    },
+    "semantic_examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source": {
+      "type": "object"
+    },
+    "positive_examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "negative_examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_note": {
+      "type": "string"
+    },
+    "suggested_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "suggested_by": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "pending_human_review",
+        "approved",
+        "rejected",
+        "edit_requested",
+        "needs_more_examples",
+        "deferred"
+      ]
+    }
+  }
+}

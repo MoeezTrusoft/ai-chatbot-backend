@@ -1,0 +1,45 @@
+{
+  "version": "context_rules.v1.rules_army",
+  "status": "requires_preprocessor_upgrade",
+  "rules": [
+    {
+      "id": "CTX-NEG-TERMINATOR-001",
+      "purpose": "End negation span at sentence/coordinator terminators",
+      "terminators": [
+        ".",
+        "?",
+        "!",
+        ";",
+        " but ",
+        " however ",
+        " instead ",
+        " rather ",
+        " although ",
+        " except ",
+        " unless "
+      ],
+      "fixes": [
+        "do not need X. I only want Y"
+      ]
+    },
+    {
+      "id": "CTX-BACKWARD-NEG-001",
+      "purpose": "Mark subject as negated in 'X is not finalized/approved/ready' frames",
+      "patterns": [
+        "\\b(?P<subject>quote|pricing|timeline|agreement|contract|NDA|payment)\\s+(is|are|was|were)\\s+not\\s+(?P<predicate>finalized|approved|ready|confirmed|included)\\b"
+      ]
+    },
+    {
+      "id": "CTX-MULTISERVICE-001",
+      "purpose": "Preserve all non-negated service atoms as service_secondary in first-mention order"
+    },
+    {
+      "id": "CTX-COUNTERFACTUAL-001",
+      "purpose": "Tag if/would/could sales pressure as counterfactual or conditional before pricing/timeline/doc gates"
+    },
+    {
+      "id": "CTX-PII-ECHO-001",
+      "purpose": "Contact info updates should classify without requiring response to echo PII"
+    }
+  ]
+}

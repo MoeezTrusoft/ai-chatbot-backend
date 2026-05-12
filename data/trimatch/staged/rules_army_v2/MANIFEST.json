@@ -1,0 +1,37 @@
+{
+  "package": "trimatch_rules_army_v2",
+  "purpose": "Human-approved, production-ready staged Tri-Match rule army for BookCraft domain intent classification",
+  "counts": {
+    "service_rules": 458,
+    "query_rules": 342,
+    "funnel_rules": 147,
+    "total_rules": 947,
+    "service_eval": 135,
+    "query_eval": 162,
+    "funnel_eval": 77,
+    "advanced_eval": 8,
+    "generated_at": "2026-05-12T15:54:06.251709+00:00"
+  },
+  "compatibility": {
+    "rulepack_schema": "bookcraft.components.trimatch.schemas.RulePack compatible",
+    "advanced_context": "requires preprocessor upgrades for negation/multi-service/counterfactual scope"
+  },
+  "files": {
+    "rules": [
+      "data/trimatch/rules/service_intent_rules.v2.rules_army.json",
+      "data/trimatch/rules/query_intent_rules.v2.rules_army.json",
+      "data/trimatch/rules/funnel_stage_rules.v2.rules_army.json"
+    ],
+    "sidecars": [
+      "data/trimatch/sidecars/_negation_cues.v2.json",
+      "data/trimatch/sidecars/_compound_word_variants.v2.json",
+      "data/trimatch/sidecars/_semantic_clusters.v1.json",
+      "data/trimatch/sidecars/_context_rules.v1.json"
+    ],
+    "eval": [
+      "data/trimatch/eval/service_intent_eval.v2.rules_army.jsonl",
+      "data/trimatch/eval/query_intent_eval.v2.rules_army.jsonl",
+      "data/trimatch/eval/funnel_stage_eval.v2.rules_army.jsonl"
+    ]
+  }
+}
