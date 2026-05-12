@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bookcraft.local/schemas/trimatch/rule-candidate.v1.json",
+  "title": "Tri-Match Rule Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "candidate_id",
+    "candidate_type",
+    "target_layer",
+    "target_dimension",
+    "target_label",
+    "source",
+    "proposal",
+    "positive_examples",
+    "negative_examples",
+    "risk_note",
+    "suggested_weight",
+    "suggested_by",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "candidate_id": {
+      "type": "string",
+      "pattern": "^cand_[0-9]{8}_[0-9]{4}$"
+    },
+    "candidate_type": {
+      "type": "string",
+      "enum": [
+        "exact_phrase",
+        "regex",
+        "pattern",
+        "semantic_cluster",
+        "fuzzy_variant",
+        "negation_cue",
+        "counterfactual_cue",
+        "service_priority_rule",
+        "funnel_stage_rule"
+      ]
+    },
+    "target_layer": {
+      "type": "string",
+      "enum": ["exact", "regex", "pattern", "semantic", "fuzzy", "context"]
+    },
+    "target_dimension": {
+      "type": "string",
+      "enum": ["service_intent", "query_intent", "funnel_stage", "context"]
+    },
+    "target_label": {
+      "type": "string",
+      "minLength": 2
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_type", "source_id"],
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "production_turn",
+            "diagnostic_failure",
+            "llm_disagreement",
+            "human_consultant_correction",
+            "manual_authoring",
+            "shadow_eval"
+          ]
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conversation_id": {
+          "type": ["string", "null"]
+        },
+        "turn_index": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalized_value": {
+          "type": ["string", "null"]
+        },
+        "regex_flags": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "positive_examples": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "negative_examples": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "risk_note": {
+      "type": "string",
+      "minLength": 10
+    },
+    "suggested_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "suggested_by": {
+      "type": "string",
+      "enum": ["llm_ensemble", "tri_match_shadow", "human", "diagnostic_analyzer"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_human_review",
+        "approved",
+        "rejected",
+        "edited_and_approved",
+        "needs_more_examples",
+        "duplicate",
+        "unsafe",
+        "deferred"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
