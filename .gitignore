@@ -26,3 +26,5 @@ data/rag-corpus/build/
 reports/
 
 /*.sh
+bookcraft-ai-flow-frontend
+.env.production.local
