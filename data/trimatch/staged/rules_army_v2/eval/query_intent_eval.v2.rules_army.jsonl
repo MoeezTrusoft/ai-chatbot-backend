@@ -1,0 +1,162 @@
+{"text": "hello", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "hi", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "hey", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "good morning", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "good afternoon", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "good evening", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "salam", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "assalam o alaikum", "dimension": "query_intent", "expected": "greeting", "subset": "exact_phrase"}
+{"text": "The user is opening the conversation or greeting the assistant", "dimension": "query_intent", "expected": "greeting", "subset": "semantic_seed"}
+{"text": "tell me about your services", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "what services do you offer", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "which service do I need", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "service options", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "can you handle this", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "do you offer", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "what can BookCraft do", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "help me choose a service", "dimension": "query_intent", "expected": "service_question", "subset": "exact_phrase"}
+{"text": "The user wants to understand services or fit", "dimension": "query_intent", "expected": "service_question", "subset": "semantic_seed"}
+{"text": "price", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "pricing", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "cost", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "quote", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "estimate", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "budget", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "how much", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "what does it cost", "dimension": "query_intent", "expected": "pricing_question", "subset": "exact_phrase"}
+{"text": "The user is asking about cost or a quote", "dimension": "query_intent", "expected": "pricing_question", "subset": "semantic_seed"}
+{"text": "timeline", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "turnaround", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "delivery time", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "how long", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "deadline", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "rush", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "urgent", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "launch date", "dimension": "query_intent", "expected": "timeline_question", "subset": "exact_phrase"}
+{"text": "The user asks how long the work will take", "dimension": "query_intent", "expected": "timeline_question", "subset": "semantic_seed"}
+{"text": "portfolio", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "samples", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "examples", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "case studies", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "previous work", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "past projects", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "show me samples", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "sample links", "dimension": "query_intent", "expected": "portfolio_request", "subset": "exact_phrase"}
+{"text": "The user wants proof or examples of previous work", "dimension": "query_intent", "expected": "portfolio_request", "subset": "semantic_seed"}
+{"text": "consultation", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "book a consultation", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "schedule a call", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "talk to a consultant", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "human consultant", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "expert review", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "discovery call", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "strategy call", "dimension": "query_intent", "expected": "consultation_request", "subset": "exact_phrase"}
+{"text": "The user wants a human consultant or meeting", "dimension": "query_intent", "expected": "consultation_request", "subset": "semantic_seed"}
+{"text": "NDA", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "non disclosure", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "non-disclosure", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "confidentiality agreement", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "confidentiality", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "privacy agreement", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "protect my manuscript", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "before I upload", "dimension": "query_intent", "expected": "nda_request", "subset": "exact_phrase"}
+{"text": "The user asks about confidentiality or an NDA", "dimension": "query_intent", "expected": "nda_request", "subset": "semantic_seed"}
+{"text": "service agreement", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "agreement", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "contract", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "statement of work", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "SOW", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "scope of work", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "terms", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "contract packet", "dimension": "query_intent", "expected": "agreement_request", "subset": "exact_phrase"}
+{"text": "The user wants contract or service agreement handling", "dimension": "query_intent", "expected": "agreement_request", "subset": "semantic_seed"}
+{"text": "revisions", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "revision rounds", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "changes", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "feedback rounds", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "unlimited revisions", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "edit rounds", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "cover revisions", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "formatting revisions", "dimension": "query_intent", "expected": "revision_question", "subset": "exact_phrase"}
+{"text": "The user asks about revision policy", "dimension": "query_intent", "expected": "revision_question", "subset": "semantic_seed"}
+{"text": "payment", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "payment plan", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "payment schedule", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "installments", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "milestones", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "invoice", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "deposit", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "split payment", "dimension": "query_intent", "expected": "payment_question", "subset": "exact_phrase"}
+{"text": "The user asks how payment works", "dimension": "query_intent", "expected": "payment_question", "subset": "semantic_seed"}
+{"text": "Amazon KDP", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "IngramSpark", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "ISBN", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "metadata", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "categories", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "keywords", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "BISAC", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "retailer", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "exact_phrase"}
+{"text": "The user asks about specific publishing platforms or metadata", "dimension": "query_intent", "expected": "publishing_platform_question", "subset": "semantic_seed"}
+{"text": "my manuscript is finished", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "completed manuscript", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "rough draft", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "first draft", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "outline ready", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "partial draft", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "three chapters", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "edited manuscript", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "exact_phrase"}
+{"text": "The user gives manuscript readiness information", "dimension": "query_intent", "expected": "manuscript_status_update", "subset": "semantic_seed"}
+{"text": "my email is", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "my phone is", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "phone number", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "email address", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "contact me at", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "author name is", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "book title is", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "secondary email", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "exact_phrase"}
+{"text": "The user provides contact or identity details", "dimension": "query_intent", "expected": "contact_info_provided", "subset": "semantic_seed"}
+{"text": "too expensive", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "not happy", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "I am disappointed", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "that is wrong", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "I disagree", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "too slow", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "not what I asked", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "concern", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "exact_phrase"}
+{"text": "The user raises an objection or complaint", "dimension": "query_intent", "expected": "complaint_or_objection", "subset": "semantic_seed"}
+{"text": "ready to start", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "ready to proceed", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "let us start", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "send the next steps", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "I want to move forward", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "start the project", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "I am ready", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "how do we begin", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "exact_phrase"}
+{"text": "The user is ready to start the process", "dimension": "query_intent", "expected": "ready_to_buy", "subset": "semantic_seed"}
+{"text": "not sure", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "maybe later", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "I do not know", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "confused", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "unclear", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "still thinking", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "just browsing", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "maybe", "dimension": "query_intent", "expected": "unclear", "subset": "exact_phrase"}
+{"text": "The user is ambiguous or not yet committed", "dimension": "query_intent", "expected": "unclear", "subset": "semantic_seed"}
+{"text": "buy followers now", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "crypto investment", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "casino bonus", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "free money", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "click this link", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "SEO backlinks cheap", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "adult content", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "spam offer", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "exact_phrase"}
+{"text": "The message appears spam or abusive", "dimension": "query_intent", "expected": "spam_or_abuse", "subset": "semantic_seed"}
+{"text": "what is the weather", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "tell me a joke", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "solve my math homework", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "medical diagnosis", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "legal advice unrelated", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "restaurant near me", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "stock tips", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "football score", "dimension": "query_intent", "expected": "off_topic", "subset": "exact_phrase"}
+{"text": "The user asks something outside BookCraft sales scope", "dimension": "query_intent", "expected": "off_topic", "subset": "semantic_seed"}

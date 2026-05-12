@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tri-Match Human Review",
+  "type": "object",
+  "required": [
+    "review_id",
+    "source_turn_id",
+    "human_label",
+    "reviewer",
+    "reviewed_at",
+    "decision"
+  ],
+  "properties": {
+    "review_id": {
+      "type": "string"
+    },
+    "source_turn_id": {
+      "type": "string"
+    },
+    "human_label": {
+      "type": "object"
+    },
+    "approved_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rejected_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decision": {
+      "enum": [
+        "approve",
+        "reject",
+        "edit_and_approve",
+        "needs_more_examples",
+        "duplicate",
+        "unsafe",
+        "defer"
+      ]
+    },
+    "reviewer": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
