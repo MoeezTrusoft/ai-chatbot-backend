@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bookcraft.local/schemas/trimatch/human-review.v1.json",
+  "title": "Tri-Match Human Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "review_id",
+    "candidate_id",
+    "decision",
+    "reviewer",
+    "reviewed_at",
+    "human_label",
+    "reason",
+    "promotion_scope"
+  ],
+  "properties": {
+    "review_id": {
+      "type": "string",
+      "pattern": "^review_[0-9]{8}_[0-9]{4}$"
+    },
+    "candidate_id": {
+      "type": "string",
+      "pattern": "^cand_[0-9]{8}_[0-9]{4}$"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject",
+        "edit_and_approve",
+        "needs_more_examples",
+        "duplicate",
+        "unsafe",
+        "defer"
+      ]
+    },
+    "reviewer": {
+      "type": "string",
+      "minLength": 2
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "human_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service_primary": {
+          "type": ["string", "null"]
+        },
+        "query_primary": {
+          "type": ["string", "null"]
+        },
+        "funnel_stage": {
+          "type": ["string", "null"]
+        },
+        "negated_services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "edited_proposal": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 10
+    },
+    "promotion_scope": {
+      "type": "string",
+      "enum": [
+        "none",
+        "staged_only",
+        "shadow",
+        "advisory",
+        "tiebreaker_candidate",
+        "shortcut_candidate"
+      ]
+    },
+    "required_followups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
