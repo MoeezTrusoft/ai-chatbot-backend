@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     trimatch_eval_dir: str = "data/trimatch/eval"
     trimatch_funnel_stage_weight: float = 0.0
     trimatch_fuzzy_enabled: bool = False
-    trimatch_extra_mode: Literal["off", "shadow"] = "off"
+    trimatch_extra_mode: Literal["off", "shadow", "advisory"] = "off"
     trimatch_extra_rule_dir: str = "data/trimatch/reinforcement/staged_from_reviews"
     trimatch_extra_fuzzy_enabled: bool = False
 

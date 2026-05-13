@@ -66,6 +66,7 @@ class ChatService:
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
     trimatch_shadow_engine: TriMatchEngine | None = None
+    trimatch_extra_mode: str = "off"
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -124,17 +125,27 @@ class ChatService:
             if self.trimatch_shadow_engine is not None:
                 try:
                     trimatch_shadow_result = self.trimatch_shadow_engine.classify(processed)
-                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                        thread_id=thread_id,
-                        sequence=event_sequence,
-                        previous_hash=previous_event_hash,
-                        event_type="trimatch.extra_shadow_voted",
-                        payload=trimatch_shadow_result.model_dump(mode="json"),
-                    )
-                    event_ids.append(event_id)
+                    if self.trimatch_extra_mode == "shadow":
+                        (
+                            event_id,
+                            event_sequence,
+                            previous_event_hash,
+                        ) = await self._append_thread_event(
+                            thread_id=thread_id,
+                            sequence=event_sequence,
+                            previous_hash=previous_event_hash,
+                            event_type="trimatch.extra_shadow_voted",
+                            payload=trimatch_shadow_result.model_dump(mode="json"),
+                        )
+                        event_ids.append(event_id)
                 except Exception as exc:
+                    failure_event_type = (
+                        "trimatch.extra_advisory_failed"
+                        if self.trimatch_extra_mode == "advisory"
+                        else "trimatch.extra_shadow_failed"
+                    )
                     structlog.get_logger(__name__).warning(
-                        "trimatch_extra_shadow_failed",
+                        failure_event_type,
                         thread_id=str(thread_id),
                         exception_class=exc.__class__.__name__,
                     )
@@ -142,7 +153,7 @@ class ChatService:
                         thread_id=thread_id,
                         sequence=event_sequence,
                         previous_hash=previous_event_hash,
-                        event_type="trimatch.extra_shadow_failed",
+                        event_type=failure_event_type,
                         payload={"exception_class": exc.__class__.__name__},
                     )
                     event_ids.append(event_id)
@@ -156,9 +167,26 @@ class ChatService:
             intent = harden_intent_from_message(intent, processed)
             decision = self.intent_classifier.last_decision
 
+            if self.trimatch_extra_mode == "advisory" and trimatch_shadow_result is not None:
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.extra_advisory_recommended",
+                    payload=_trimatch_advisory_payload(
+                        extra_advisory=trimatch_shadow_result,
+                        final_intent=intent,
+                    ),
+                )
+                event_ids.append(event_id)
+
+            extra_shadow_for_disagreement = (
+                trimatch_shadow_result if self.trimatch_extra_mode == "shadow" else None
+            )
+
             disagreement_payload = _trimatch_disagreement_payload(
                 active_trimatch=trimatch_result,
-                extra_shadow=trimatch_shadow_result,
+                extra_shadow=extra_shadow_for_disagreement,
                 ensemble_intent=ensemble_intent,
                 final_intent=intent,
             )
@@ -629,6 +657,64 @@ class ChatService:
             idempotency_key=idempotency_key,
             environment=self.environment,
         )
+
+
+def _trimatch_advisory_payload(
+    *,
+    extra_advisory: object,
+    final_intent: IntentVote,
+) -> dict[str, Any]:
+    extra_snapshot = _trimatch_snapshot(extra_advisory)
+    final_snapshot = _intent_snapshot(final_intent)
+
+    return {
+        "extra_advisory": extra_snapshot,
+        "final": final_snapshot,
+        "recommendation": _advisory_recommendation(
+            extra_snapshot=extra_snapshot,
+            final_snapshot=final_snapshot,
+        ),
+        "advisory_applied": False,
+        "side_effects_allowed": False,
+    }
+
+
+def _advisory_recommendation(
+    *,
+    extra_snapshot: dict[str, Any] | None,
+    final_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    if extra_snapshot is None:
+        return {
+            "dimension": None,
+            "recommended_value": None,
+            "matches_final": False,
+            "reason": "extra advisory RulePack produced no usable snapshot",
+        }
+
+    for dimension in ("query_primary", "service_primary", "funnel_stage"):
+        recommended_value = extra_snapshot.get(dimension)
+        if recommended_value is None:
+            continue
+
+        matches_final = recommended_value == final_snapshot.get(dimension)
+        return {
+            "dimension": dimension,
+            "recommended_value": recommended_value,
+            "matches_final": matches_final,
+            "reason": (
+                "extra advisory RulePack agreed with final intent"
+                if matches_final
+                else "extra advisory RulePack differed from final intent"
+            ),
+        }
+
+    return {
+        "dimension": None,
+        "recommended_value": None,
+        "matches_final": False,
+        "reason": "extra advisory RulePack produced no recommendation",
+    }
 
 
 def _trimatch_disagreement_payload(
