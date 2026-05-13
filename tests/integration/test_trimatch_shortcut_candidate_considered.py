@@ -77,6 +77,8 @@ async def test_shortcut_candidate_logs_considered_without_applying(
             app_env="test",
             trimatch_extra_mode="shortcut_candidate",
             trimatch_extra_rule_dir=str(tmp_path),
+            trimatch_shortcut_layers="exact,regex",
+            trimatch_shortcut_threshold=0.95,
         )
     )
 
@@ -127,6 +129,8 @@ async def test_shortcut_candidate_pricing_recommendation_is_blocked(
             app_env="test",
             trimatch_extra_mode="shortcut_candidate",
             trimatch_extra_rule_dir=str(tmp_path),
+            trimatch_shortcut_layers="exact,regex",
+            trimatch_shortcut_threshold=0.95,
         )
     )
 
@@ -169,6 +173,8 @@ async def test_shortcut_candidate_document_recommendation_is_blocked(
             app_env="test",
             trimatch_extra_mode="shortcut_candidate",
             trimatch_extra_rule_dir=str(tmp_path),
+            trimatch_shortcut_layers="exact,regex",
+            trimatch_shortcut_threshold=0.95,
         )
     )
 

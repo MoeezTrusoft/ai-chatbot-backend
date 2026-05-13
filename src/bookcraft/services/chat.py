@@ -213,15 +213,23 @@ class ChatService:
                 self.trimatch_extra_mode == "shortcut_candidate"
                 and trimatch_shadow_result is not None
             ):
+                shortcut_payload = _trimatch_shortcut_considered_payload(
+                    extra_shortcut=trimatch_shadow_result,
+                    final_intent=intent,
+                )
+                intent = _apply_shortcut_to_intent(
+                    intent=intent,
+                    shortcut=shortcut_payload["shortcut"],
+                )
+                shortcut_payload["after"] = {
+                    "final_after_shortcut": _intent_snapshot(intent),
+                }
                 event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                     thread_id=thread_id,
                     sequence=event_sequence,
                     previous_hash=previous_event_hash,
                     event_type="trimatch.extra_shortcut_considered",
-                    payload=_trimatch_shortcut_considered_payload(
-                        extra_shortcut=trimatch_shadow_result,
-                        final_intent=intent,
-                    ),
+                    payload=shortcut_payload,
                 )
                 event_ids.append(event_id)
 
@@ -739,7 +747,7 @@ def _shortcut_candidate_decision(
 ) -> dict[str, Any]:
     dimension, recommended_value = _shortcut_recommendation(extra_snapshot)
     evidence = _shortcut_evidence(extra_shortcut)
-    primary_evidence = evidence[0] if evidence else {}
+    primary_evidence = _primary_shortcut_evidence(evidence)
     rule_id = primary_evidence.get("rule_id") if isinstance(primary_evidence, dict) else None
 
     blocked_reasons = _shortcut_blocked_reasons(
@@ -753,17 +761,71 @@ def _shortcut_candidate_decision(
 
     return {
         "eligible": eligible,
-        "applied": False,
+        "applied": eligible,
         "dimension": dimension if eligible else None,
         "recommended_value": recommended_value if eligible else None,
         "rule_id": rule_id if eligible and isinstance(rule_id, str) else None,
         "reason": (
-            "eligible: safe shortcut candidate identified but application is disabled"
+            "applied: safe shortcut resolved eligible intent recommendation"
             if eligible
             else "blocked: " + "; ".join(blocked_reasons)
         ),
         "blocked_reasons": blocked_reasons,
     }
+
+
+def _apply_shortcut_to_intent(
+    *,
+    intent: IntentVote,
+    shortcut: dict[str, Any],
+) -> IntentVote:
+    if shortcut.get("applied") is not True:
+        return intent
+
+    dimension = shortcut.get("dimension")
+    recommended_value = shortcut.get("recommended_value")
+    rule_id = shortcut.get("rule_id")
+    if not isinstance(dimension, str) or not isinstance(recommended_value, str):
+        return intent
+    if not isinstance(rule_id, str) or not rule_id:
+        return intent
+
+    updates: dict[str, Any] = {}
+    try:
+        if dimension == "query_primary":
+            updates["query_primary"] = QueryIntentType(recommended_value)
+        elif dimension == "service_primary":
+            updates["service_primary"] = ServiceCategory(recommended_value)
+        else:
+            return intent
+    except ValueError:
+        return intent
+
+    evidence = [
+        *intent.evidence,
+        f"trimatch shortcut applied {dimension}={recommended_value} rule_id={rule_id}",
+    ]
+    rationale = f"{intent.rationale} Shortcut applied safely for {dimension}={recommended_value}."
+
+    return intent.model_copy(
+        update={
+            **updates,
+            "evidence": evidence,
+            "rationale": rationale,
+        }
+    )
+
+
+def _primary_shortcut_evidence(evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    for item in evidence:
+        if (
+            item.get("layer") in {"exact", "regex"}
+            and item.get("shortcut_eligible") is True
+            and item.get("negated") is not True
+            and item.get("counterfactual") is not True
+        ):
+            return item
+    return evidence[0] if evidence else {}
 
 
 def _shortcut_recommendation(
@@ -851,6 +913,11 @@ def _shortcut_blocked_reasons(
 
     if not allowed_evidence:
         blocked.append("no exact or regex shortcut-eligible evidence")
+
+    if allowed_evidence and not any(
+        isinstance(item.get("rule_id"), str) and item.get("rule_id") for item in allowed_evidence
+    ):
+        blocked.append("missing shortcut rule_id")
 
     if any(item.get("layer") in {"semantic", "fuzzy"} for item in evidence):
         blocked.append("semantic or fuzzy evidence cannot shortcut")

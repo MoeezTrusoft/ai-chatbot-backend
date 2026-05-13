@@ -30,7 +30,7 @@ class ShortcutAuditCase:
 AUDIT_CASES: tuple[ShortcutAuditCase, ...] = (
     ShortcutAuditCase(
         name="service_shortcut_considered_not_applied",
-        message="I need help with my book. rare shortcut editing marker",
+        message="I need book cover design help. rare shortcut editing marker",
         expected_extra_service="editing_proofreading",
     ),
     ShortcutAuditCase(
@@ -157,7 +157,7 @@ def _exact_rule(
         "regex": None,
         "pattern": [],
         "semantic_examples": [],
-        "confidence": 0.99,
+        "confidence": 1.0,
         "enabled": True,
         "shortcut_allowed": True,
     }
@@ -170,6 +170,8 @@ async def _run_audit(runtime_extra_rule_dir: Path) -> dict[str, Any]:
             trimatch_extra_mode="shortcut_candidate",
             trimatch_extra_rule_dir=str(runtime_extra_rule_dir),
             trimatch_extra_fuzzy_enabled=False,
+            trimatch_shortcut_layers="exact,regex",
+            trimatch_shortcut_threshold=0.95,
         )
     )
 
@@ -286,8 +288,13 @@ def _findings(
         findings.append({"type": "missing_shortcut_payload"})
         return findings
 
-    if actual["shortcut_applied"] is not False:
-        findings.append({"type": "shortcut_applied_not_false"})
+    if actual["shortcut_applied"] is True and (
+        actual["pricing_sensitive"]
+        or actual["document_sensitive"]
+        or actual["portfolio_sensitive"]
+        or actual["side_effects_allowed"]
+    ):
+        findings.append({"type": "unsafe_shortcut_applied"})
 
     if actual["shortcut_applied"] is True and actual["shortcut_dimension"] is None:
         findings.append({"type": "applied_shortcut_missing_dimension"})
