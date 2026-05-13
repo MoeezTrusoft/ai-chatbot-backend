@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -109,6 +109,7 @@ class ChatService:
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
             trimatch_result = None
+            trimatch_shadow_result = None
             if self.trimatch_engine is not None:
                 trimatch_result = self.trimatch_engine.classify(processed)
                 event_id, event_sequence, previous_event_hash = await self._append_thread_event(
@@ -151,8 +152,26 @@ class ChatService:
                 state,
                 trimatch_result=trimatch_result,
             )
+            ensemble_intent = intent
             intent = harden_intent_from_message(intent, processed)
             decision = self.intent_classifier.last_decision
+
+            disagreement_payload = _trimatch_disagreement_payload(
+                active_trimatch=trimatch_result,
+                extra_shadow=trimatch_shadow_result,
+                ensemble_intent=ensemble_intent,
+                final_intent=intent,
+            )
+            if disagreement_payload["should_log"]:
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.disagreement_observed",
+                    payload=disagreement_payload,
+                )
+                event_ids.append(event_id)
+
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
                 sequence=event_sequence,
@@ -610,6 +629,89 @@ class ChatService:
             idempotency_key=idempotency_key,
             environment=self.environment,
         )
+
+
+def _trimatch_disagreement_payload(
+    *,
+    active_trimatch: object | None,
+    extra_shadow: object | None,
+    ensemble_intent: IntentVote,
+    final_intent: IntentVote,
+) -> dict[str, Any]:
+    final_snapshot = _intent_snapshot(final_intent)
+    snapshots: dict[str, dict[str, Any] | None] = {
+        "active_trimatch": _trimatch_snapshot(active_trimatch),
+        "extra_shadow": _trimatch_snapshot(extra_shadow),
+        "ensemble": _intent_snapshot(ensemble_intent),
+    }
+
+    disagreements: list[dict[str, Any]] = []
+    for source, snapshot in snapshots.items():
+        if snapshot is None:
+            continue
+        for dimension in ("query_primary", "service_primary", "funnel_stage"):
+            source_value = snapshot.get(dimension)
+            final_value = final_snapshot.get(dimension)
+            if source_value is None:
+                continue
+            if source_value != final_value:
+                disagreements.append(
+                    {
+                        "source": source,
+                        "dimension": dimension,
+                        "source_value": source_value,
+                        "final_value": final_value,
+                    }
+                )
+
+    extra_shadow_snapshot = snapshots["extra_shadow"]
+    should_log = bool(disagreements)
+    if (
+        extra_shadow_snapshot is not None
+        and int(extra_shadow_snapshot.get("evidence_count") or 0) > 0
+    ):
+        should_log = True
+
+    return {
+        "active_trimatch": snapshots["active_trimatch"],
+        "extra_shadow": extra_shadow_snapshot,
+        "ensemble": snapshots["ensemble"],
+        "final": final_snapshot,
+        "disagreements": disagreements,
+        "should_log": should_log,
+    }
+
+
+def _trimatch_snapshot(result: object | None) -> dict[str, Any] | None:
+    if result is None:
+        return None
+
+    return {
+        "query_primary": _enum_value(getattr(result, "query_primary", None)),
+        "service_primary": _enum_value(getattr(result, "service_primary", None)),
+        "funnel_stage": _enum_value(getattr(result, "funnel_stage", None)),
+        "confidence": getattr(result, "confidence", None),
+        "evidence_count": len(getattr(result, "evidence", []) or []),
+        "shortcut_eligible": bool(getattr(result, "shortcut_eligible", False)),
+    }
+
+
+def _intent_snapshot(intent: IntentVote) -> dict[str, Any]:
+    return {
+        "query_primary": _enum_value(intent.query_primary),
+        "service_primary": _enum_value(intent.service_primary),
+        "funnel_stage": _enum_value(intent.funnel_stage),
+        "confidence": intent.confidence,
+        "evidence_count": len(intent.evidence),
+        "needs_clarification": intent.needs_clarification,
+    }
+
+
+def _enum_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    enum_value = getattr(value, "value", None)
+    return str(enum_value if enum_value is not None else value)
 
 
 def _allow_rag_for_intent(intent: IntentVote) -> bool:
