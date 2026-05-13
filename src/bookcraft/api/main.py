@@ -306,6 +306,7 @@ def build_chat_service(
         trg_engine=trg_engine,
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
+        trimatch_extra_mode=settings.trimatch_extra_mode,
         thread_repository=thread_repository,
     )
 

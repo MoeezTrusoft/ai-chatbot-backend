@@ -4,7 +4,7 @@ Purpose
 
 This runbook defines the checks that must pass before advisory mode can be implemented or enabled.
 
-Advisory mode is not active today.
+Advisory mode is implemented as a guarded logging-only mode, but must not be enabled outside controlled review until the readiness checks pass.
 
 Current allowed mode
 TRIMATCH_EXTRA_MODE=shadow
