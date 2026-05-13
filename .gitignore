@@ -20,8 +20,12 @@ tei-data/
 grafana-data/
 data/generated/
 
-# Generated RAG artifacts; source content remains canonical under docs/.
-data/rag-corpus/source_markdown/
+# Curated RAG source corpus is tracked for reproducible indexing.
+!data/rag-corpus/
+!data/rag-corpus/source_markdown/
+!data/rag-corpus/source_markdown/**/*.md
+
+# Generated RAG artifacts remain ignored.
 data/rag-corpus/build/
 reports/
 
