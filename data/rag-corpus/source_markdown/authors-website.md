@@ -1,11 +1,11 @@
 ---
 title: Author's Website
 source_id: authors_website
-service_category: marketing_promotion
+service_category: author_website
 section: overview
 content_version: v1
 allowed_for_response: true
-tags: [marketing_promotion, overview, rag]
+tags: [author_website, overview, rag]
 ---
 
 # Author's Website

@@ -1,11 +1,11 @@
 ---
 title: Video Book Trailer
 source_id: video_trailers
-service_category: marketing_promotion
+service_category: video_trailer
 section: overview
 content_version: v1
 allowed_for_response: true
-tags: [marketing_promotion, overview, rag]
+tags: [video_trailer, overview, rag]
 ---
 
 # Video Book Trailer
