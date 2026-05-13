@@ -139,11 +139,12 @@ class ChatService:
                         )
                         event_ids.append(event_id)
                 except Exception as exc:
-                    failure_event_type = (
-                        "trimatch.extra_advisory_failed"
-                        if self.trimatch_extra_mode == "advisory"
-                        else "trimatch.extra_shadow_failed"
-                    )
+                    if self.trimatch_extra_mode == "advisory":
+                        failure_event_type = "trimatch.extra_advisory_failed"
+                    elif self.trimatch_extra_mode == "tiebreaker_candidate":
+                        failure_event_type = "trimatch.extra_tiebreaker_failed"
+                    else:
+                        failure_event_type = "trimatch.extra_shadow_failed"
                     structlog.get_logger(__name__).warning(
                         failure_event_type,
                         thread_id=str(thread_id),
@@ -175,6 +176,24 @@ class ChatService:
                     event_type="trimatch.extra_advisory_recommended",
                     payload=_trimatch_advisory_payload(
                         extra_advisory=trimatch_shadow_result,
+                        final_intent=intent,
+                    ),
+                )
+                event_ids.append(event_id)
+
+            if (
+                self.trimatch_extra_mode == "tiebreaker_candidate"
+                and trimatch_shadow_result is not None
+            ):
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.extra_tiebreaker_considered",
+                    payload=_trimatch_tiebreaker_considered_payload(
+                        active_trimatch=trimatch_result,
+                        extra_tiebreaker=trimatch_shadow_result,
+                        ensemble_intent=ensemble_intent,
                         final_intent=intent,
                     ),
                 )
@@ -657,6 +676,73 @@ class ChatService:
             idempotency_key=idempotency_key,
             environment=self.environment,
         )
+
+
+def _trimatch_tiebreaker_considered_payload(
+    *,
+    active_trimatch: object | None,
+    extra_tiebreaker: object,
+    ensemble_intent: IntentVote,
+    final_intent: IntentVote,
+) -> dict[str, Any]:
+    extra_snapshot = _trimatch_snapshot(extra_tiebreaker)
+    final_snapshot = _intent_snapshot(final_intent)
+
+    return {
+        "extra_tiebreaker": extra_snapshot,
+        "before": {
+            "active_trimatch": _trimatch_snapshot(active_trimatch),
+            "ensemble": _intent_snapshot(ensemble_intent),
+            "final_before_tiebreaker": final_snapshot,
+        },
+        "decision": {
+            "eligible": False,
+            "applied": False,
+            "dimension": None,
+            "recommended_value": None,
+            "reason": "blocked: tiebreaker candidate mode phase 1 is consideration-only",
+        },
+        "safety": _tiebreaker_safety_snapshot(
+            extra_snapshot=extra_snapshot,
+            final_snapshot=final_snapshot,
+        ),
+    }
+
+
+def _tiebreaker_safety_snapshot(
+    *,
+    extra_snapshot: dict[str, Any] | None,
+    final_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    extra_query = extra_snapshot.get("query_primary") if extra_snapshot else None
+    final_query = final_snapshot.get("query_primary")
+
+    pricing_sensitive = extra_query in {
+        "pricing_question",
+        "timeline_question",
+        "payment_question",
+    } or final_query in {
+        "pricing_question",
+        "timeline_question",
+        "payment_question",
+    }
+    document_sensitive = extra_query in {
+        "nda_request",
+        "agreement_request",
+    } or final_query in {
+        "nda_request",
+        "agreement_request",
+    }
+    portfolio_sensitive = extra_query == "portfolio_request" or final_query == "portfolio_request"
+
+    return {
+        "pricing_sensitive": pricing_sensitive,
+        "document_sensitive": document_sensitive,
+        "portfolio_sensitive": portfolio_sensitive,
+        "negated": False,
+        "counterfactual": False,
+        "side_effects_allowed": False,
+    }
 
 
 def _trimatch_advisory_payload(
