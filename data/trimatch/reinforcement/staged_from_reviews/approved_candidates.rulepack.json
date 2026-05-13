@@ -1,0 +1,23 @@
+{
+  "rules": [
+    {
+      "confidence": 0.95,
+      "enabled": true,
+      "id": "reviewed_cand_20260512_0001",
+      "layer": "exact",
+      "pattern": [],
+      "phrases": [
+        "proofreading"
+      ],
+      "regex": null,
+      "semantic_examples": [],
+      "shortcut_allowed": false,
+      "target": {
+        "funnel_stage": null,
+        "query_intent": null,
+        "service_intent": "editing_proofreading"
+      }
+    }
+  ],
+  "version": "approved_candidates.sample.v1"
+}
