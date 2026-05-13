@@ -143,6 +143,8 @@ class ChatService:
                         failure_event_type = "trimatch.extra_advisory_failed"
                     elif self.trimatch_extra_mode == "tiebreaker_candidate":
                         failure_event_type = "trimatch.extra_tiebreaker_failed"
+                    elif self.trimatch_extra_mode == "shortcut_candidate":
+                        failure_event_type = "trimatch.extra_shortcut_failed"
                     else:
                         failure_event_type = "trimatch.extra_shadow_failed"
                     structlog.get_logger(__name__).warning(
@@ -204,6 +206,22 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="trimatch.extra_tiebreaker_considered",
                     payload=tiebreaker_payload,
+                )
+                event_ids.append(event_id)
+
+            if (
+                self.trimatch_extra_mode == "shortcut_candidate"
+                and trimatch_shadow_result is not None
+            ):
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="trimatch.extra_shortcut_considered",
+                    payload=_trimatch_shortcut_considered_payload(
+                        extra_shortcut=trimatch_shadow_result,
+                        final_intent=intent,
+                    ),
                 )
                 event_ids.append(event_id)
 
@@ -684,6 +702,70 @@ class ChatService:
             idempotency_key=idempotency_key,
             environment=self.environment,
         )
+
+
+def _trimatch_shortcut_considered_payload(
+    *,
+    extra_shortcut: object,
+    final_intent: IntentVote,
+) -> dict[str, Any]:
+    extra_snapshot = _trimatch_snapshot(extra_shortcut)
+    final_snapshot = _intent_snapshot(final_intent)
+    safety = _shortcut_safety_snapshot(
+        extra_snapshot=extra_snapshot,
+        final_snapshot=final_snapshot,
+    )
+
+    return {
+        "extra_shortcut": extra_snapshot,
+        "final": final_snapshot,
+        "shortcut": {
+            "eligible": False,
+            "applied": False,
+            "dimension": None,
+            "recommended_value": None,
+            "rule_id": None,
+            "reason": "blocked: shortcut candidate mode phase 1 is consideration-only",
+            "blocked_reasons": ["shortcut application disabled in consideration-only phase"],
+        },
+        "safety": safety,
+    }
+
+
+def _shortcut_safety_snapshot(
+    *,
+    extra_snapshot: dict[str, Any] | None,
+    final_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    extra_query = extra_snapshot.get("query_primary") if extra_snapshot else None
+    final_query = final_snapshot.get("query_primary")
+
+    pricing_sensitive = extra_query in {
+        "pricing_question",
+        "timeline_question",
+        "payment_question",
+    } or final_query in {
+        "pricing_question",
+        "timeline_question",
+        "payment_question",
+    }
+    document_sensitive = extra_query in {
+        "nda_request",
+        "agreement_request",
+    } or final_query in {
+        "nda_request",
+        "agreement_request",
+    }
+    portfolio_sensitive = extra_query == "portfolio_request" or final_query == "portfolio_request"
+
+    return {
+        "pricing_sensitive": pricing_sensitive,
+        "document_sensitive": document_sensitive,
+        "portfolio_sensitive": portfolio_sensitive,
+        "negated": False,
+        "counterfactual": False,
+        "side_effects_allowed": False,
+    }
 
 
 def _trimatch_tiebreaker_considered_payload(

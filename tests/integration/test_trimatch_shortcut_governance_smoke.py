@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 from bookcraft.infra.config import Settings
 
 
-def test_shortcut_candidate_mode_is_not_enabled_yet() -> None:
-    with pytest.raises(ValidationError):
-        Settings(app_env="test", trimatch_extra_mode="shortcut_candidate")
+def test_shortcut_candidate_mode_is_consideration_only() -> None:
+    settings = Settings(app_env="test", trimatch_extra_mode="shortcut_candidate")
+
+    assert settings.trimatch_extra_mode == "shortcut_candidate"
 
 
 def test_shortcut_design_blocks_sensitive_query_intents() -> None:
