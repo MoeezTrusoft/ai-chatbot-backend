@@ -715,21 +715,170 @@ def _trimatch_shortcut_considered_payload(
         extra_snapshot=extra_snapshot,
         final_snapshot=final_snapshot,
     )
+    shortcut = _shortcut_candidate_decision(
+        extra_shortcut=extra_shortcut,
+        extra_snapshot=extra_snapshot,
+        final_snapshot=final_snapshot,
+        safety=safety,
+    )
 
     return {
         "extra_shortcut": extra_snapshot,
         "final": final_snapshot,
-        "shortcut": {
-            "eligible": False,
-            "applied": False,
-            "dimension": None,
-            "recommended_value": None,
-            "rule_id": None,
-            "reason": "blocked: shortcut candidate mode phase 1 is consideration-only",
-            "blocked_reasons": ["shortcut application disabled in consideration-only phase"],
-        },
+        "shortcut": shortcut,
         "safety": safety,
     }
+
+
+def _shortcut_candidate_decision(
+    *,
+    extra_shortcut: object,
+    extra_snapshot: dict[str, Any] | None,
+    final_snapshot: dict[str, Any],
+    safety: dict[str, Any],
+) -> dict[str, Any]:
+    dimension, recommended_value = _shortcut_recommendation(extra_snapshot)
+    evidence = _shortcut_evidence(extra_shortcut)
+    primary_evidence = evidence[0] if evidence else {}
+    rule_id = primary_evidence.get("rule_id") if isinstance(primary_evidence, dict) else None
+
+    blocked_reasons = _shortcut_blocked_reasons(
+        dimension=dimension,
+        recommended_value=recommended_value,
+        evidence=evidence,
+        final_snapshot=final_snapshot,
+        safety=safety,
+    )
+    eligible = not blocked_reasons
+
+    return {
+        "eligible": eligible,
+        "applied": False,
+        "dimension": dimension if eligible else None,
+        "recommended_value": recommended_value if eligible else None,
+        "rule_id": rule_id if eligible and isinstance(rule_id, str) else None,
+        "reason": (
+            "eligible: safe shortcut candidate identified but application is disabled"
+            if eligible
+            else "blocked: " + "; ".join(blocked_reasons)
+        ),
+        "blocked_reasons": blocked_reasons,
+    }
+
+
+def _shortcut_recommendation(
+    extra_snapshot: dict[str, Any] | None,
+) -> tuple[str | None, str | None]:
+    if extra_snapshot is None:
+        return None, None
+
+    for dimension in ("query_primary", "service_primary"):
+        value = extra_snapshot.get(dimension)
+        if isinstance(value, str) and value:
+            return dimension, value
+
+    return None, None
+
+
+def _shortcut_evidence(extra_shortcut: object) -> list[dict[str, Any]]:
+    evidence = getattr(extra_shortcut, "evidence", [])
+    if not isinstance(evidence, list):
+        return []
+
+    snapshots: list[dict[str, Any]] = []
+    for item in evidence:
+        if hasattr(item, "model_dump"):
+            raw = item.model_dump(mode="json")
+        elif isinstance(item, dict):
+            raw = item
+        else:
+            continue
+
+        if isinstance(raw, dict):
+            snapshots.append(raw)
+
+    return snapshots
+
+
+def _shortcut_blocked_reasons(
+    *,
+    dimension: str | None,
+    recommended_value: str | None,
+    evidence: list[dict[str, Any]],
+    final_snapshot: dict[str, Any],
+    safety: dict[str, Any],
+) -> list[str]:
+    blocked: list[str] = []
+
+    if dimension is None or recommended_value is None:
+        blocked.append("no extra shortcut recommendation")
+        return blocked
+
+    if dimension not in {"query_primary", "service_primary"}:
+        blocked.append(f"unsupported dimension: {dimension}")
+
+    if recommended_value == final_snapshot.get(dimension):
+        blocked.append("recommendation already matches final intent")
+
+    if recommended_value in {
+        "pricing_question",
+        "timeline_question",
+        "portfolio_request",
+        "nda_request",
+        "agreement_request",
+        "payment_question",
+        "complaint_or_objection",
+        "ready_to_buy",
+        "spam_or_abuse",
+        "off_topic",
+    }:
+        blocked.append(f"forbidden recommended value: {recommended_value}")
+
+    if _sensitive_shortcut_safety_blocked(safety):
+        blocked.append("safety-sensitive intent cannot use shortcut")
+
+    if not evidence:
+        blocked.append("no shortcut evidence")
+
+    allowed_evidence = [
+        item
+        for item in evidence
+        if item.get("layer") in {"exact", "regex"}
+        and item.get("shortcut_eligible") is True
+        and item.get("negated") is not True
+        and item.get("counterfactual") is not True
+    ]
+
+    if not allowed_evidence:
+        blocked.append("no exact or regex shortcut-eligible evidence")
+
+    if any(item.get("layer") in {"semantic", "fuzzy"} for item in evidence):
+        blocked.append("semantic or fuzzy evidence cannot shortcut")
+
+    if any(item.get("shortcut_eligible") is not True for item in evidence):
+        blocked.append("shortcut_allowed false or missing on evidence")
+
+    if any(item.get("negated") is True for item in evidence):
+        blocked.append("negated evidence cannot shortcut")
+
+    if any(item.get("counterfactual") is True for item in evidence):
+        blocked.append("counterfactual evidence cannot shortcut")
+
+    return blocked
+
+
+def _sensitive_shortcut_safety_blocked(safety: dict[str, Any]) -> bool:
+    return any(
+        bool(safety.get(key))
+        for key in (
+            "pricing_sensitive",
+            "document_sensitive",
+            "portfolio_sensitive",
+            "negated",
+            "counterfactual",
+            "side_effects_allowed",
+        )
+    )
 
 
 def _shortcut_safety_snapshot(
