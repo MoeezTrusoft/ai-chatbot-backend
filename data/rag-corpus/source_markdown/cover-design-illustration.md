@@ -1,11 +1,11 @@
 ---
 title: Cover Design & Illustration
 source_id: cover_design_illustration
-service_category: interior_formatting
+service_category: cover_design_illustration
 section: overview
 content_version: v1
 allowed_for_response: true
-tags: [interior_formatting, overview, rag]
+tags: [cover_design_illustration, overview, rag]
 ---
 
 # Cover Design & Illustration
