@@ -388,6 +388,8 @@ def _summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
         "eligible_count": eligible_count,
         "applied_count": applied_count,
         "side_effects_allowed_count": side_effects_allowed_count,
+        "applied_dimension_counts": _applied_field_counts(turns, "decision_dimension"),
+        "applied_value_counts": _applied_field_counts(turns, "decision_recommended_value"),
         "pricing_sensitive_count": sum(
             1 for turn in turns if bool(turn["actual"]["pricing_sensitive"])
         ),
@@ -428,6 +430,18 @@ def _blocked_reason_counts(turns: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _applied_field_counts(turns: list[dict[str, Any]], field: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for turn in turns:
+        if not bool(turn["actual"]["decision_applied"]):
+            continue
+        value = turn["actual"].get(field)
+        if not isinstance(value, str):
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -454,6 +468,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- Eligible count: `{summary['eligible_count']}`",
         f"- Applied count: `{summary['applied_count']}`",
         f"- Side effects allowed count: `{summary['side_effects_allowed_count']}`",
+        f"- Applied dimensions: `{summary['applied_dimension_counts']}`",
+        f"- Applied values: `{summary['applied_value_counts']}`",
         f"- Blocked reasons: `{len(summary['blocked_reason_counts'])}`",
         f"- Pricing-sensitive count: `{summary['pricing_sensitive_count']}`",
         f"- Document-sensitive count: `{summary['document_sensitive_count']}`",

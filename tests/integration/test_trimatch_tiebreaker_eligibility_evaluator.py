@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from bookcraft.services.chat import _trimatch_tiebreaker_considered_payload
+from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
+from bookcraft.services.chat import (
+    _apply_tiebreaker_to_intent,
+    _trimatch_tiebreaker_considered_payload,
+)
 
 
 class FakeTriMatchResult:
@@ -40,7 +45,7 @@ class FakeIntentVote:
         self.needs_clarification = False
 
 
-def test_tiebreaker_eligibility_can_be_true_but_applied_stays_false() -> None:
+def test_tiebreaker_eligibility_can_apply_safe_candidate() -> None:
     payload = _payload(
         active_trimatch=FakeTriMatchResult(service_primary="cover_design_illustration"),
         extra_tiebreaker=FakeTriMatchResult(service_primary="editing_proofreading"),
@@ -49,7 +54,7 @@ def test_tiebreaker_eligibility_can_be_true_but_applied_stays_false() -> None:
     )
 
     assert payload["decision"]["eligible"] is True
-    assert payload["decision"]["applied"] is False
+    assert payload["decision"]["applied"] is True
     assert payload["decision"]["dimension"] == "service_primary"
     assert payload["decision"]["recommended_value"] == "editing_proofreading"
     assert payload["safety"]["side_effects_allowed"] is False
@@ -110,6 +115,80 @@ def test_tiebreaker_blocks_when_final_confidence_is_high() -> None:
     assert payload["decision"]["eligible"] is False
     assert payload["decision"]["applied"] is False
     assert "final confidence above tiebreaker threshold" in payload["decision"]["blocked_reasons"]
+
+
+def test_apply_tiebreaker_updates_only_allowed_service_primary() -> None:
+    intent = IntentVote(
+        query_primary=QueryIntentType.SERVICE_QUESTION,
+        service_primary=ServiceCategory.COVER_DESIGN_ILLUSTRATION,
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False,
+        confidence=0.6,
+        rationale="Initial intent.",
+        evidence=[],
+    )
+
+    updated = _apply_tiebreaker_to_intent(
+        intent=intent,
+        decision={
+            "applied": True,
+            "dimension": "service_primary",
+            "recommended_value": "editing_proofreading",
+        },
+    )
+
+    assert updated.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert updated.service_primary == ServiceCategory.EDITING_PROOFREADING
+    assert updated.funnel_stage == SalesStage.SERVICE_DISCOVERY
+    assert "trimatch tiebreaker applied" in updated.evidence[-1]
+
+
+def test_apply_tiebreaker_updates_only_allowed_query_primary() -> None:
+    intent = IntentVote(
+        query_primary=QueryIntentType.UNCLEAR,
+        service_primary=None,
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False,
+        confidence=0.6,
+        rationale="Initial intent.",
+        evidence=[],
+    )
+
+    updated = _apply_tiebreaker_to_intent(
+        intent=intent,
+        decision={
+            "applied": True,
+            "dimension": "query_primary",
+            "recommended_value": "service_question",
+        },
+    )
+
+    assert updated.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert updated.service_primary is None
+    assert updated.funnel_stage == SalesStage.SERVICE_DISCOVERY
+
+
+def test_apply_tiebreaker_ignores_unsupported_dimension() -> None:
+    intent = IntentVote(
+        query_primary=QueryIntentType.SERVICE_QUESTION,
+        service_primary=ServiceCategory.EDITING_PROOFREADING,
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False,
+        confidence=0.6,
+        rationale="Initial intent.",
+        evidence=[],
+    )
+
+    updated = _apply_tiebreaker_to_intent(
+        intent=intent,
+        decision={
+            "applied": True,
+            "dimension": "funnel_stage",
+            "recommended_value": "quoted",
+        },
+    )
+
+    assert updated == intent
 
 
 def _payload(

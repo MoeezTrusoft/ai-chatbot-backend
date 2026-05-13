@@ -185,17 +185,25 @@ class ChatService:
                 self.trimatch_extra_mode == "tiebreaker_candidate"
                 and trimatch_shadow_result is not None
             ):
+                tiebreaker_payload = _trimatch_tiebreaker_considered_payload(
+                    active_trimatch=trimatch_result,
+                    extra_tiebreaker=trimatch_shadow_result,
+                    ensemble_intent=ensemble_intent,
+                    final_intent=intent,
+                )
+                intent = _apply_tiebreaker_to_intent(
+                    intent=intent,
+                    decision=tiebreaker_payload["decision"],
+                )
+                tiebreaker_payload["after"] = {
+                    "final_after_tiebreaker": _intent_snapshot(intent),
+                }
                 event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                     thread_id=thread_id,
                     sequence=event_sequence,
                     previous_hash=previous_event_hash,
                     event_type="trimatch.extra_tiebreaker_considered",
-                    payload=_trimatch_tiebreaker_considered_payload(
-                        active_trimatch=trimatch_result,
-                        extra_tiebreaker=trimatch_shadow_result,
-                        ensemble_intent=ensemble_intent,
-                        final_intent=intent,
-                    ),
+                    payload=tiebreaker_payload,
                 )
                 event_ids.append(event_id)
 
@@ -713,6 +721,45 @@ def _trimatch_tiebreaker_considered_payload(
     }
 
 
+def _apply_tiebreaker_to_intent(
+    *,
+    intent: IntentVote,
+    decision: dict[str, Any],
+) -> IntentVote:
+    if decision.get("applied") is not True:
+        return intent
+
+    dimension = decision.get("dimension")
+    recommended_value = decision.get("recommended_value")
+    if not isinstance(dimension, str) or not isinstance(recommended_value, str):
+        return intent
+
+    updates: dict[str, Any] = {}
+    try:
+        if dimension == "query_primary":
+            updates["query_primary"] = QueryIntentType(recommended_value)
+        elif dimension == "service_primary":
+            updates["service_primary"] = ServiceCategory(recommended_value)
+        else:
+            return intent
+    except ValueError:
+        return intent
+
+    evidence = [
+        *intent.evidence,
+        f"trimatch tiebreaker applied {dimension}={recommended_value}",
+    ]
+    rationale = f"{intent.rationale} Tiebreaker applied safely for {dimension}={recommended_value}."
+
+    return intent.model_copy(
+        update={
+            **updates,
+            "evidence": evidence,
+            "rationale": rationale,
+        }
+    )
+
+
 def _tiebreaker_candidate_decision(
     *,
     active_snapshot: dict[str, Any] | None,
@@ -735,13 +782,11 @@ def _tiebreaker_candidate_decision(
 
     return {
         "eligible": eligible,
-        # Phase 2 only computes eligibility. Application stays disabled until
-        # a separate governance-approved implementation branch.
-        "applied": False,
+        "applied": eligible,
         "dimension": dimension if eligible else None,
         "recommended_value": recommended_value if eligible else None,
         "reason": (
-            "eligible: safe tiebreaker candidate identified but application is disabled"
+            "applied: safe tiebreaker resolved eligible intent disagreement"
             if eligible
             else "blocked: " + "; ".join(blocked_reasons)
         ),
