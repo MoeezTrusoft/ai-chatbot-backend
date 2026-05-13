@@ -375,8 +375,24 @@ def _summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     failed_turns = sum(1 for turn in turns if not turn["passed"])
     eligible_count = sum(1 for turn in turns if bool(turn["actual"]["shortcut_eligible"]))
     applied_count = sum(1 for turn in turns if bool(turn["actual"]["shortcut_applied"]))
+    eligible_not_applied_count = sum(
+        1
+        for turn in turns
+        if bool(turn["actual"]["shortcut_eligible"])
+        and not bool(turn["actual"]["shortcut_applied"])
+    )
     side_effects_allowed_count = sum(
         1 for turn in turns if bool(turn["actual"]["side_effects_allowed"])
+    )
+    sensitive_block_count = sum(
+        1
+        for turn in turns
+        if (
+            bool(turn["actual"]["pricing_sensitive"])
+            or bool(turn["actual"]["document_sensitive"])
+            or bool(turn["actual"]["portfolio_sensitive"])
+        )
+        and not bool(turn["actual"]["shortcut_applied"])
     )
     blocked_reason_counts = _blocked_reason_counts(turns)
 
@@ -388,8 +404,22 @@ def _summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
         "failed_turns": failed_turns,
         "shortcut_event_count": len(turns),
         "eligible_count": eligible_count,
+        "eligible_not_applied_count": eligible_not_applied_count,
         "applied_count": applied_count,
         "side_effects_allowed_count": side_effects_allowed_count,
+        "sensitive_block_count": sensitive_block_count,
+        "applied_dimension_counts": _applied_shortcut_field_counts(
+            turns,
+            "shortcut_dimension",
+        ),
+        "applied_value_counts": _applied_shortcut_field_counts(
+            turns,
+            "shortcut_recommended_value",
+        ),
+        "applied_rule_id_counts": _applied_shortcut_field_counts(
+            turns,
+            "shortcut_rule_id",
+        ),
         "pricing_sensitive_count": sum(
             1 for turn in turns if bool(turn["actual"]["pricing_sensitive"])
         ),
@@ -430,6 +460,21 @@ def _blocked_reason_counts(turns: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _applied_shortcut_field_counts(
+    turns: list[dict[str, Any]],
+    field: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for turn in turns:
+        if not bool(turn["actual"]["shortcut_applied"]):
+            continue
+        value = turn["actual"].get(field)
+        if not isinstance(value, str):
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -454,8 +499,13 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- Failed turns: `{summary['failed_turns']}`",
         f"- Shortcut events: `{summary['shortcut_event_count']}`",
         f"- Eligible count: `{summary['eligible_count']}`",
+        f"- Eligible not applied count: `{summary['eligible_not_applied_count']}`",
         f"- Applied count: `{summary['applied_count']}`",
         f"- Side effects allowed count: `{summary['side_effects_allowed_count']}`",
+        f"- Sensitive block count: `{summary['sensitive_block_count']}`",
+        f"- Applied dimensions: `{summary['applied_dimension_counts']}`",
+        f"- Applied values: `{summary['applied_value_counts']}`",
+        f"- Applied rule IDs: `{summary['applied_rule_id_counts']}`",
         f"- Blocked reasons: `{len(summary['blocked_reason_counts'])}`",
         f"- Pricing-sensitive count: `{summary['pricing_sensitive_count']}`",
         f"- Document-sensitive count: `{summary['document_sensitive_count']}`",
