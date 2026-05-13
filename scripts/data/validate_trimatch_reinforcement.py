@@ -34,8 +34,8 @@ REVIEW_ID_RE = re.compile(r"^review_[0-9]{8}_[0-9]{4}$")
 def main() -> int:
     errors: list[str] = []
 
-    candidates = _load_jsonl(ROOT / "candidates" / "sample_candidates.jsonl", errors)
-    reviews = _load_jsonl(ROOT / "reviews" / "sample_reviews.jsonl", errors)
+    candidates = _load_jsonl_many(ROOT / "candidates", errors)
+    reviews = _load_jsonl_many(ROOT / "reviews", errors)
 
     _require_file(ROOT / "candidates" / "schema.json", errors)
     _require_file(ROOT / "reviews" / "schema.json", errors)
@@ -56,6 +56,17 @@ def main() -> int:
     }
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if not errors else 1
+
+
+def _load_jsonl_many(directory: Path, errors: list[str]) -> list[dict[str, Any]]:
+    if not directory.exists():
+        errors.append(f"missing directory: {directory}")
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for path in sorted(directory.rglob("*.jsonl")):
+        rows.extend(_load_jsonl(path, errors))
+    return rows
 
 
 def _load_jsonl(path: Path, errors: list[str]) -> list[dict[str, Any]]:
