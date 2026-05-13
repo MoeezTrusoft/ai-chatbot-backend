@@ -356,36 +356,39 @@ def embed_chunks(
     settings: Settings,
 ) -> list[list[float]]:
     vectors: list[list[float]] = []
-    texts = [chunk.content for chunk in chunks]
 
     with httpx.Client(timeout=settings.tei_timeout_seconds) as client:
-        for start in range(0, len(texts), settings.tei_batch_size):
-            batch = texts[start : start + settings.tei_batch_size]
+        for chunk in chunks:
             response = client.post(
                 f"{settings.tei_url.rstrip('/')}/embed",
-                json={"inputs": batch},
+                json={"inputs": chunk.content},
             )
             response.raise_for_status()
             data = response.json()
-
-            if not isinstance(data, list):
-                raise ValueError(f"Invalid TEI response: {data!r}")
-
-            for vector in data:
-                if not isinstance(vector, list):
-                    raise ValueError(f"Invalid TEI vector: {vector!r}")
-                float_vector = [float(value) for value in vector]
-                if len(float_vector) != settings.embedding_dimensions:
-                    raise ValueError(
-                        "Embedding dimension mismatch: "
-                        f"{len(float_vector)} != {settings.embedding_dimensions}"
-                    )
-                vectors.append(float_vector)
+            vectors.append(parse_tei_single_vector(data, settings=settings))
 
     if len(vectors) != len(chunks):
         raise ValueError(f"Embedding count mismatch: {len(vectors)} != {len(chunks)}")
 
     return vectors
+
+
+def parse_tei_single_vector(
+    data: object,
+    *,
+    settings: Settings,
+) -> list[float]:
+    if not isinstance(data, list) or not data or not isinstance(data[0], list):
+        raise ValueError(f"Invalid TEI response: {data!r}")
+
+    vector = [float(value) for value in data[0]]
+
+    if len(vector) != settings.embedding_dimensions:
+        raise ValueError(
+            f"Embedding dimension mismatch: {len(vector)} != {settings.embedding_dimensions}"
+        )
+
+    return vector
 
 
 def chunk_to_document(
