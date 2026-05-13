@@ -390,6 +390,21 @@ def build_trimatch_shadow_engine(settings: Settings) -> TriMatchEngine | None:
     if settings.trimatch_extra_mode == "off":
         return None
 
+    if settings.trimatch_extra_mode == "shortcut_candidate":
+        shortcut_layers = {
+            TriMatchLayer(layer.strip())
+            for layer in settings.trimatch_shortcut_layers.split(",")
+            if layer.strip()
+        }
+        return TriMatchEngine(
+            rule_pack=RuleRepository(settings.trimatch_extra_rule_dir).load_active_rules(),
+            mode=TriMatchMode.SHORTCUT_ENABLED,
+            shortcut_layers=shortcut_layers,
+            shortcut_threshold=settings.trimatch_shortcut_threshold,
+            funnel_stage_weight=0.0,
+            fuzzy_enabled=settings.trimatch_extra_fuzzy_enabled,
+        )
+
     return TriMatchEngine(
         rule_pack=RuleRepository(settings.trimatch_extra_rule_dir).load_active_rules(),
         mode=TriMatchMode.SHADOW,

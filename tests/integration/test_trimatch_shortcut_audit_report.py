@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_shortcut_audit_report_remains_consideration_only() -> None:
+def test_shortcut_audit_report_tracks_gated_application() -> None:
     result = subprocess.run(  # noqa: S603 - fixed repo script under test.
         [
             sys.executable,
@@ -30,11 +30,14 @@ def test_shortcut_audit_report_remains_consideration_only() -> None:
 
     assert summary["valid"] is True
     assert summary["failed_turns"] == 0
-    assert summary["eligible_count"] == 0
-    assert summary["applied_count"] == 0
+    assert summary["eligible_count"] >= 1
+    assert summary["applied_count"] >= 1
     assert summary["side_effects_allowed_count"] == 0
     assert summary["pricing_sensitive_count"] == 1
     assert summary["document_sensitive_count"] == 1
     assert summary["portfolio_sensitive_count"] == 1
+    assert summary["applied_dimension_counts"]
+    assert summary["applied_value_counts"]
+    assert summary["applied_rule_id_counts"]
     assert "blocked_reason_counts" in summary
     assert isinstance(summary["blocked_reason_counts"], dict)
