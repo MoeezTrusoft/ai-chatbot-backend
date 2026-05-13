@@ -305,6 +305,7 @@ def build_chat_service(
         environment=settings.app_env,
         trg_engine=trg_engine,
         trimatch_engine=build_trimatch_engine(settings),
+        trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         thread_repository=thread_repository,
     )
 
@@ -381,6 +382,20 @@ def build_trimatch_engine(settings: Settings) -> TriMatchEngine:
         shortcut_threshold=settings.trimatch_shortcut_threshold,
         funnel_stage_weight=settings.trimatch_funnel_stage_weight,
         fuzzy_enabled=settings.trimatch_fuzzy_enabled,
+    )
+
+
+def build_trimatch_shadow_engine(settings: Settings) -> TriMatchEngine | None:
+    if settings.trimatch_extra_mode == "off":
+        return None
+
+    return TriMatchEngine(
+        rule_pack=RuleRepository(settings.trimatch_extra_rule_dir).load_active_rules(),
+        mode=TriMatchMode.SHADOW,
+        shortcut_layers=set(),
+        shortcut_threshold=1.0,
+        funnel_stage_weight=0.0,
+        fuzzy_enabled=settings.trimatch_extra_fuzzy_enabled,
     )
 
 
