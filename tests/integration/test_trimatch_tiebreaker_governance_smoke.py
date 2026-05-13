@@ -5,16 +5,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from bookcraft.api.chat import ChatTurnRequest
 from bookcraft.api.main import build_chat_service
 from bookcraft.infra.config import Settings
 
 
-def test_tiebreaker_candidate_mode_is_not_enabled_yet() -> None:
-    with pytest.raises(ValidationError):
-        Settings(app_env="test", trimatch_extra_mode="tiebreaker_candidate")
+def test_tiebreaker_candidate_mode_is_consideration_only() -> None:
+    settings = Settings(app_env="test", trimatch_extra_mode="tiebreaker_candidate")
+
+    assert settings.trimatch_extra_mode == "tiebreaker_candidate"
 
 
 @pytest.mark.asyncio
