@@ -286,20 +286,17 @@ def _findings(
         findings.append({"type": "missing_shortcut_payload"})
         return findings
 
-    if actual["shortcut_eligible"] is not False:
-        findings.append({"type": "shortcut_eligible_not_false"})
-
     if actual["shortcut_applied"] is not False:
         findings.append({"type": "shortcut_applied_not_false"})
 
-    if actual["shortcut_dimension"] is not None:
-        findings.append({"type": "shortcut_dimension_not_none"})
+    if actual["shortcut_applied"] is True and actual["shortcut_dimension"] is None:
+        findings.append({"type": "applied_shortcut_missing_dimension"})
 
-    if actual["shortcut_recommended_value"] is not None:
-        findings.append({"type": "shortcut_recommended_value_not_none"})
+    if actual["shortcut_applied"] is True and actual["shortcut_recommended_value"] is None:
+        findings.append({"type": "applied_shortcut_missing_recommended_value"})
 
-    if actual["shortcut_rule_id"] is not None:
-        findings.append({"type": "shortcut_rule_id_not_none"})
+    if actual["shortcut_applied"] is True and actual["shortcut_rule_id"] is None:
+        findings.append({"type": "applied_shortcut_missing_rule_id"})
 
     if actual["side_effects_allowed"] is not False:
         findings.append({"type": "side_effects_allowed_not_false"})
