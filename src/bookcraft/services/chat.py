@@ -65,6 +65,7 @@ class ChatService:
     tool_dispatcher: ToolDispatcher | None = None
     trg_engine: TemporalRelationGraphEngine | None = None
     trimatch_engine: TriMatchEngine | None = None
+    trimatch_shadow_engine: TriMatchEngine | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -118,6 +119,33 @@ class ChatService:
                     payload=trimatch_result.model_dump(mode="json"),
                 )
                 event_ids.append(event_id)
+
+            if self.trimatch_shadow_engine is not None:
+                try:
+                    trimatch_shadow_result = self.trimatch_shadow_engine.classify(processed)
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trimatch.extra_shadow_voted",
+                        payload=trimatch_shadow_result.model_dump(mode="json"),
+                    )
+                    event_ids.append(event_id)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "trimatch_extra_shadow_failed",
+                        thread_id=str(thread_id),
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="trimatch.extra_shadow_failed",
+                        payload={"exception_class": exc.__class__.__name__},
+                    )
+                    event_ids.append(event_id)
+
             intent = await self.intent_classifier.classify(
                 processed,
                 state,
