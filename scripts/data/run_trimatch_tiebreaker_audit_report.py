@@ -285,9 +285,6 @@ def _findings(
         findings.append({"type": "missing_tiebreaker_payload"})
         return findings
 
-    if actual["decision_eligible"] is not False:
-        findings.append({"type": "tiebreaker_eligible_not_false"})
-
     if actual["decision_applied"] is not False:
         findings.append({"type": "tiebreaker_applied_not_false"})
 

@@ -685,28 +685,178 @@ def _trimatch_tiebreaker_considered_payload(
     ensemble_intent: IntentVote,
     final_intent: IntentVote,
 ) -> dict[str, Any]:
+    active_snapshot = _trimatch_snapshot(active_trimatch)
     extra_snapshot = _trimatch_snapshot(extra_tiebreaker)
+    ensemble_snapshot = _intent_snapshot(ensemble_intent)
     final_snapshot = _intent_snapshot(final_intent)
+    safety = _tiebreaker_safety_snapshot(
+        extra_snapshot=extra_snapshot,
+        final_snapshot=final_snapshot,
+    )
+    decision = _tiebreaker_candidate_decision(
+        active_snapshot=active_snapshot,
+        extra_snapshot=extra_snapshot,
+        ensemble_snapshot=ensemble_snapshot,
+        final_snapshot=final_snapshot,
+        safety=safety,
+    )
 
     return {
         "extra_tiebreaker": extra_snapshot,
         "before": {
-            "active_trimatch": _trimatch_snapshot(active_trimatch),
-            "ensemble": _intent_snapshot(ensemble_intent),
+            "active_trimatch": active_snapshot,
+            "ensemble": ensemble_snapshot,
             "final_before_tiebreaker": final_snapshot,
         },
-        "decision": {
-            "eligible": False,
-            "applied": False,
-            "dimension": None,
-            "recommended_value": None,
-            "reason": "blocked: tiebreaker candidate mode phase 1 is consideration-only",
-        },
-        "safety": _tiebreaker_safety_snapshot(
-            extra_snapshot=extra_snapshot,
-            final_snapshot=final_snapshot,
-        ),
+        "decision": decision,
+        "safety": safety,
     }
+
+
+def _tiebreaker_candidate_decision(
+    *,
+    active_snapshot: dict[str, Any] | None,
+    extra_snapshot: dict[str, Any] | None,
+    ensemble_snapshot: dict[str, Any],
+    final_snapshot: dict[str, Any],
+    safety: dict[str, Any],
+) -> dict[str, Any]:
+    dimension, recommended_value = _tiebreaker_recommendation(extra_snapshot)
+
+    blocked_reasons = _tiebreaker_blocked_reasons(
+        active_snapshot=active_snapshot,
+        ensemble_snapshot=ensemble_snapshot,
+        final_snapshot=final_snapshot,
+        safety=safety,
+        dimension=dimension,
+        recommended_value=recommended_value,
+    )
+    eligible = not blocked_reasons
+
+    return {
+        "eligible": eligible,
+        # Phase 2 only computes eligibility. Application stays disabled until
+        # a separate governance-approved implementation branch.
+        "applied": False,
+        "dimension": dimension if eligible else None,
+        "recommended_value": recommended_value if eligible else None,
+        "reason": (
+            "eligible: safe tiebreaker candidate identified but application is disabled"
+            if eligible
+            else "blocked: " + "; ".join(blocked_reasons)
+        ),
+        "blocked_reasons": blocked_reasons,
+    }
+
+
+def _tiebreaker_recommendation(
+    extra_snapshot: dict[str, Any] | None,
+) -> tuple[str | None, str | None]:
+    if extra_snapshot is None:
+        return None, None
+
+    for dimension in ("query_primary", "service_primary"):
+        value = extra_snapshot.get(dimension)
+        if isinstance(value, str) and value:
+            return dimension, value
+
+    return None, None
+
+
+def _tiebreaker_blocked_reasons(
+    *,
+    active_snapshot: dict[str, Any] | None,
+    ensemble_snapshot: dict[str, Any],
+    final_snapshot: dict[str, Any],
+    safety: dict[str, Any],
+    dimension: str | None,
+    recommended_value: str | None,
+) -> list[str]:
+    blocked: list[str] = []
+
+    if dimension is None or recommended_value is None:
+        blocked.append("no extra tiebreaker recommendation")
+        return blocked
+
+    if dimension not in {"query_primary", "service_primary"}:
+        blocked.append(f"unsupported dimension: {dimension}")
+
+    if recommended_value == final_snapshot.get(dimension):
+        blocked.append("recommendation already matches final intent")
+
+    if not _has_qualifying_disagreement(
+        active_snapshot=active_snapshot,
+        ensemble_snapshot=ensemble_snapshot,
+        final_snapshot=final_snapshot,
+        dimension=dimension,
+        recommended_value=recommended_value,
+    ):
+        blocked.append("no qualifying extra/final disagreement")
+
+    extra_confidence = _float_or_zero(
+        active_snapshot.get("confidence") if active_snapshot else None
+    )
+    if extra_confidence and extra_confidence < 0.0:
+        blocked.append("invalid active confidence")
+
+    if _float_or_zero(final_snapshot.get("confidence")) > 0.72:
+        blocked.append("final confidence above tiebreaker threshold")
+
+    if _sensitive_safety_blocked(safety):
+        blocked.append("safety-sensitive intent cannot use tiebreaker")
+
+    if recommended_value in {
+        "pricing_question",
+        "timeline_question",
+        "portfolio_request",
+        "nda_request",
+        "agreement_request",
+        "payment_question",
+        "complaint_or_objection",
+        "ready_to_buy",
+        "spam_or_abuse",
+        "off_topic",
+    }:
+        blocked.append(f"forbidden recommended value: {recommended_value}")
+
+    return blocked
+
+
+def _has_qualifying_disagreement(
+    *,
+    active_snapshot: dict[str, Any] | None,
+    ensemble_snapshot: dict[str, Any],
+    final_snapshot: dict[str, Any],
+    dimension: str,
+    recommended_value: str,
+) -> bool:
+    comparison_values = {
+        active_snapshot.get(dimension) if active_snapshot else None,
+        ensemble_snapshot.get(dimension),
+        final_snapshot.get(dimension),
+    }
+    non_empty_values = {value for value in comparison_values if value is not None}
+    return bool(non_empty_values) and any(value != recommended_value for value in non_empty_values)
+
+
+def _sensitive_safety_blocked(safety: dict[str, Any]) -> bool:
+    return any(
+        bool(safety.get(key))
+        for key in (
+            "pricing_sensitive",
+            "document_sensitive",
+            "portfolio_sensitive",
+            "negated",
+            "counterfactual",
+            "side_effects_allowed",
+        )
+    )
+
+
+def _float_or_zero(value: object) -> float:
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0
 
 
 def _tiebreaker_safety_snapshot(
