@@ -254,6 +254,8 @@ def _actual_snapshot(
         "decision_applied": bool(decision_snapshot.get("applied")),
         "decision_dimension": decision_snapshot.get("dimension"),
         "decision_recommended_value": decision_snapshot.get("recommended_value"),
+        "decision_reason": decision_snapshot.get("reason"),
+        "blocked_reasons": _string_list(decision_snapshot.get("blocked_reasons")),
         "pricing_sensitive": bool(safety_snapshot.get("pricing_sensitive")),
         "document_sensitive": bool(safety_snapshot.get("document_sensitive")),
         "portfolio_sensitive": bool(safety_snapshot.get("portfolio_sensitive")),
@@ -288,11 +290,11 @@ def _findings(
     if actual["decision_applied"] is not False:
         findings.append({"type": "tiebreaker_applied_not_false"})
 
-    if actual["decision_dimension"] is not None:
-        findings.append({"type": "tiebreaker_dimension_not_none"})
+    if actual["decision_applied"] is True and actual["decision_dimension"] is None:
+        findings.append({"type": "applied_tiebreaker_missing_dimension"})
 
-    if actual["decision_recommended_value"] is not None:
-        findings.append({"type": "tiebreaker_recommended_value_not_none"})
+    if actual["decision_applied"] is True and actual["decision_recommended_value"] is None:
+        findings.append({"type": "applied_tiebreaker_missing_recommended_value"})
 
     if actual["side_effects_allowed"] is not False:
         findings.append({"type": "side_effects_allowed_not_false"})
@@ -374,6 +376,7 @@ def _summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     side_effects_allowed_count = sum(
         1 for turn in turns if bool(turn["actual"]["side_effects_allowed"])
     )
+    blocked_reason_counts = _blocked_reason_counts(turns)
 
     return {
         "valid": failed_turns == 0,
@@ -394,6 +397,10 @@ def _summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
         "portfolio_sensitive_count": sum(
             1 for turn in turns if bool(turn["actual"]["portfolio_sensitive"])
         ),
+        "blocked_reason_counts": blocked_reason_counts,
+        "top_blocked_reasons": dict(
+            sorted(blocked_reason_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ),
         "recommendation": (
             "tiebreaker_audit_passed" if failed_turns == 0 else "continue_tiebreaker_review"
         ),
@@ -409,6 +416,22 @@ def _last_event_payload(
             payload = event.get("payload")
             return payload if isinstance(payload, dict) else None
     return None
+
+
+def _blocked_reason_counts(turns: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for turn in turns:
+        for reason in turn["actual"].get("blocked_reasons", []):
+            if not isinstance(reason, str):
+                continue
+            counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def _string_or_none(value: object) -> str | None:
@@ -431,10 +454,17 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- Eligible count: `{summary['eligible_count']}`",
         f"- Applied count: `{summary['applied_count']}`",
         f"- Side effects allowed count: `{summary['side_effects_allowed_count']}`",
+        f"- Blocked reasons: `{len(summary['blocked_reason_counts'])}`",
         f"- Pricing-sensitive count: `{summary['pricing_sensitive_count']}`",
         f"- Document-sensitive count: `{summary['document_sensitive_count']}`",
         f"- Portfolio-sensitive count: `{summary['portfolio_sensitive_count']}`",
         f"- Recommendation: `{summary['recommendation']}`",
+        "",
+        "## Top Blocked Reasons",
+        "",
+        "```json",
+        json.dumps(summary["top_blocked_reasons"], indent=2, sort_keys=True),
+        "```",
         "",
         "## Cases",
         "",
