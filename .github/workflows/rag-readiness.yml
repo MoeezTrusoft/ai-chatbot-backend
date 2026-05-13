@@ -1,0 +1,47 @@
+name: RAG Readiness
+
+on:
+  pull_request:
+    paths:
+      - "data/rag-corpus/source_markdown/**"
+      - "scripts/data/*rag*"
+      - "src/bookcraft/components/rag/**"
+      - "src/bookcraft/infra/config.py"
+      - "tests/integration/test_rag_*"
+      - ".github/workflows/rag-readiness.yml"
+  workflow_dispatch:
+
+jobs:
+  rag-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run RAG readiness checks
+        run: uv run python scripts/data/run_rag_readiness_checks.py
+
+      - name: Run RAG readiness test
+        run: uv run pytest tests/integration/test_rag_readiness_checks.py -q
+
+      - name: Run RAG focused tests
+        run: |
+          uv run pytest tests/integration/test_rag_source_metadata_verifier.py -q
+          uv run pytest tests/integration/test_rag_source_frontmatter_repair_plan.py -q
+          uv run pytest tests/integration/test_rag_source_frontmatter_repair_apply.py -q
+          uv run pytest tests/integration/test_rag_elasticsearch_indexer.py -q
+          uv run pytest tests/integration/test_rag_elasticsearch_smoke_report.py -q
+
+      - name: Type check
+        run: uv run mypy src
