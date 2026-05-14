@@ -43,8 +43,7 @@ def test_request_cover_samples_by_genre() -> None:
     assert response.status == PortfolioStatus.FOUND
     assert response.samples
     assert all(
-        sample.service == ServiceCategory.COVER_DESIGN_ILLUSTRATION
-        for sample in response.samples
+        sample.service == ServiceCategory.COVER_DESIGN_ILLUSTRATION for sample in response.samples
     )
     assert all(sample.cover_image or sample.url for sample in response.samples)
 

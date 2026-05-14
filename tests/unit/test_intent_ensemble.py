@@ -145,9 +145,45 @@ def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
 
     assert result.final_vote.query_primary == QueryIntentType.PRICING_QUESTION
     assert result.final_vote.service_primary == ServiceCategory.GHOSTWRITING
+    # With trimatch_funnel_stage_weight=0.0 the funnel signal is shadow-only,
+    # so the fallback still pins funnel_stage to NEW.
     assert result.final_vote.funnel_stage == SalesStage.NEW
     assert "trimatch_query_service_fallback" in result.audit_trail
     assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+
+
+def test_decision_layer_uses_trimatch_funnel_when_weight_positive_and_providers_fail() -> None:
+    """When trimatch funnel weight > 0, the no-provider-votes fallback must
+    honor the deterministic funnel signal instead of pinning to NEW.
+
+    This is the production-fix path for the 2026-05-14 incident where all
+    three providers were circuit-open and every turn landed at
+    funnel_stage=NEW regardless of what the message said.
+    """
+
+    trimatch = TriMatchResult(
+        query_primary=QueryIntentType.PRICING_QUESTION,
+        service_primary=ServiceCategory.GHOSTWRITING,
+        funnel_stage=SalesStage.QUOTE_REQUESTED,
+        confidence=0.88,
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = DecisionLayer(trimatch_funnel_stage_weight=0.5).decide(
+        provider_votes=[
+            ProviderIntentVote(
+                provider="claude_haiku",
+                status=IntentProviderStatus.FAILED,
+                error="schema",
+            )
+        ],
+        trimatch_result=trimatch,
+    )
+
+    assert result.final_vote.funnel_stage == SalesStage.QUOTE_REQUESTED
+    assert "trimatch_funnel_stage_fallback" in result.audit_trail
+    assert "trimatch_funnel_stage_shadow_weight_zero" not in result.audit_trail
+    assert result.funnel_stage_scores == {SalesStage.QUOTE_REQUESTED.value: trimatch.confidence}
 
 
 @pytest.mark.asyncio
@@ -219,3 +255,74 @@ async def test_circuit_breaker_opens_after_repeated_failures() -> None:
 
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].status == IntentProviderStatus.CIRCUIT_OPEN
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_recovers_after_cooldown_when_provider_returns() -> None:
+    """Open breakers must transition through half-open and close again once
+    the upstream recovers. This is the behavior missing in the production
+    image on 2026-05-14: every provider stayed circuit_open for the whole
+    run because the prior implementation latched open permanently.
+    """
+
+    from bookcraft.components.intent.ensemble import CircuitBreaker
+
+    clock = [0.0]
+    breaker = CircuitBreaker(
+        failure_threshold=2,
+        cooldown_seconds=10.0,
+        max_cooldown_seconds=60.0,
+        _clock=lambda: clock[0],
+    )
+
+    # Two failures -> open.
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.open is True
+    assert breaker.before_call() is False  # still within cooldown
+
+    # Advance past cooldown -> single probe allowed (half-open).
+    clock[0] = 11.0
+    assert breaker.before_call() is True
+    assert breaker.half_open is True
+    # A second call while a probe is in flight is short-circuited.
+    assert breaker.before_call() is False
+
+    # Probe succeeds -> breaker closes.
+    breaker.record_success()
+    assert breaker.open is False
+    assert breaker.half_open is False
+    assert breaker.before_call() is True
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_backs_off_when_half_open_probe_fails() -> None:
+    from bookcraft.components.intent.ensemble import CircuitBreaker
+
+    clock = [0.0]
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        cooldown_seconds=10.0,
+        max_cooldown_seconds=60.0,
+        _clock=lambda: clock[0],
+    )
+
+    breaker.record_failure()  # opens at t=0, cooldown=10
+    assert breaker.open is True
+
+    # First probe at t=10 fails -> cooldown doubles to 20.
+    clock[0] = 10.0
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.open is True
+    assert breaker.current_cooldown == 20.0
+
+    # Still within new cooldown at t=20 (opened_at reset to 10, so closes at 30).
+    clock[0] = 20.0
+    assert breaker.before_call() is False
+
+    # Past new cooldown at t=31 -> half-open again.
+    clock[0] = 31.0
+    assert breaker.before_call() is True

@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     trimatch_autoapprove_enabled: bool = False
     trimatch_rule_dir: str = "data/trimatch/rules"
     trimatch_eval_dir: str = "data/trimatch/eval"
-    trimatch_funnel_stage_weight: float = 0.0
+    trimatch_funnel_stage_weight: float = 0.5
     trimatch_fuzzy_enabled: bool = False
     trimatch_extra_mode: Literal[
         "off",

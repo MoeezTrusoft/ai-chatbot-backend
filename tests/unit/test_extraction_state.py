@@ -49,4 +49,3 @@ def test_state_applier_sets_empty_fieldmeta() -> None:
     updated = StateApplier().apply(state, extraction)
 
     assert updated.project.word_count.value == 65000
-

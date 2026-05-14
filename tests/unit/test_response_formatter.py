@@ -9,4 +9,3 @@ def test_formatter_strips_unsupported_markdown_and_json() -> None:
 
     json_bubble = ResponseFormatter().format('{"raw": true}')[0]
     assert "plain language" in json_bubble.text
-

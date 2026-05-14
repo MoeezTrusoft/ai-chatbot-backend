@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -57,21 +57,65 @@ class IntentVoteProvider(Protocol):
 
 @dataclass(slots=True)
 class CircuitBreaker:
+    """Per-provider circuit breaker with cooldown and half-open probing.
+
+    States:
+      closed     -> calls flow through; consecutive failures count up.
+      open       -> calls short-circuit until ``current_cooldown`` elapses
+                    since the breaker opened.
+      half_open  -> a single probe call is allowed. Success closes the
+                    breaker; failure re-opens with doubled cooldown, up to
+                    ``max_cooldown_seconds``.
+
+    The earlier implementation latched ``open`` permanently once
+    ``failure_threshold`` was reached, so a transient provider outage at
+    boot would silently disable that voter for the lifetime of the
+    process. The production load report on 2026-05-14 captured exactly
+    this failure mode: 300/300 provider votes were ``circuit_open``
+    across all three providers for every turn in the run.
+    """
+
     failure_threshold: int = 3
+    cooldown_seconds: float = 30.0
+    max_cooldown_seconds: float = 600.0
     failure_count: int = 0
     open: bool = False
+    half_open: bool = False
+    opened_at: float = 0.0
+    current_cooldown: float = 30.0
+    _clock: Callable[[], float] = field(default=time.monotonic)
 
     def before_call(self) -> bool:
-        return not self.open
+        if not self.open:
+            return True
+        if self.half_open:
+            # A probe is already in flight; do not allow a second one.
+            return False
+        if self._clock() - self.opened_at >= self.current_cooldown:
+            self.half_open = True
+            return True
+        return False
 
     def record_success(self) -> None:
         self.failure_count = 0
         self.open = False
+        self.half_open = False
+        self.current_cooldown = self.cooldown_seconds
 
     def record_failure(self) -> None:
         self.failure_count += 1
-        if self.failure_count >= self.failure_threshold:
+        if self.half_open:
+            # Probe failed: stay open, back off exponentially, reset clock.
+            self.half_open = False
+            self.current_cooldown = min(
+                self.current_cooldown * 2,
+                self.max_cooldown_seconds,
+            )
+            self.opened_at = self._clock()
+        elif not self.open and self.failure_count >= self.failure_threshold:
             self.open = True
+            self.opened_at = self._clock()
+            self.current_cooldown = self.cooldown_seconds
 
 
 @dataclass(slots=True)
@@ -126,7 +170,21 @@ class DecisionLayer:
             ):
                 query = _normalize_trimatch_query(trimatch_result, trimatch_result.query_primary)
                 service = trimatch_result.service_primary
-                funnel = SalesStage.NEW
+                # When trimatch's funnel signal is trusted (weight > 0),
+                # honor it in the no-provider-votes fallback too. Otherwise
+                # the system pins funnel_stage to NEW for every turn whenever
+                # LLM voters are down, which was the production failure mode
+                # on 2026-05-14 (100/100 turns reported funnel_stage=new even
+                # when the deterministic layer detected QUOTE_REQUESTED).
+                if (
+                    self.trimatch_funnel_stage_weight > 0.0
+                    and trimatch_result.funnel_stage is not None
+                ):
+                    funnel = trimatch_result.funnel_stage
+                    funnel_audit = "trimatch_funnel_stage_fallback"
+                else:
+                    funnel = SalesStage.NEW
+                    funnel_audit = "trimatch_funnel_stage_shadow_weight_zero"
                 final = IntentVote(
                     query_primary=query,
                     service_primary=service,
@@ -150,15 +208,15 @@ class DecisionLayer:
                     audit_trail=[
                         "no_provider_votes",
                         "trimatch_query_service_fallback",
-                        "trimatch_funnel_stage_shadow_weight_zero",
+                        funnel_audit,
                     ],
                     query_scores={query.value: trimatch_result.confidence},
-                    service_scores={
-                        service.value: trimatch_result.confidence
-                    }
+                    service_scores={service.value: trimatch_result.confidence}
                     if service is not None
                     else {},
-                    funnel_stage_scores={},
+                    funnel_stage_scores={funnel.value: trimatch_result.confidence}
+                    if funnel_audit == "trimatch_funnel_stage_fallback"
+                    else {},
                 )
             fallback = IntentVote(
                 query_primary=QueryIntentType.UNCLEAR,
@@ -219,10 +277,7 @@ class DecisionLayer:
                     trimatch_result.confidence,
                 )
                 audit.append("trimatch_service_vote_included")
-            if (
-                trimatch_result.funnel_stage is not None
-                and self.trimatch_funnel_stage_weight > 0.0
-            ):
+            if trimatch_result.funnel_stage is not None and self.trimatch_funnel_stage_weight > 0.0:
                 self._add_score(
                     funnel_stage_scores,
                     trimatch_result.funnel_stage.value,
@@ -243,9 +298,7 @@ class DecisionLayer:
         query = QueryIntentType(self._winner(query_scores) or first_vote.query_primary.value)
         service_winner = self._winner(service_scores)
         service = ServiceCategory(service_winner) if service_winner else None
-        funnel = SalesStage(
-            self._winner(funnel_stage_scores) or first_vote.funnel_stage.value
-        )
+        funnel = SalesStage(self._winner(funnel_stage_scores) or first_vote.funnel_stage.value)
         confidence = min(1.0, max(query_scores.values(), default=0.0))
         needs_clarification = any(vote.vote.needs_clarification for vote in successful if vote.vote)
         final = IntentVote(

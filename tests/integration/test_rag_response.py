@@ -87,4 +87,3 @@ async def test_response_ignores_rag_context_for_pricing_question() -> None:
 
     assert "deterministic quote engine" in draft.text
     assert "This RAG content" not in draft.text
-
