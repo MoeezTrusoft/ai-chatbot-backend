@@ -354,6 +354,7 @@ def analyze_results(
         "p95_latency_ms": percentile(latencies, 95),
         "max_latency_ms": max(latencies) if latencies else 0.0,
         "critical_issue_count": component_summary["critical_issue_count"],
+        "soft_warning_count": component_summary["soft_warning_count"],
     }
 
     return {
@@ -435,6 +436,10 @@ def analyze_turn(result: TurnResult) -> dict[str, Any]:
             else 0,
             "text_preview": response_text_preview(response),
         },
+        "providers": analyze_provider_votes(intent_event),
+        "fallbacks": analyze_fallbacks(intent_event, intent),
+        "trimatch_disagreement": analyze_trimatch_disagreement(disagreement),
+        "response_quality": analyze_response_quality(response_text_preview(response)),
     }
 
     issues = detect_turn_issues(
@@ -482,7 +487,207 @@ def empty_component_summary() -> dict[str, Any]:
             "3000_to_8000ms": 0,
             "over_8000ms": 0,
         },
+        "provider_health": empty_provider_health(),
+        "fallback_summary": empty_fallback_summary(),
+        "trimatch_disagreement_dimensions": {},
+        "response_quality": empty_response_quality_summary(),
+        "soft_warning_count": 0,
     }
+
+
+def empty_provider_health() -> dict[str, Any]:
+    return {
+        "total_vote_count": 0,
+        "usable_vote_count": 0,
+        "timeout_count": 0,
+        "circuit_open_count": 0,
+        "failed_count": 0,
+        "status_counts": {},
+        "error_counts": {},
+        "provider_counts": {},
+        "provider_status_counts": {},
+        "turns_with_no_usable_votes": 0,
+    }
+
+
+def empty_fallback_summary() -> dict[str, int]:
+    return {
+        "no_provider_votes_count": 0,
+        "trimatch_fallback_count": 0,
+        "deterministic_hardening_count": 0,
+        "unclear_final_count": 0,
+    }
+
+
+def empty_response_quality_summary() -> dict[str, int]:
+    return {
+        "possible_fragment_start_count": 0,
+        "table_format_warning_count": 0,
+        "empty_response_count": 0,
+    }
+
+
+def analyze_provider_votes(intent_event: dict[str, Any] | None) -> dict[str, Any]:
+    votes = safe_get(intent_event, "decision", "provider_votes")
+    if not isinstance(votes, list):
+        votes = []
+
+    result = empty_provider_health()
+    result["votes"] = []
+
+    for vote in votes:
+        if not isinstance(vote, dict):
+            continue
+
+        provider = str(vote.get("provider") or "unknown")
+        status = str(vote.get("status") or "unknown")
+        error = str(vote.get("error") or "")
+
+        result["total_vote_count"] += 1
+        increment(result["status_counts"], status)
+        increment(result["provider_counts"], provider)
+        increment(result["provider_status_counts"], f"{provider}:{status}")
+        if error:
+            increment(result["error_counts"], error)
+
+        if vote.get("vote") is not None:
+            result["usable_vote_count"] += 1
+        if status == "timed_out" or error == "timeout":
+            result["timeout_count"] += 1
+        if status == "circuit_open" or error == "circuit_open":
+            result["circuit_open_count"] += 1
+        if status == "failed":
+            result["failed_count"] += 1
+
+        result["votes"].append(
+            {
+                "provider": provider,
+                "status": status,
+                "error": error or None,
+                "latency_ms": vote.get("latency_ms"),
+                "prompt_tokens": vote.get("prompt_tokens"),
+                "completion_tokens": vote.get("completion_tokens"),
+                "cost_usd": vote.get("cost_usd"),
+                "has_vote": vote.get("vote") is not None,
+            }
+        )
+
+    if result["total_vote_count"] and not result["usable_vote_count"]:
+        result["turns_with_no_usable_votes"] = 1
+
+    return result
+
+
+def analyze_fallbacks(
+    intent_event: dict[str, Any] | None,
+    final_intent: dict[str, Any],
+) -> dict[str, int]:
+    decision = safe_get(intent_event, "decision") or {}
+    audit_trail = decision.get("audit_trail") if isinstance(decision, dict) else []
+    evidence = final_intent.get("evidence", []) if isinstance(final_intent, dict) else []
+    rationale = str(final_intent.get("rationale") or "") if isinstance(final_intent, dict) else ""
+
+    text_blob = " ".join(
+        [str(item) for item in audit_trail if isinstance(item, str)]
+        + [str(item) for item in evidence if isinstance(item, str)]
+        + [rationale]
+    )
+
+    return {
+        "no_provider_votes_count": int("no_provider_votes" in text_blob),
+        "trimatch_fallback_count": int("trimatch_fallback" in text_blob),
+        "deterministic_hardening_count": int("deterministic_" in text_blob),
+        "unclear_final_count": int(final_intent.get("query_primary") == "unclear")
+        if isinstance(final_intent, dict)
+        else 0,
+    }
+
+
+def analyze_trimatch_disagreement(disagreement: dict[str, Any] | None) -> dict[str, Any]:
+    disagreements = disagreement.get("disagreements") if isinstance(disagreement, dict) else []
+    dimensions: list[str] = []
+    rows: list[dict[str, Any]] = []
+
+    if isinstance(disagreements, list):
+        for item in disagreements:
+            if not isinstance(item, dict):
+                continue
+            dimension = str(item.get("dimension") or "unknown")
+            dimensions.append(dimension)
+            rows.append(
+                {
+                    "dimension": dimension,
+                    "source": item.get("source"),
+                    "source_value": item.get("source_value"),
+                    "final_value": item.get("final_value"),
+                }
+            )
+
+    return {
+        "present": disagreement is not None,
+        "dimensions": dimensions,
+        "rows": rows,
+    }
+
+
+def analyze_response_quality(text_preview: str) -> dict[str, Any]:
+    stripped = text_preview.strip()
+    starts_lowercase = bool(stripped) and stripped[0].islower()
+    starts_mid_fragment = starts_lowercase or stripped.startswith(("ed ", "l ", "tion ", "- "))
+    table_warning = "|" in stripped and "|---|" in stripped.replace(" ", "")
+    empty = not stripped
+
+    return {
+        "possible_fragment_start": starts_mid_fragment,
+        "table_format_warning": table_warning,
+        "empty_response": empty,
+    }
+
+
+def merge_provider_health(target: dict[str, Any], source: dict[str, Any]) -> None:
+    numeric_keys = [
+        "total_vote_count",
+        "usable_vote_count",
+        "timeout_count",
+        "circuit_open_count",
+        "failed_count",
+        "turns_with_no_usable_votes",
+    ]
+    for key in numeric_keys:
+        target[key] += int(source.get(key) or 0)
+
+    for key in ["status_counts", "error_counts", "provider_counts", "provider_status_counts"]:
+        merge_counter(target[key], source.get(key, {}))
+
+
+def merge_fallback_summary(target: dict[str, int], source: dict[str, int]) -> None:
+    for key in target:
+        target[key] += int(source.get(key) or 0)
+
+
+def merge_trimatch_dimensions(target: dict[str, int], source: dict[str, Any]) -> None:
+    for dimension in source.get("dimensions", []):
+        increment(target, str(dimension))
+
+
+def merge_response_quality(target: dict[str, int], source: dict[str, Any]) -> None:
+    if source.get("possible_fragment_start"):
+        target["possible_fragment_start_count"] += 1
+    if source.get("table_format_warning"):
+        target["table_format_warning_count"] += 1
+    if source.get("empty_response"):
+        target["empty_response_count"] += 1
+
+
+def merge_counter(target: dict[str, int], source: object) -> None:
+    if not isinstance(source, dict):
+        return
+    for key, value in source.items():
+        target[str(key)] = target.get(str(key), 0) + int(value)
+
+
+def increment(counter: dict[str, int], key: str) -> None:
+    counter[key] = counter.get(key, 0) + 1
 
 
 def summarize_components(turns: list[dict[str, Any]]) -> dict[str, Any]:
@@ -507,6 +712,11 @@ def summarize_components(turns: list[dict[str, Any]]) -> dict[str, Any]:
             "3000_to_8000ms": 0,
             "over_8000ms": 0,
         },
+        "provider_health": empty_provider_health(),
+        "fallback_summary": empty_fallback_summary(),
+        "trimatch_disagreement_dimensions": {},
+        "response_quality": empty_response_quality_summary(),
+        "soft_warning_count": 0,
     }
 
     for turn in turns:
@@ -548,6 +758,28 @@ def summarize_components(turns: list[dict[str, Any]]) -> dict[str, Any]:
             summary["latency_buckets"]["3000_to_8000ms"] += 1
         else:
             summary["latency_buckets"]["over_8000ms"] += 1
+
+        merge_provider_health(summary["provider_health"], components["providers"])
+        merge_fallback_summary(summary["fallback_summary"], components["fallbacks"])
+        merge_trimatch_dimensions(
+            summary["trimatch_disagreement_dimensions"],
+            components["trimatch_disagreement"],
+        )
+        merge_response_quality(
+            summary["response_quality"],
+            components["response_quality"],
+        )
+
+    summary["soft_warning_count"] = (
+        int(summary["provider_health"]["timeout_count"])
+        + int(summary["provider_health"]["circuit_open_count"])
+        + int(summary["provider_health"]["failed_count"])
+        + int(summary["fallback_summary"]["no_provider_votes_count"])
+        + int(summary["fallback_summary"]["deterministic_hardening_count"])
+        + int(summary["trimatch_disagreement_count"])
+        + int(summary["response_quality"]["possible_fragment_start_count"])
+        + int(summary["response_quality"]["table_format_warning_count"])
+    )
 
     critical_fields = [
         "http_failure_count",
@@ -759,6 +991,7 @@ def markdown(report: dict[str, Any]) -> str:
         f"- Avg latency ms: `{summary['avg_latency_ms']}`",
         f"- P95 latency ms: `{summary['p95_latency_ms']}`",
         f"- Critical issues: `{summary['critical_issue_count']}`",
+        f"- Soft warnings: `{summary['soft_warning_count']}`",
         "",
         "## Component Summary",
         "",
@@ -771,6 +1004,39 @@ def markdown(report: dict[str, Any]) -> str:
         f"- TRG missing: `{component['trg_missing_count']}`",
         f"- TRG failed: `{component['trg_failed_count']}`",
         f"- RAG failed: `{component['rag_failed_count']}`",
+        f"- Soft warnings: `{component['soft_warning_count']}`",
+        "",
+        "## Provider Health",
+        "",
+        f"- Total provider votes attempted: `{component['provider_health']['total_vote_count']}`",
+        f"- Usable provider votes: `{component['provider_health']['usable_vote_count']}`",
+        (
+            "- Turns with no usable provider votes: "
+            f"`{component['provider_health']['turns_with_no_usable_votes']}`"
+        ),
+        f"- Provider timeouts: `{component['provider_health']['timeout_count']}`",
+        f"- Circuit-open votes: `{component['provider_health']['circuit_open_count']}`",
+        f"- Provider failed votes: `{component['provider_health']['failed_count']}`",
+        f"- Provider statuses: `{component['provider_health']['provider_status_counts']}`",
+        "",
+        "## Fallback & Quality Signals",
+        "",
+        (
+            "- No-provider-votes fallback: "
+            f"`{component['fallback_summary']['no_provider_votes_count']}`"
+        ),
+        f"- Tri-Match fallback: `{component['fallback_summary']['trimatch_fallback_count']}`",
+        (
+            "- Deterministic hardening: "
+            f"`{component['fallback_summary']['deterministic_hardening_count']}`"
+        ),
+        f"- Final unclear decisions: `{component['fallback_summary']['unclear_final_count']}`",
+        f"- Tri-Match disagreement dimensions: `{component['trimatch_disagreement_dimensions']}`",
+        (
+            "- Possible fragment starts: "
+            f"`{component['response_quality']['possible_fragment_start_count']}`"
+        ),
+        f"- Table-format warnings: `{component['response_quality']['table_format_warning_count']}`",
         "",
         "## Turns",
         "",
@@ -819,6 +1085,9 @@ def render_html(report: dict[str, Any]) -> str:
               <td>{"yes" if c["trimatch"]["present"] else "no"}</td>
               <td>{"yes" if c["intent_classifier"]["present"] else "no"}</td>
               <td>{"yes" if c["trg"]["present"] else "no"}</td>
+              <td>{c["providers"]["usable_vote_count"]}/{c["providers"]["total_vote_count"]}</td>
+              <td>{fallback_label(c["fallbacks"])}</td>
+              <td>{quality_label(c["response_quality"])}</td>
               <td>{"yes" if c["rag"]["failed"] else "no"}</td>
               <td>{turn["issue_count"]}</td>
               <td>{esc(turn["message"])}</td>
@@ -861,6 +1130,7 @@ th {{ background: #e5e7eb; }}
   {card("P95 latency ms", summary["p95_latency_ms"])}
   {card("Max latency ms", summary["max_latency_ms"])}
   {card("Critical issues", summary["critical_issue_count"])}
+  {card("Soft warnings", summary["soft_warning_count"])}
 </div>
 
 <h2>Component Health</h2>
@@ -877,12 +1147,30 @@ th {{ background: #e5e7eb; }}
   {card("Assistant missing", component["assistant_missing_count"])}
 </div>
 
+<h2>Provider & Fallback Health</h2>
+<div class="grid">
+  {card("Provider votes", component["provider_health"]["total_vote_count"])}
+  {card("Usable votes", component["provider_health"]["usable_vote_count"])}
+  {card("No usable vote turns", component["provider_health"]["turns_with_no_usable_votes"])}
+  {card("Timeouts", component["provider_health"]["timeout_count"])}
+  {card("Circuit open", component["provider_health"]["circuit_open_count"])}
+  {card("Failed votes", component["provider_health"]["failed_count"])}
+  {card("No provider fallback", component["fallback_summary"]["no_provider_votes_count"])}
+  {card("Tri-Match fallback", component["fallback_summary"]["trimatch_fallback_count"])}
+  {card("Deterministic hardening", component["fallback_summary"]["deterministic_hardening_count"])}
+  {card("Final unclear", component["fallback_summary"]["unclear_final_count"])}
+  {card("Fragment starts", component["response_quality"]["possible_fragment_start_count"])}
+  {card("Table warnings", component["response_quality"]["table_format_warning_count"])}
+</div>
+
 <h2>Per-Turn Grid</h2>
 <table>
 <thead>
 <tr>
 <th>#</th><th>HTTP</th><th>Latency</th><th>Intent</th><th>Service</th><th>Stage</th>
-<th>Tri-Match</th><th>NLP/Intent</th><th>TRG</th><th>RAG Failed</th><th>Issues</th><th>Message</th>
+<th>Tri-Match</th><th>NLP/Intent</th><th>TRG</th>
+<th>Provider Votes</th><th>Fallback</th><th>Quality</th>
+<th>RAG Failed</th><th>Issues</th><th>Message</th>
 </tr>
 </thead>
 <tbody>
@@ -892,6 +1180,30 @@ th {{ background: #e5e7eb; }}
 </body>
 </html>
 """
+
+
+def fallback_label(fallbacks: dict[str, Any]) -> str:
+    labels: list[str] = []
+    if fallbacks.get("no_provider_votes_count"):
+        labels.append("no_provider")
+    if fallbacks.get("trimatch_fallback_count"):
+        labels.append("trimatch")
+    if fallbacks.get("deterministic_hardening_count"):
+        labels.append("deterministic")
+    if fallbacks.get("unclear_final_count"):
+        labels.append("unclear")
+    return ", ".join(labels) or "none"
+
+
+def quality_label(quality: dict[str, Any]) -> str:
+    labels: list[str] = []
+    if quality.get("possible_fragment_start"):
+        labels.append("fragment")
+    if quality.get("table_format_warning"):
+        labels.append("table")
+    if quality.get("empty_response"):
+        labels.append("empty")
+    return ", ".join(labels) or "ok"
 
 
 def card(label: str, value: Any) -> str:

@@ -52,3 +52,28 @@ uv run python scripts/data/run_production_component_performance_report.py \
 Safety
 
 This script sends controlled test messages to the configured API. It does not send emails, create legal documents, create Elasticsearch indices, or move aliases.
+
+
+## Provider analysis added
+
+The report also summarizes provider and fallback health:
+
+```text
+provider vote attempts
+usable provider votes
+timeouts
+circuit-open provider calls
+failed provider calls
+turns with no usable provider votes
+no-provider-votes fallback usage
+Tri-Match fallback usage
+deterministic hardening usage
+Tri-Match disagreement dimensions
+response-quality warning signals
+
+Interpretation:
+
+critical_issue_count = hard failure count
+soft_warning_count = quality/performance warning count
+
+A report can be valid=true while still showing soft warnings. Soft warnings should be reviewed before full public launch.
