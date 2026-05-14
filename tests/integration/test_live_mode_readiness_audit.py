@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_live_mode_readiness_audit_safe_default() -> None:
+    env = {
+        **os.environ,
+        "APP_ENV": "test",
+        "LLM_PROVIDER_MODE": "mock",
+        "API_AUTH_MODE": "off",
+        "NDA_MODE": "manual",
+        "AGREEMENT_MODE": "manual",
+        "METRICS_PUBLIC": "false",
+    }
+
+    result = subprocess.run(  # noqa: S603 - fixed repo script under test.
+        [
+            sys.executable,
+            "scripts/data/run_live_mode_readiness_audit.py",
+            "--output-dir",
+            str(ROOT / "reports" / "chatbot"),
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    report_path = ROOT / "reports" / "chatbot" / "live_mode_readiness_audit_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = report["summary"]
+
+    assert summary["valid"] is True
+    assert summary["safe_for_local_audit"] is True
+    assert summary["blind_full_production_ready"] is False
+    assert summary["ready_for_controlled_live_staging"] is False
+
+    check_names = {check["name"] for check in report["checks"]}
+    assert "llm_provider_mode" in check_names
+    assert "anthropic_api_key_present" in check_names
+    assert "openai_api_key_present" in check_names
+    assert "nda_mode_not_autonomous" in check_names
+    assert "agreement_mode_not_autonomous" in check_names
