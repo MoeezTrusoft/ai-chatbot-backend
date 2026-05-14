@@ -54,3 +54,17 @@ reports/chatbot/api_smoke_report.md
 Safety
 
 This smoke report does not create Elasticsearch indices, move aliases, send emails, create legal documents, or directly call live LLM providers.
+
+## Smoke with an existing seeded customer
+
+When `API_AUTH_MODE=jwt`, the JWT may include a `customer_id`.
+
+For local/staging smoke, seed a customer first, then pass the same ID:
+
+```bash
+uv run python scripts/data/run_api_smoke_report.py \
+  --base-url "$STAGING_API_BASE_URL" \
+  --expect-auth \
+  --jwt-signing-key "$JWT_SIGNING_KEY" \
+  --customer-id "$SMOKE_CUSTOMER_ID"
+The customer must already exist in the customers table.

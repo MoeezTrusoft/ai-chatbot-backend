@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -32,6 +32,11 @@ def main() -> int:
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--output-dir", default="reports/chatbot")
     parser.add_argument("--jwt-signing-key", default=None)
+    parser.add_argument(
+        "--customer-id",
+        default=None,
+        help="Existing customer UUID to include in generated JWT.",
+    )
     parser.add_argument("--metrics-token", default=None)
     parser.add_argument("--expect-auth", action="store_true")
     parser.add_argument("--expect-metrics-protected", action="store_true")
@@ -45,6 +50,7 @@ def main() -> int:
     report = build_report(
         base_url=args.base_url,
         jwt_signing_key=args.jwt_signing_key,
+        customer_id=args.customer_id,
         metrics_token=args.metrics_token,
         expect_auth=args.expect_auth,
         expect_metrics_protected=args.expect_metrics_protected,
@@ -72,6 +78,7 @@ def build_report(
     *,
     base_url: str | None,
     jwt_signing_key: str | None,
+    customer_id: str | None,
     metrics_token: str | None,
     expect_auth: bool,
     expect_metrics_protected: bool,
@@ -98,6 +105,7 @@ def build_report(
             run_http_smoke(
                 base_url=base_url,
                 jwt_signing_key=jwt_signing_key,
+                customer_id=customer_id,
                 metrics_token=metrics_token,
                 expect_auth=expect_auth,
                 expect_metrics_protected=expect_metrics_protected,
@@ -123,6 +131,7 @@ def build_report(
             "error_count": error_count,
             "skipped_count": skipped_count,
             "expect_auth": expect_auth,
+            "customer_id_provided": customer_id is not None,
             "expect_metrics_protected": expect_metrics_protected,
             "rate_limit_probe": rate_limit_probe,
             "safety_note": (
@@ -139,6 +148,7 @@ def run_http_smoke(
     *,
     base_url: str,
     jwt_signing_key: str | None,
+    customer_id: str | None,
     metrics_token: str | None,
     expect_auth: bool,
     expect_metrics_protected: bool,
@@ -147,7 +157,7 @@ def run_http_smoke(
 ) -> list[SmokeCheck]:
     checks: list[SmokeCheck] = []
     base = base_url.rstrip("/")
-    token = create_test_jwt(jwt_signing_key) if jwt_signing_key else None
+    token = create_test_jwt(jwt_signing_key, customer_id=customer_id) if jwt_signing_key else None
     auth_headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     with httpx.Client(timeout=15.0) as client:
@@ -407,12 +417,12 @@ def check_rate_limit(
     )
 
 
-def create_test_jwt(signing_key: str) -> str:
+def create_test_jwt(signing_key: str, *, customer_id: str | None = None) -> str:
     now = int(time.time())
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
         "sub": "api-smoke",
-        "customer_id": str(uuid4()),
+        "customer_id": normalized_customer_id(customer_id),
         "scope": "chat:write",
         "iat": now,
         "nbf": now - 5,
@@ -427,6 +437,16 @@ def create_test_jwt(signing_key: str) -> str:
         hashlib.sha256,
     ).digest()
     return f"{signing_input}.{b64url(signature)}"
+
+
+def normalized_customer_id(customer_id: str | None) -> str:
+    if customer_id is None:
+        return str(uuid4())
+
+    try:
+        return str(UUID(customer_id))
+    except ValueError as exc:
+        raise ValueError(f"--customer-id must be a valid UUID: {customer_id}") from exc
 
 
 def b64url_json(value: dict[str, Any]) -> str:
@@ -479,6 +499,7 @@ def markdown(report: dict[str, Any]) -> str:
         f"- Errors: `{summary['error_count']}`",
         f"- Skipped: `{summary['skipped_count']}`",
         f"- Expect auth: `{summary['expect_auth']}`",
+        f"- Customer ID provided: `{summary['customer_id_provided']}`",
         f"- Expect metrics protected: `{summary['expect_metrics_protected']}`",
         f"- Rate-limit probe: `{summary['rate_limit_probe']}`",
         "",
