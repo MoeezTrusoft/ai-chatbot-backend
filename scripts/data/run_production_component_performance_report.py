@@ -583,8 +583,13 @@ def analyze_fallbacks(
     final_intent: dict[str, Any],
 ) -> dict[str, int]:
     decision = safe_get(intent_event, "decision") or {}
-    audit_trail = decision.get("audit_trail") if isinstance(decision, dict) else []
-    evidence = final_intent.get("evidence", []) if isinstance(final_intent, dict) else []
+
+    raw_audit_trail = decision.get("audit_trail") if isinstance(decision, dict) else []
+    audit_trail = raw_audit_trail if isinstance(raw_audit_trail, list) else []
+
+    raw_evidence = final_intent.get("evidence", []) if isinstance(final_intent, dict) else []
+    evidence = raw_evidence if isinstance(raw_evidence, list) else []
+
     rationale = str(final_intent.get("rationale") or "") if isinstance(final_intent, dict) else ""
 
     text_blob = " ".join(
