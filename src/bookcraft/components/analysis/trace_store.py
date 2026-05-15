@@ -15,11 +15,15 @@ class LiveTraceStore:
 
     def append(self, row: dict[str, Any]) -> None:
         payload = dict(row)
-        payload.setdefault("recorded_at", datetime.now(UTC).isoformat())
+        recorded_at = str(payload.pop("recorded_at", datetime.now(UTC).isoformat()))
 
         redacted = redact_value(payload)
         if not isinstance(redacted, dict):
             redacted = {"payload": redacted}
+
+        # Keep trace metadata machine-readable. Redact user/component payloads,
+        # but do not run phone-like regexes over ISO timestamps.
+        redacted["recorded_at"] = recorded_at
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
