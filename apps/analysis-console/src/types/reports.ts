@@ -3,6 +3,7 @@ export type PageKey =
   | 'dashboard'
   | 'trace'
   | 'live'
+  | 'lab'
   | 'waterfall'
   | 'intent'
   | 'trimatch'
@@ -187,6 +188,44 @@ export type ContextCandidateReport = {
 
 
 
+
+
+export type ChatBubble = {
+  text: string;
+  bubble_index?: number;
+  rich_segments?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+};
+
+export type ChatTurnResponse = {
+  thread_id: string;
+  bubbles: ChatBubble[];
+  intent?: {
+    query_primary?: string;
+    query_secondary?: string[];
+    service_primary?: string;
+    service_secondary?: string[];
+    funnel_stage?: string;
+    needs_clarification?: boolean;
+    confidence?: number;
+    rationale?: string;
+    evidence?: string[];
+    [key: string]: unknown;
+  } | null;
+  language_status?: string;
+  debug_event_ids?: string[];
+  [key: string]: unknown;
+};
+
+export type ChatLabExchange = {
+  id: string;
+  message: string;
+  response?: ChatTurnResponse;
+  error?: string;
+  sentAt: string;
+  elapsedMs?: number;
+};
+
 export type LiveTrace = {
   thread_id?: string;
   customer_id?: string | null;
@@ -285,6 +324,8 @@ export type AdminApiConfig = {
   enabled: boolean;
   baseUrl: string;
   token: string;
+  chatToken?: string;
+  customerId?: string;
 };
 
 export type AdminHealth = {
