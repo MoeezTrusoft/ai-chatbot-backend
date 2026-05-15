@@ -68,6 +68,17 @@ class SonnetResponseGenerator:
                 return _portfolio_response_text(portfolio_response)
             if document_status_message is not None:
                 return ResponseDraft(text=document_status_message, source=route.name)
+
+            # Fast path: RAG-backed service/help responses already have approved
+            # source text. Avoid spending 6-8 seconds on Sonnet just to restate
+            # the retrieved BookCraft content. High-stakes flows above still use
+            # deterministic pricing/document/portfolio guards.
+            if rag_chunks:
+                return ResponseDraft(
+                    text=self._mock_response(intent, rag_chunks, route.name),
+                    source=route.name if route.name != "direct_answer" else "rag_fast_path",
+                )
+
             LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
             if self.adapter is not None:
                 try:
