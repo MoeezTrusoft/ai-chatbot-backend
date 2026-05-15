@@ -354,7 +354,7 @@ def analyze_results(
         "p95_latency_ms": percentile(latencies, 95),
         "max_latency_ms": max(latencies) if latencies else 0.0,
         "critical_issue_count": component_summary["critical_issue_count"],
-        "soft_warning_count": component_summary["soft_warning_count"],
+        "soft_warning_count": component_summary.get("soft_warning_count", 0),
     }
 
     return {
@@ -1031,7 +1031,7 @@ def markdown(report: dict[str, Any]) -> str:
         f"- Avg latency ms: `{summary['avg_latency_ms']}`",
         f"- P95 latency ms: `{summary['p95_latency_ms']}`",
         f"- Critical issues: `{summary['critical_issue_count']}`",
-        f"- Soft warnings: `{summary['soft_warning_count']}`",
+        f"- Soft warnings: `{summary.get('soft_warning_count', 0)}`",
         "",
         "## Component Summary",
         "",
@@ -1170,7 +1170,7 @@ th {{ background: #e5e7eb; }}
   {card("P95 latency ms", summary["p95_latency_ms"])}
   {card("Max latency ms", summary["max_latency_ms"])}
   {card("Critical issues", summary["critical_issue_count"])}
-  {card("Soft warnings", summary["soft_warning_count"])}
+  {card("Soft warnings", summary.get("soft_warning_count", 0))}
 </div>
 
 <h2>Component Health</h2>
