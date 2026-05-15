@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "http://deepseek-internal:8000/v1"
     deepseek_intent_model: str = "deepseek-chat"
+    deepseek_intent_enabled: bool = False
     llm_provider_mode: Literal["mock", "live"] = "mock"
     llm_request_timeout_seconds: float = 8.0
 

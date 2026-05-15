@@ -421,42 +421,54 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
             timeout_seconds=settings.intent_ensemble_timeout_seconds,
             trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
         )
+
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER_MODE=live")
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER_MODE=live")
-    return build_live_ensemble_classifier(
-        providers=[
-            LLMIntentProvider(
+
+    providers = [
+        LLMIntentProvider(
+            name="claude_haiku",
+            adapter=AnthropicAdapter(
+                api_key=settings.anthropic_api_key,
+                base_url=settings.anthropic_base_url,
+                timeout_seconds=settings.llm_request_timeout_seconds,
+                model=settings.anthropic_haiku_model,
                 name="claude_haiku",
-                adapter=AnthropicAdapter(
-                    api_key=settings.anthropic_api_key,
-                    base_url=settings.anthropic_base_url,
-                    timeout_seconds=settings.llm_request_timeout_seconds,
-                    model=settings.anthropic_haiku_model,
-                    name="claude_haiku",
-                ),
             ),
-            LLMIntentProvider(
+        ),
+        LLMIntentProvider(
+            name="openai_gpt_5_4_mini",
+            adapter=OpenAIAdapter(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url,
+                timeout_seconds=settings.llm_request_timeout_seconds,
+                model=settings.openai_intent_model,
                 name="openai_gpt_5_4_mini",
-                adapter=OpenAIAdapter(
-                    api_key=settings.openai_api_key,
-                    base_url=settings.openai_base_url,
-                    timeout_seconds=settings.llm_request_timeout_seconds,
-                    model=settings.openai_intent_model,
-                    name="openai_gpt_5_4_mini",
-                ),
             ),
+        ),
+    ]
+
+    if settings.deepseek_intent_enabled:
+        if not settings.deepseek_api_key:
+            raise RuntimeError(
+                "DEEPSEEK_API_KEY is required when DEEPSEEK_INTENT_ENABLED=true"
+            )
+        providers.append(
             LLMIntentProvider(
                 name="deepseek_v3",
                 adapter=DeepSeekAdapter(
-                    api_key=settings.deepseek_api_key or "",
+                    api_key=settings.deepseek_api_key,
                     base_url=settings.deepseek_base_url,
                     timeout_seconds=settings.deepseek_timeout_seconds,
                     model=settings.deepseek_intent_model,
                 ),
-            ),
-        ],
+            )
+        )
+
+    return build_live_ensemble_classifier(
+        providers=providers,
         timeout_seconds=settings.intent_ensemble_timeout_seconds,
         trimatch_funnel_stage_weight=settings.trimatch_funnel_stage_weight,
     )
