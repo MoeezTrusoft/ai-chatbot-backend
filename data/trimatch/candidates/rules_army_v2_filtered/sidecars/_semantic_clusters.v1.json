@@ -1,0 +1,122 @@
+{
+  "version": "semantic_clusters.v1.rules_army",
+  "clusters": {
+    "ghostwriting": [
+      "I have an idea and need someone to write the whole book",
+      "I need a professional writer to turn interviews into a manuscript",
+      "I want help creating a complete memoir from my notes",
+      "The manuscript does not exist yet and I need it written",
+      "I need a book written under my name from an outline"
+    ],
+    "editing_proofreading": [
+      "The book is already written and needs editing",
+      "I need grammar and style cleanup before publishing",
+      "I want a professional editor to improve the manuscript",
+      "The draft is complete but rough and needs polish",
+      "I need proofreading after formatting"
+    ],
+    "cover_design_illustration": [
+      "I need the outside visual design of the book",
+      "I want custom artwork for the book jacket",
+      "My book needs a professional front cover and spine",
+      "I need cover files for ebook and print retailers",
+      "I want illustrated artwork for a picture book"
+    ],
+    "interior_formatting": [
+      "The manuscript is written and needs to be laid out for print and ebook",
+      "I need the inside pages designed and formatted",
+      "I need an EPUB and print-ready PDF",
+      "My book needs chapter styling and table of contents",
+      "I want accessible readable ebook structure"
+    ],
+    "audiobook_production": [
+      "I want my book turned into an audiobook",
+      "I need narrator selection and mastered audio files",
+      "I need ACX-ready audiobook production",
+      "I need voice talent and audio editing",
+      "I want chapter-by-chapter narration files"
+    ],
+    "publishing_distribution": [
+      "I need help uploading my book to Amazon and IngramSpark",
+      "I need metadata categories and ISBN guidance",
+      "I want my book distributed to retailers",
+      "I need support setting up ebook and paperback publishing",
+      "I need help with self-publishing platforms"
+    ],
+    "marketing_promotion": [
+      "I need help promoting my book after publication",
+      "I want a launch campaign and reader outreach",
+      "I need ads and publicity for my book",
+      "I want help getting visibility without fake guarantees",
+      "I need marketing strategy for a book release"
+    ],
+    "author_website": [
+      "I need a website for my author brand",
+      "I want a site with book pages and newsletter signup",
+      "I need an online home for readers",
+      "I want to sell books directly from my website",
+      "I need an author landing page"
+    ],
+    "video_trailer": [
+      "I need a promotional video for my book",
+      "I want a cinematic trailer for launch",
+      "I need a vertical reel and YouTube trailer",
+      "I want animated motion graphics for a book promo",
+      "I need subtitles voiceover and music for a trailer"
+    ],
+    "greeting": [
+      "The user is opening the conversation or greeting the assistant"
+    ],
+    "service_question": [
+      "The user wants to understand services or fit"
+    ],
+    "pricing_question": [
+      "The user is asking about cost or a quote"
+    ],
+    "timeline_question": [
+      "The user asks how long the work will take"
+    ],
+    "portfolio_request": [
+      "The user wants proof or examples of previous work"
+    ],
+    "consultation_request": [
+      "The user wants a human consultant or meeting"
+    ],
+    "nda_request": [
+      "The user asks about confidentiality or an NDA"
+    ],
+    "agreement_request": [
+      "The user wants contract or service agreement handling"
+    ],
+    "revision_question": [
+      "The user asks about revision policy"
+    ],
+    "payment_question": [
+      "The user asks how payment works"
+    ],
+    "publishing_platform_question": [
+      "The user asks about specific publishing platforms or metadata"
+    ],
+    "manuscript_status_update": [
+      "The user gives manuscript readiness information"
+    ],
+    "contact_info_provided": [
+      "The user provides contact or identity details"
+    ],
+    "complaint_or_objection": [
+      "The user raises an objection or complaint"
+    ],
+    "ready_to_buy": [
+      "The user is ready to start the process"
+    ],
+    "unclear": [
+      "The user is ambiguous or not yet committed"
+    ],
+    "spam_or_abuse": [
+      "The message appears spam or abusive"
+    ],
+    "off_topic": [
+      "The user asks something outside BookCraft sales scope"
+    ]
+  }
+}
