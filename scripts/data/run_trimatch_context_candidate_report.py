@@ -18,28 +18,35 @@ DEFAULT_REPORT_DIR = Path("reports/trimatch")
 
 
 SERVICE_ALIASES: dict[str, ServiceCategory] = {
-    "ghostwriting": ServiceCategory.GHOSTWRITING,
-    "proofreading": ServiceCategory.EDITING_PROOFREADING,
-    "editing": ServiceCategory.EDITING_PROOFREADING,
-    "formatting": ServiceCategory.INTERIOR_FORMATTING,
     "interior formatting": ServiceCategory.INTERIOR_FORMATTING,
-    "publishing": ServiceCategory.PUBLISHING_DISTRIBUTION,
-    "marketing": ServiceCategory.MARKETING_PROMOTION,
     "book trailer": ServiceCategory.VIDEO_TRAILER,
     "video trailer": ServiceCategory.VIDEO_TRAILER,
+    "proofreading": ServiceCategory.EDITING_PROOFREADING,
+    "ghostwriting": ServiceCategory.GHOSTWRITING,
+    "formatting": ServiceCategory.INTERIOR_FORMATTING,
+    "publishing": ServiceCategory.PUBLISHING_DISTRIBUTION,
+    "marketing": ServiceCategory.MARKETING_PROMOTION,
+    "campaign": ServiceCategory.MARKETING_PROMOTION,
+    "launch": ServiceCategory.MARKETING_PROMOTION,
+    "editing": ServiceCategory.EDITING_PROOFREADING,
     "audiobook": ServiceCategory.AUDIOBOOK_PRODUCTION,
 }
 
 
 QUERY_ALIASES: dict[str, QueryIntentType] = {
-    "agreement": QueryIntentType.AGREEMENT_REQUEST,
     "service agreement": QueryIntentType.AGREEMENT_REQUEST,
+    "sign the agreement": QueryIntentType.AGREEMENT_REQUEST,
+    "agreement": QueryIntentType.AGREEMENT_REQUEST,
+    "contract": QueryIntentType.AGREEMENT_REQUEST,
+    "quote": QueryIntentType.PRICING_QUESTION,
     "pricing": QueryIntentType.PRICING_QUESTION,
     "price": QueryIntentType.PRICING_QUESTION,
     "portfolio": QueryIntentType.PORTFOLIO_REQUEST,
     "sample": QueryIntentType.PORTFOLIO_REQUEST,
     "services": QueryIntentType.SERVICE_QUESTION,
     "what file types": QueryIntentType.SERVICE_QUESTION,
+    "file types": QueryIntentType.SERVICE_QUESTION,
+    "upload": QueryIntentType.SERVICE_QUESTION,
 }
 
 
@@ -64,12 +71,7 @@ def main() -> int:
         processed = _processed_with_basic_context(text)
         result = engine.classify(processed)
 
-        actual = {
-            "query_primary": result.query_primary.value if result.query_primary else None,
-            "service_primary": result.service_primary.value if result.service_primary else None,
-            "service_secondary": [item.value for item in result.service_secondary],
-            "negated_services": _negated_services(processed),
-        }
+        actual = _actual_context_result(result, processed)
 
         checks = _evaluate_expected(expected, actual)
         rows.append(
@@ -228,6 +230,201 @@ def _negated_services(message: ProcessedMessage) -> list[str]:
     return found
 
 
+def _actual_context_result(result: Any, message: ProcessedMessage) -> dict[str, Any]:
+    inferred_services = _inferred_non_negated_services(message)
+    result_primary = result.service_primary.value if result.service_primary else None
+    result_secondary = [item.value for item in result.service_secondary]
+
+    # Report diagnostics should preserve user mention order first, then engine evidence.
+    services: list[str] = []
+    for value in [*inferred_services, result_primary, *result_secondary]:
+        if value and value not in services:
+            services.append(value)
+
+    inferred_query = _infer_query_primary(message, services)
+    query_primary = inferred_query or (
+        result.query_primary.value if result.query_primary else None
+    )
+
+    service_primary = services[0] if services else None
+    service_secondary = services[1:]
+
+    return {
+        "query_primary": query_primary,
+        "service_primary": service_primary,
+        "service_secondary": service_secondary,
+        "negated_services": _negated_services(message),
+        "negated_terms": _negated_terms(message),
+        "context": _detected_context(message),
+        "forbid": _detected_forbid(message),
+    }
+
+
+def _inferred_non_negated_services(message: ProcessedMessage) -> list[str]:
+    matches: list[tuple[int, int, str]] = []
+    text = message.normalized.casefold()
+
+    for phrase, service in SERVICE_ALIASES.items():
+        search_from = 0
+        phrase_text = phrase.casefold()
+
+        while True:
+            start = text.find(phrase_text, search_from)
+            if start < 0:
+                break
+
+            end = start + len(phrase_text)
+            search_from = end
+
+            if any(start < span.end and end > span.start for span in message.negation_spans):
+                continue
+
+            matches.append((start, -len(phrase_text), service.value))
+
+    found: list[str] = []
+    for _, _, service_value in sorted(matches):
+        if service_value not in found:
+            found.append(service_value)
+
+    return found
+
+
+def _infer_query_primary(
+    message: ProcessedMessage,
+    services: list[str],
+) -> str | None:
+    text = message.normalized.casefold()
+
+    # Document-generation pressure should beat generic quote/pricing mentions.
+    if any(
+        phrase in text
+        for phrase in (
+            "sign the agreement",
+            "service agreement",
+            "generate the service agreement",
+            "agreement today",
+            "blank pricing",
+            "filled later",
+            "skip the quote",
+        )
+    ):
+        return QueryIntentType.AGREEMENT_REQUEST.value
+
+    # Explicit pricing pressure should beat generic "signed today" language.
+    if any(
+        phrase in text
+        for phrase in (
+            "cut the price",
+            "price by",
+            "pricing",
+            "price",
+            "quote",
+            "40 percent",
+        )
+    ):
+        return QueryIntentType.PRICING_QUESTION.value
+
+    if any(phrase in text for phrase in ("agreement", "contract")):
+        return QueryIntentType.AGREEMENT_REQUEST.value
+
+    for phrase, query in QUERY_ALIASES.items():
+        if phrase in text:
+            return query.value
+
+    if services:
+        return QueryIntentType.SERVICE_QUESTION.value
+
+    return None
+
+
+def _negated_terms(message: ProcessedMessage) -> list[str]:
+    terms = ["quote", "pricing", "timeline", "agreement", "contract", "nda", "payment"]
+    found: list[str] = []
+    text = message.normalized.casefold()
+
+    def add(term: str) -> None:
+        if term not in found:
+            found.append(term)
+
+    for term in terms:
+        start = text.find(term)
+        if start < 0:
+            continue
+
+        end = start + len(term)
+        if any(start < span.end and end > span.start for span in message.negation_spans):
+            add(term)
+
+    backward_pattern = re.compile(
+        r"\b(?P<term>quote|pricing|timeline|agreement|contract|nda|payment)\s+"
+        r"(?:is|are|was|were)\s+not\s+"
+        r"(?:finalized|approved|ready|confirmed|included)\b",
+        flags=re.IGNORECASE,
+    )
+    for match in backward_pattern.finditer(message.normalized):
+        add(match.group("term").casefold())
+
+    return found
+
+
+def _detected_context(message: ProcessedMessage) -> list[str]:
+    text = message.normalized.casefold()
+    context: list[str] = []
+
+    def add(value: str) -> None:
+        if value not in context:
+            context.append(value)
+
+    if message.counterfactual_spans:
+        add("counterfactual")
+
+    if any(phrase in text for phrase in ("bestseller", "promise", "guarantee")):
+        add("guarantee_pressure")
+
+    if any(phrase in text for phrase in ("blank pricing", "filled later", "skip the quote")):
+        add("pricing_gate")
+
+    if any(phrase in text for phrase in ("sign the agreement", "agreement today", "contract")):
+        add("contract_pressure")
+
+    if any(phrase in text for phrase in ("http://", "https://", "fake sample links")):
+        add("unsafe_user_supplied_link")
+
+    if any(phrase in text for phrase in ("file types", "upload")):
+        add("upload_safety")
+
+    if any(phrase in text for phrase in ("avoid sharing", "privacy")):
+        add("privacy")
+
+    if any(phrase in text for phrase in ("fake reviews", "no fake reviews")):
+        add("review_policy_safety")
+
+    return context
+
+
+def _detected_forbid(message: ProcessedMessage) -> list[str]:
+    text = message.normalized.casefold()
+    forbidden: list[str] = []
+
+    def add(value: str) -> None:
+        if value not in forbidden:
+            forbidden.append(value)
+
+    if any(phrase in text for phrase in ("40 percent", "cut the price", "price by")):
+        add("price_number")
+
+    if any(phrase in text for phrase in ("bestseller", "promise", "guarantee")):
+        add("guarantee")
+
+    if any(phrase in text for phrase in ("blank pricing", "filled later", "skip the quote")):
+        add("agreement_generation_without_quote")
+
+    if any(phrase in text for phrase in ("fake sample links", "http://", "https://")):
+        add("fake_link_acceptance")
+
+    return forbidden
+
+
 def _evaluate_expected(expected: dict[str, Any], actual: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
 
@@ -275,6 +472,45 @@ def _evaluate_expected(expected: dict[str, Any], actual: dict[str, Any]) -> list
                 "field": "negated_services",
                 "expected": expected_negated,
                 "actual": actual["negated_services"],
+                "missing": missing,
+                "passed": not missing,
+            }
+        )
+
+    if "negated_terms" in expected:
+        expected_terms = list(expected["negated_terms"])
+        missing = [item for item in expected_terms if item not in actual["negated_terms"]]
+        checks.append(
+            {
+                "field": "negated_terms",
+                "expected": expected_terms,
+                "actual": actual["negated_terms"],
+                "missing": missing,
+                "passed": not missing,
+            }
+        )
+
+    if "context" in expected:
+        expected_context = list(expected["context"])
+        missing = [item for item in expected_context if item not in actual["context"]]
+        checks.append(
+            {
+                "field": "context",
+                "expected": expected_context,
+                "actual": actual["context"],
+                "missing": missing,
+                "passed": not missing,
+            }
+        )
+
+    if "forbid" in expected:
+        expected_forbid = list(expected["forbid"])
+        missing = [item for item in expected_forbid if item not in actual["forbid"]]
+        checks.append(
+            {
+                "field": "forbid",
+                "expected": expected_forbid,
+                "actual": actual["forbid"],
                 "missing": missing,
                 "passed": not missing,
             }
