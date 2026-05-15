@@ -432,7 +432,7 @@ class EnsembleIntentClassifier:
                     if item.status == "succeeded" and item.vote is not None
                 )
 
-                if usable_vote_count >= 2:
+                if usable_vote_count >= 2 or self._has_strong_single_provider_vote(votes):
                     for task in tasks:
                         if task.done():
                             await add_vote(task)
@@ -452,6 +452,55 @@ class EnsembleIntentClassifier:
             votes,
             key=lambda vote: provider_order.get(vote.provider, len(provider_order)),
         )
+
+    def _has_strong_single_provider_vote(
+        self,
+        votes: list[ProviderIntentVote],
+    ) -> bool:
+        usable_votes = [
+            item
+            for item in votes
+            if item.status == "succeeded" and item.vote is not None
+        ]
+
+        if len(usable_votes) != 1:
+            return False
+
+        vote = usable_votes[0].vote
+        if vote is None:
+            return False
+
+        confidence = float(vote.confidence or 0.0)
+        query_primary = getattr(vote.query_primary, "value", str(vote.query_primary))
+        service_primary = (
+            getattr(vote.service_primary, "value", str(vote.service_primary))
+            if vote.service_primary is not None
+            else None
+        )
+
+        guarded_queries = {
+            "agreement_request",
+            "nda_request",
+            "portfolio_request",
+            "pricing_question",
+        }
+
+        if query_primary in guarded_queries:
+            return False
+
+        if query_primary in {"unclear", ""}:
+            return False
+
+        if confidence < 0.92:
+            return False
+
+        return service_primary is not None or query_primary in {
+            "service_question",
+            "consultation_request",
+            "manuscript_status_update",
+            "publishing_platform_question",
+            "timeline_question",
+        }
 
     async def _classify_provider(
         self,
