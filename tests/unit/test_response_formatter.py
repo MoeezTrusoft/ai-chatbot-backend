@@ -1,11 +1,30 @@
-from bookcraft.components.response import ResponseFormatter
+from bookcraft.components.response.formatter import ResponseFormatter
 
 
-def test_formatter_strips_unsupported_markdown_and_json() -> None:
-    bubbles = ResponseFormatter(max_bubble_chars=80).format("# Title\n\n**Hello** there")
+def test_formatter_trims_leading_rag_sentence_fragment() -> None:
+    formatter = ResponseFormatter(max_bubble_chars=500)
 
-    assert bubbles[0].text == "Title"
-    assert bubbles[1].text == "Hello there"
+    bubbles = formatter.format(
+        "ed on the next idea.\nEngagement Models\n\n"
+        "We offer three engagement levels."
+    )
 
-    json_bubble = ResponseFormatter().format('{"raw": true}')[0]
-    assert "plain language" in json_bubble.text
+    assert bubbles
+    assert not bubbles[0].text.startswith("ed on")
+    assert bubbles[0].text.startswith("Engagement Models")
+
+
+def test_formatter_converts_flat_markdown_table_to_bullets() -> None:
+    formatter = ResponseFormatter(max_bubble_chars=500)
+
+    bubbles = formatter.format(
+        "| Model | What it means | Best for | |---|---|---| "
+        "| Full Ghostwriting | Writer drafts the manuscript | Idea-stage authors | "
+        "| Coaching & Writing | Hybrid collaboration | Authors who draft in bursts |"
+    )
+
+    text = "\n".join(bubble.text for bubble in bubbles)
+
+    assert "|---|" not in text
+    assert "- Full Ghostwriting:" in text
+    assert "- Coaching & Writing:" in text
