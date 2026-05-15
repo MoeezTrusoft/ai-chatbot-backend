@@ -40,6 +40,16 @@ export function App() {
   const [apiBusy, setApiBusy] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
   const [liveTraces, setLiveTraces] = useState<LiveTrace[]>([]);
+  const [liveTraceFilters, setLiveTraceFilters] = useState({
+    limit: 100,
+    source: '',
+    query_primary: '',
+    service_primary: '',
+    customer_id: '',
+    min_latency_ms: '',
+    has_forbid_markers: '',
+    has_negated_terms: ''
+  });
 
   const api = useMemo(() => new AdminApiClient(apiConfig), [apiConfig]);
 
@@ -91,7 +101,22 @@ export function App() {
 
   async function refreshLiveTraces() {
     await withApi('Refresh live traces', async () => {
-      const response = await api.latestLiveTraces(100);
+      const response = await api.latestLiveTraces({
+        limit: Number(liveTraceFilters.limit) || 100,
+        source: liveTraceFilters.source || undefined,
+        query_primary: liveTraceFilters.query_primary || undefined,
+        service_primary: liveTraceFilters.service_primary || undefined,
+        customer_id: liveTraceFilters.customer_id || undefined,
+        min_latency_ms: liveTraceFilters.min_latency_ms
+          ? Number(liveTraceFilters.min_latency_ms)
+          : undefined,
+        has_forbid_markers: liveTraceFilters.has_forbid_markers === ''
+          ? undefined
+          : liveTraceFilters.has_forbid_markers === 'true',
+        has_negated_terms: liveTraceFilters.has_negated_terms === ''
+          ? undefined
+          : liveTraceFilters.has_negated_terms === 'true'
+      });
       setLiveTraces(response.traces);
     });
   }
@@ -132,7 +157,7 @@ export function App() {
 
         {page === 'dashboard' && <Dashboard performance={performance} context={context} onLoad={addReport} onLiveImport={importLiveReports} apiEnabled={apiConfig.enabled} />}
         {page === 'trace' && <TraceViewer report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} search={search} />}
-        {page === 'live' && <LiveTracePage traces={liveTraces} refresh={refreshLiveTraces} apiEnabled={apiConfig.enabled} search={search} />}
+        {page === 'live' && <LiveTracePage traces={liveTraces} refresh={refreshLiveTraces} apiEnabled={apiConfig.enabled} search={search} filters={liveTraceFilters} setFilters={setLiveTraceFilters} />}
         {page === 'waterfall' && <Waterfall report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'intent' && <IntentInspector report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'trimatch' && <TriMatchView report={context} selectedRow={selectedRow} onSelect={setSelectedRow} search={search} />}
@@ -187,12 +212,34 @@ function LiveTracePage({
   traces,
   refresh,
   apiEnabled,
-  search
+  search,
+  filters,
+  setFilters
 }: {
   traces: LiveTrace[];
   refresh: () => void;
   apiEnabled: boolean;
   search: string;
+  filters: {
+    limit: number;
+    source: string;
+    query_primary: string;
+    service_primary: string;
+    customer_id: string;
+    min_latency_ms: string;
+    has_forbid_markers: string;
+    has_negated_terms: string;
+  };
+  setFilters: (filters: {
+    limit: number;
+    source: string;
+    query_primary: string;
+    service_primary: string;
+    customer_id: string;
+    min_latency_ms: string;
+    has_forbid_markers: string;
+    has_negated_terms: string;
+  }) => void;
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const filtered = traces.filter((trace) => {
@@ -226,6 +273,73 @@ function LiveTracePage({
         <MetricCard label="API mode" value={apiEnabled ? 'live' : 'disabled'} tone={apiEnabled ? 'green' : 'purple'} />
         <MetricCard label="Storage" value="JSONL" tone="cyan" />
       </div>
+
+      <Card className="mt">
+        <CardHeader
+          title="Backend filters"
+          subtitle="Filters are sent to /api/admin/analysis/traces/latest before the table is rendered."
+          action={<Button disabled={!apiEnabled} onClick={refresh}>Apply filters</Button>}
+        />
+        <div className="card-body filter-grid">
+          <input
+            className="input"
+            placeholder="source, e.g. clarification"
+            value={filters.source}
+            onChange={(event) => setFilters({ ...filters, source: event.target.value })}
+          />
+          <input
+            className="input"
+            placeholder="query_primary"
+            value={filters.query_primary}
+            onChange={(event) => setFilters({ ...filters, query_primary: event.target.value })}
+          />
+          <input
+            className="input"
+            placeholder="service_primary"
+            value={filters.service_primary}
+            onChange={(event) => setFilters({ ...filters, service_primary: event.target.value })}
+          />
+          <input
+            className="input"
+            placeholder="customer_id"
+            value={filters.customer_id}
+            onChange={(event) => setFilters({ ...filters, customer_id: event.target.value })}
+          />
+          <input
+            className="input"
+            placeholder="min_latency_ms"
+            value={filters.min_latency_ms}
+            onChange={(event) => setFilters({ ...filters, min_latency_ms: event.target.value })}
+          />
+          <select
+            className="select wide"
+            value={filters.has_forbid_markers}
+            onChange={(event) => setFilters({ ...filters, has_forbid_markers: event.target.value })}
+          >
+            <option value="">forbid markers: any</option>
+            <option value="true">forbid markers: yes</option>
+            <option value="false">forbid markers: no</option>
+          </select>
+          <select
+            className="select wide"
+            value={filters.has_negated_terms}
+            onChange={(event) => setFilters({ ...filters, has_negated_terms: event.target.value })}
+          >
+            <option value="">negated terms: any</option>
+            <option value="true">negated terms: yes</option>
+            <option value="false">negated terms: no</option>
+          </select>
+          <input
+            className="input"
+            placeholder="limit"
+            type="number"
+            min={1}
+            max={500}
+            value={filters.limit}
+            onChange={(event) => setFilters({ ...filters, limit: Number(event.target.value) || 100 })}
+          />
+        </div>
+      </Card>
 
       <div className="split mt">
         <Card>

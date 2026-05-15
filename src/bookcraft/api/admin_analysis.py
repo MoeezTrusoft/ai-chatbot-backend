@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from bookcraft.components.analysis import LiveTraceStore
@@ -128,14 +128,41 @@ def run_context_candidate_eval(_: None = Depends(require_admin)) -> dict[str, An
 
 @router.get("/traces/latest")
 def latest_live_traces(
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=500),
+    source: str | None = None,
+    query_primary: str | None = None,
+    service_primary: str | None = None,
+    customer_id: str | None = None,
+    min_latency_ms: float | None = Query(default=None, ge=0),
+    has_forbid_markers: bool | None = None,
+    has_negated_terms: bool | None = None,
     _: None = Depends(require_admin),
 ) -> dict[str, Any]:
     store = LiveTraceStore(LIVE_TRACE_PATH)
-    rows = store.latest(limit=limit)
+    rows = store.latest(limit=500)
+    rows = _filter_trace_rows(
+        rows,
+        source=source,
+        query_primary=query_primary,
+        service_primary=service_primary,
+        customer_id=customer_id,
+        min_latency_ms=min_latency_ms,
+        has_forbid_markers=has_forbid_markers,
+        has_negated_terms=has_negated_terms,
+    )
+    rows = rows[:limit]
     return {
         "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
         "count": len(rows),
+        "filters": _trace_filter_payload(
+            source=source,
+            query_primary=query_primary,
+            service_primary=service_primary,
+            customer_id=customer_id,
+            min_latency_ms=min_latency_ms,
+            has_forbid_markers=has_forbid_markers,
+            has_negated_terms=has_negated_terms,
+        ),
         "traces": rows,
     }
 
@@ -143,15 +170,42 @@ def latest_live_traces(
 @router.get("/traces/{thread_id}")
 def thread_live_traces(
     thread_id: str,
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=500),
+    source: str | None = None,
+    query_primary: str | None = None,
+    service_primary: str | None = None,
+    customer_id: str | None = None,
+    min_latency_ms: float | None = Query(default=None, ge=0),
+    has_forbid_markers: bool | None = None,
+    has_negated_terms: bool | None = None,
     _: None = Depends(require_admin),
 ) -> dict[str, Any]:
     store = LiveTraceStore(LIVE_TRACE_PATH)
-    rows = store.for_thread(thread_id=thread_id, limit=limit)
+    rows = store.for_thread(thread_id=thread_id, limit=500)
+    rows = _filter_trace_rows(
+        rows,
+        source=source,
+        query_primary=query_primary,
+        service_primary=service_primary,
+        customer_id=customer_id,
+        min_latency_ms=min_latency_ms,
+        has_forbid_markers=has_forbid_markers,
+        has_negated_terms=has_negated_terms,
+    )
+    rows = rows[:limit]
     return {
         "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
         "thread_id": thread_id,
         "count": len(rows),
+        "filters": _trace_filter_payload(
+            source=source,
+            query_primary=query_primary,
+            service_primary=service_primary,
+            customer_id=customer_id,
+            min_latency_ms=min_latency_ms,
+            has_forbid_markers=has_forbid_markers,
+            has_negated_terms=has_negated_terms,
+        ),
         "traces": rows,
     }
 
