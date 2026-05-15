@@ -154,7 +154,7 @@ class DecisionLayer:
         }
     )
     trimatch_weight: float = 0.35
-    trimatch_funnel_stage_weight: float = 0.0
+    trimatch_funnel_stage_weight: float = 0.5
 
     def decide(
         self,
