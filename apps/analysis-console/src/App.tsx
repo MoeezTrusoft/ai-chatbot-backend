@@ -7,11 +7,12 @@ import { AdminApiClient } from './lib/apiClient';
 import { defaultApiConfig, loadApiConfig, saveApiConfig } from './lib/apiConfig';
 import { compactDate, downloadJson, fmtMs, fmtNumber, getAssistantText, intentCounts, latencyTone, objectEntries, routeSourceCounts, serviceCounts, titleCase, truncate } from './lib/format';
 import { loadReports, loadRules, saveReports, saveRules } from './lib/storage';
-import type { ActivationResult, AdminApiConfig, AdminHealth, ContextCandidateReport, ContextReportRow, LoadedReport, PageKey, PerformanceReport, ProviderVote, ReportTurn, RuleCandidate, RuleCandidateStatus, RulesArmyPreflight, Tone } from './types/reports';
+import type { ActivationResult, AdminApiConfig, AdminHealth, ContextCandidateReport, ContextReportRow, LiveTrace, LoadedReport, PageKey, PerformanceReport, ProviderVote, ReportTurn, RuleCandidate, RuleCandidateStatus, RulesArmyPreflight, Tone } from './types/reports';
 
 const nav: Array<{ key: PageKey; label: string; hint: string }> = [
   { key: 'dashboard', label: 'Dashboard', hint: 'System health' },
   { key: 'trace', label: 'Trace Viewer', hint: 'Turn inspection' },
+  { key: 'live', label: 'Live Traces', hint: 'Fresh chat turns' },
   { key: 'waterfall', label: 'Waterfall', hint: 'Latency timeline' },
   { key: 'intent', label: 'Intent', hint: 'Votes + decision' },
   { key: 'trimatch', label: 'Tri-Match', hint: 'Rules + evidence' },
@@ -38,6 +39,7 @@ export function App() {
   const [apiHealth, setApiHealth] = useState<AdminHealth | null>(null);
   const [apiBusy, setApiBusy] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
+  const [liveTraces, setLiveTraces] = useState<LiveTrace[]>([]);
 
   const api = useMemo(() => new AdminApiClient(apiConfig), [apiConfig]);
 
@@ -87,6 +89,13 @@ export function App() {
     });
   }
 
+  async function refreshLiveTraces() {
+    await withApi('Refresh live traces', async () => {
+      const response = await api.latestLiveTraces(100);
+      setLiveTraces(response.traces);
+    });
+  }
+
   async function syncRuleCandidates() {
     await withApi('Sync rule candidates', async () => setRules(await api.listRuleCandidates()));
   }
@@ -123,6 +132,7 @@ export function App() {
 
         {page === 'dashboard' && <Dashboard performance={performance} context={context} onLoad={addReport} onLiveImport={importLiveReports} apiEnabled={apiConfig.enabled} />}
         {page === 'trace' && <TraceViewer report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} search={search} />}
+        {page === 'live' && <LiveTracePage traces={liveTraces} refresh={refreshLiveTraces} apiEnabled={apiConfig.enabled} search={search} />}
         {page === 'waterfall' && <Waterfall report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'intent' && <IntentInspector report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'trimatch' && <TriMatchView report={context} selectedRow={selectedRow} onSelect={setSelectedRow} search={search} />}
@@ -171,6 +181,142 @@ function RuntimeAtomsPanel({ atoms }: { atoms?: Record<string, unknown> }) {
 function ProviderVotes({ votes }: { votes: ProviderVote[] }) {
   return <Card><CardHeader title="Provider votes" subtitle="LLM providers, deterministic shortcuts, and fallback votes." /><div className="table-wrap"><table><thead><tr><th>Provider</th><th>Status</th><th>Intent</th><th>Service</th><th>Confidence</th><th>Error</th></tr></thead><tbody>{votes.length ? votes.map((vote, index) => <tr key={`${vote.provider}-${index}`}><td>{vote.provider ?? 'unknown'}</td><td><Badge tone={statusTone(vote.status)}>{vote.status ?? 'unknown'}</Badge></td><td>{titleCase(vote.vote?.query_primary)}</td><td>{titleCase(vote.vote?.service_primary)}</td><td>{typeof vote.vote?.confidence === 'number' ? vote.vote.confidence.toFixed(3) : '—'}</td><td>{vote.error ? <Badge tone="red">{truncate(vote.error, 40)}</Badge> : '—'}</td></tr>) : <tr><td colSpan={6}><EmptyState title="No provider votes in selected turn" /></td></tr>}</tbody></table></div></Card>;
 }
+
+
+function LiveTracePage({
+  traces,
+  refresh,
+  apiEnabled,
+  search
+}: {
+  traces: LiveTrace[];
+  refresh: () => void;
+  apiEnabled: boolean;
+  search: string;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const filtered = traces.filter((trace) => {
+    if (!search.trim()) return true;
+    const haystack = [
+      trace.thread_id,
+      trace.message_preview,
+      trace.assistant?.source,
+      trace.assistant?.preview,
+      JSON.stringify(trace.runtime_atoms ?? {})
+    ].join(' ').toLowerCase();
+    return haystack.includes(search.toLowerCase());
+  });
+  const selected = filtered[selectedIndex] ?? filtered[0];
+
+  return (
+    <div className="page">
+      <SectionTitle
+        kicker="Live Traces"
+        title="Fresh chat-turn trace stream"
+        subtitle="Redacted per-turn snapshots from ChatService: intent, decision, Tri-Match, runtime atoms, source, latency, and component summary."
+        right={<Button disabled={!apiEnabled} onClick={refresh}>Refresh traces</Button>}
+      />
+      <div className="grid cols-4">
+        <MetricCard label="Loaded traces" value={filtered.length} tone="blue" />
+        <MetricCard
+          label="Latest latency"
+          value={fmtMs(filtered[0]?.elapsed_ms)}
+          tone={latencyTone(filtered[0]?.elapsed_ms)}
+        />
+        <MetricCard label="API mode" value={apiEnabled ? 'live' : 'disabled'} tone={apiEnabled ? 'green' : 'purple'} />
+        <MetricCard label="Storage" value="JSONL" tone="cyan" />
+      </div>
+
+      <div className="split mt">
+        <Card>
+          <CardHeader title="Trace rows" subtitle="Newest traces first from /api/admin/analysis/traces/latest." />
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Latency</th>
+                  <th>Source</th>
+                  <th>Intent</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length ? filtered.map((trace, index) => (
+                  <tr
+                    key={`${trace.thread_id}-${trace.recorded_at}-${index}`}
+                    className={index === selectedIndex ? 'selected' : ''}
+                    onClick={() => setSelectedIndex(index)}
+                  >
+                    <td>{compactDate(trace.recorded_at)}</td>
+                    <td><Badge tone={latencyTone(trace.elapsed_ms)}>{fmtMs(trace.elapsed_ms)}</Badge></td>
+                    <td>{trace.assistant?.source ?? 'unknown'}</td>
+                    <td>{String(trace.intent?.query_primary ?? trace.decision?.query_primary ?? '—')}</td>
+                    <td>{truncate(trace.message_preview ?? '', 80)}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={5}>
+                      <EmptyState title="No live traces loaded" body="Send a chat turn, then click Refresh traces." />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <div className="stack">
+          <Card>
+            <CardHeader
+              title="Selected trace"
+              subtitle={selected?.thread_id ? `Thread ${selected.thread_id}` : 'No trace selected'}
+              action={<Badge tone={latencyTone(selected?.elapsed_ms)}>{fmtMs(selected?.elapsed_ms)}</Badge>}
+            />
+            <div className="card-body">
+              <KeyValueGrid
+                items={[
+                  ['Recorded', compactDate(selected?.recorded_at)],
+                  ['Thread', selected?.thread_id ?? '—'],
+                  ['Customer', selected?.customer_id ?? '—'],
+                  ['Language', selected?.language_status ?? '—'],
+                  ['Assistant source', selected?.assistant?.source ?? '—'],
+                  ['Bubble count', selected?.assistant?.bubble_count ?? '—']
+                ]}
+              />
+              <p className="assistant-text">{selected?.assistant?.preview ?? selected?.message_preview ?? 'No preview available.'}</p>
+            </div>
+          </Card>
+
+          <RuntimeAtomsPanel atoms={selected?.runtime_atoms} />
+
+          <Card>
+            <CardHeader title="Decision + components" />
+            <div className="card-body">
+              <JsonViewer
+                value={{
+                  intent: selected?.intent ?? null,
+                  decision: selected?.decision ?? null,
+                  trimatch: selected?.trimatch ?? null,
+                  components: selected?.components ?? {}
+                }}
+                maxHeight={360}
+              />
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Raw trace JSON" />
+            <div className="card-body">
+              <JsonViewer value={selected ?? {}} maxHeight={420} />
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function Waterfall({ report, selectedTurn, onSelect }: { report?: PerformanceReport; selectedTurn: number; onSelect: (turn: number) => void }) {
   const turn = report?.turns?.find((item) => item.turn === selectedTurn) ?? report?.turns?.[0];

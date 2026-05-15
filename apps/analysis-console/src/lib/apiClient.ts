@@ -4,6 +4,7 @@ import type {
   AdminApiConfig,
   AdminHealth,
   LoadedReport,
+  LiveTraceResponse,
   RuleCandidate,
   RuleCandidateStatus,
   RulesArmyPreflight
@@ -35,6 +36,16 @@ export class AdminApiClient {
   async runContextEval(): Promise<LoadedReport> {
     const data = await this.request('/api/admin/analysis/evals/context-candidate/run', { method: 'POST' });
     return parseReportJson(data, 'Fresh Tri-Match context eval');
+  }
+
+  async latestLiveTraces(limit = 50): Promise<LiveTraceResponse> {
+    return this.request(`/api/admin/analysis/traces/latest?limit=${encodeURIComponent(String(limit))}`);
+  }
+
+  async threadLiveTraces(threadId: string, limit = 100): Promise<LiveTraceResponse> {
+    return this.request(
+      `/api/admin/analysis/traces/${encodeURIComponent(threadId)}?limit=${encodeURIComponent(String(limit))}`
+    );
   }
 
   async listRuleCandidates(): Promise<RuleCandidate[]> {
