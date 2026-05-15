@@ -10,6 +10,7 @@ from typing import Protocol
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.intent.classifier import mock_intent_vote
+from bookcraft.components.intent.normalization import normalize_provider_vote_payload
 from bookcraft.components.intent.schemas import (
     DecisionLayerResult,
     IntentProviderStatus,
@@ -141,7 +142,7 @@ class LLMIntentProvider:
             output_model=IntentVote,
             purpose="intent",
         )
-        return IntentVote.model_validate(_normalize_provider_vote_payload(result))
+        return IntentVote.model_validate(normalize_provider_vote_payload(result))
 
 
 @dataclass(slots=True)
@@ -349,7 +350,7 @@ class DecisionLayer:
         return None
 
 
-def _normalize_provider_vote_payload(payload: object) -> object:
+def normalize_provider_vote_payload(payload: object) -> object:
     if not isinstance(payload, dict):
         return payload
 

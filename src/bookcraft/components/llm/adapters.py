@@ -141,11 +141,27 @@ def _loads_json_object(text: str) -> object:
     last_error: json.JSONDecodeError | None = None
 
     for match in re.finditer(r"[{\\[]", stripped):
+        fragment = stripped[match.start():]
         try:
-            obj, _ = decoder.raw_decode(stripped[match.start():])
+            obj, _ = decoder.raw_decode(fragment)
             return obj
         except json.JSONDecodeError as exc:
             last_error = exc
+
+        # Best-effort repair for models that return a JSON object cut off near the end.
+        if fragment.startswith("{"):
+            repaired = fragment
+            open_braces = repaired.count("{") - repaired.count("}")
+            open_brackets = repaired.count("[") - repaired.count("]")
+            if open_brackets > 0:
+                repaired += "]" * open_brackets
+            if open_braces > 0:
+                repaired += "}" * open_braces
+            try:
+                obj, _ = decoder.raw_decode(repaired)
+                return obj
+            except json.JSONDecodeError as repair_exc:
+                last_error = repair_exc
 
     preview = stripped[:240].replace("\\n", " ")
     message = f"could not parse JSON object from model content preview={preview!r}"
