@@ -13,6 +13,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bookcraft.api.admin_analysis import router as admin_analysis_router
 from bookcraft.api.chat import router as chat_router
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
@@ -116,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.state.settings = resolved_settings
@@ -174,6 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         trg_engine=trg_engine,
     )
     app.include_router(chat_router)
+    app.include_router(admin_analysis_router)
 
     @app.middleware("http")
     async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -452,9 +454,7 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
 
     if settings.deepseek_intent_enabled:
         if not settings.deepseek_api_key:
-            raise RuntimeError(
-                "DEEPSEEK_API_KEY is required when DEEPSEEK_INTENT_ENABLED=true"
-            )
+            raise RuntimeError("DEEPSEEK_API_KEY is required when DEEPSEEK_INTENT_ENABLED=true")
         providers.append(
             LLMIntentProvider(
                 name="deepseek_v3",
