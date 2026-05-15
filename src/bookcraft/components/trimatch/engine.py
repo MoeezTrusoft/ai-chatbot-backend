@@ -84,7 +84,8 @@ class TriMatchEngine:
         scores = aggregate_scores(evidence)
         query_primary = _best_enum(scores[TriMatchDimension.QUERY_INTENT], QueryIntentType)
         service_primary = _best_enum(scores[TriMatchDimension.SERVICE_INTENT], ServiceCategory)
-        service_secondary = _secondary_service_enums(
+        service_primary, service_secondary = _ordered_services_from_atoms(
+            processed_message,
             scores[TriMatchDimension.SERVICE_INTENT],
             service_primary,
         )
@@ -263,6 +264,42 @@ def aggregate_scores(
         current = scores[item.dimension].get(item.target, 0.0)
         scores[item.dimension][item.target] = current + item.confidence * LAYER_WEIGHTS[item.layer]
     return scores
+
+
+def _ordered_services_from_atoms(
+    message: ProcessedMessage,
+    scores: dict[str, float],
+    primary: QueryIntentType | ServiceCategory | SalesStage | None,
+) -> tuple[ServiceCategory | None, list[ServiceCategory]]:
+    atom_services = message.deterministic_atoms.get("services")
+    ordered: list[ServiceCategory] = []
+
+    if isinstance(atom_services, list):
+        for item in atom_services:
+            if not isinstance(item, str):
+                continue
+            try:
+                atom_service = ServiceCategory(item)
+            except ValueError:
+                continue
+            if atom_service.value not in scores:
+                continue
+            if atom_service not in ordered:
+                ordered.append(atom_service)
+
+    fallback_services: list[QueryIntentType | ServiceCategory | SalesStage | None] = [
+        primary,
+        *_secondary_service_enums(scores, primary),
+    ]
+
+    for candidate in fallback_services:
+        if isinstance(candidate, ServiceCategory) and candidate not in ordered:
+            ordered.append(candidate)
+
+    if not ordered:
+        return None, []
+
+    return ordered[0], ordered[1:]
 
 
 def _secondary_service_enums(

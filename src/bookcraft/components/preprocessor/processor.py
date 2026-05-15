@@ -37,7 +37,7 @@ SERVICE_KEYWORDS = {
         "kdp",
         "ingramspark",
     ],
-    ServiceCategory.MARKETING_PROMOTION: ["marketing", "promotion", "ads"],
+    ServiceCategory.MARKETING_PROMOTION: ["marketing", "promotion", "ads", "campaign", "launch"],
     ServiceCategory.AUTHOR_WEBSITE: ["author website", "website"],
     ServiceCategory.VIDEO_TRAILER: ["video trailer", "trailer"],
 }
@@ -206,6 +206,10 @@ class SharedPreprocessor:
         self._put_all(atoms, "service_mentions", service_mentions)
         self._put_all(atoms, "services", services)
         self._put_all(atoms, "negated_services", negated_services)
+        self._put_all(atoms, "negated_terms", _negated_terms(text, negation_spans))
+        self._put_all(atoms, "context_markers", _context_markers(text, counterfactual_spans))
+        self._put_all(atoms, "forbid_markers", _forbid_markers(text))
+        self._put_all(atoms, "query_cues", _query_cues(text))
         status = self._manuscript_status(text)
         if status:
             atoms["manuscript_status"] = status.value
@@ -313,3 +317,128 @@ def _ordered_unique(values: Iterable[object]) -> list[str]:
 
 def _span_overlaps(start: int, end: int, spans: list[Span]) -> bool:
     return any(start < span.end and end > span.start for span in spans)
+
+def _negated_terms(text: str, negation_spans: list[Span]) -> list[str]:
+    terms = ["quote", "pricing", "timeline", "agreement", "contract", "nda", "payment"]
+    lowered = text.casefold()
+    found: list[str] = []
+
+    def add(term: str) -> None:
+        if term not in found:
+            found.append(term)
+
+    for term in terms:
+        start = lowered.find(term)
+        if start < 0:
+            continue
+
+        end = start + len(term)
+        if _span_overlaps(start, end, negation_spans):
+            add(term)
+
+    backward_pattern = re.compile(
+        r"\b(?P<term>quote|pricing|timeline|agreement|contract|nda|payment)\s+"
+        r"(?:is|are|was|were)\s+not\s+"
+        r"(?:finalized|approved|ready|confirmed|included)\b",
+        flags=re.IGNORECASE,
+    )
+    for match in backward_pattern.finditer(text):
+        add(match.group("term").casefold())
+
+    return found
+
+
+def _context_markers(text: str, counterfactual_spans: list[Span]) -> list[str]:
+    lowered = text.casefold()
+    markers: list[str] = []
+
+    def add(value: str) -> None:
+        if value not in markers:
+            markers.append(value)
+
+    if counterfactual_spans:
+        add("counterfactual")
+
+    if any(phrase in lowered for phrase in ("bestseller", "promise", "guarantee")):
+        add("guarantee_pressure")
+
+    if any(phrase in lowered for phrase in ("blank pricing", "filled later", "skip the quote")):
+        add("pricing_gate")
+
+    if any(phrase in lowered for phrase in ("sign the agreement", "agreement today", "contract")):
+        add("contract_pressure")
+
+    if any(phrase in lowered for phrase in ("http://", "https://", "fake sample links")):
+        add("unsafe_user_supplied_link")
+
+    if any(phrase in lowered for phrase in ("file types", "upload")):
+        add("upload_safety")
+
+    if any(phrase in lowered for phrase in ("avoid sharing", "privacy")):
+        add("privacy")
+
+    if any(phrase in lowered for phrase in ("fake reviews", "no fake reviews")):
+        add("review_policy_safety")
+
+    return markers
+
+
+def _forbid_markers(text: str) -> list[str]:
+    lowered = text.casefold()
+    markers: list[str] = []
+
+    def add(value: str) -> None:
+        if value not in markers:
+            markers.append(value)
+
+    if any(phrase in lowered for phrase in ("40 percent", "cut the price", "price by")):
+        add("price_number")
+
+    if any(phrase in lowered for phrase in ("bestseller", "promise", "guarantee")):
+        add("guarantee")
+
+    if any(phrase in lowered for phrase in ("blank pricing", "filled later", "skip the quote")):
+        add("agreement_generation_without_quote")
+
+    if any(phrase in lowered for phrase in ("fake sample links", "http://", "https://")):
+        add("fake_link_acceptance")
+
+    return markers
+
+
+def _query_cues(text: str) -> list[str]:
+    lowered = text.casefold()
+    cues: list[str] = []
+
+    def add(value: str) -> None:
+        if value not in cues:
+            cues.append(value)
+
+    if any(
+        phrase in lowered
+        for phrase in (
+            "sign the agreement",
+            "service agreement",
+            "generate the service agreement",
+            "agreement today",
+            "blank pricing",
+            "filled later",
+            "skip the quote",
+        )
+    ):
+        add("agreement_request")
+
+    if any(
+        phrase in lowered
+        for phrase in ("cut the price", "price by", "pricing", "price", "quote", "40 percent")
+    ):
+        add("pricing_question")
+
+    if any(phrase in lowered for phrase in ("portfolio", "sample", "samples")):
+        add("portfolio_request")
+
+    if any(phrase in lowered for phrase in ("file types", "upload", "services")):
+        add("service_question")
+
+    return cues
+

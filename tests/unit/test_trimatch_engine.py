@@ -360,3 +360,42 @@ def test_trimatch_secondary_services_exclude_negated_service() -> None:
     assert result.service_primary == ServiceCategory.EDITING_PROOFREADING
     assert result.service_secondary == [ServiceCategory.INTERIOR_FORMATTING]
     assert all(item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence)
+
+
+def test_trimatch_uses_preprocessor_service_order_when_available() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "atom-service-order-test",
+            "rules": [
+                {
+                    "id": "SERVICE-FORMAT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "interior_formatting"},
+                    "phrases": ["formatting"],
+                    "confidence": 0.99,
+                },
+                {
+                    "id": "SERVICE-EDIT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "editing_proofreading"},
+                    "phrases": ["editing"],
+                    "confidence": 0.98,
+                },
+            ],
+        }
+    )
+
+    processed = _processed("I need editing and formatting.")
+    processed = processed.model_copy(
+        update={
+            "deterministic_atoms": {
+                "services": ["editing_proofreading", "interior_formatting"]
+            }
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(processed)
+
+    assert result.service_primary == ServiceCategory.EDITING_PROOFREADING
+    assert result.service_secondary == [ServiceCategory.INTERIOR_FORMATTING]
