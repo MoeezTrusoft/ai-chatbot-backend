@@ -380,7 +380,10 @@ class EnsembleIntentClassifier:
         state: ThreadState,
         trimatch_result: TriMatchResult | None = None,
     ) -> IntentVote:
-        shortcut_vote = self._trimatch_safe_service_shortcut_vote(trimatch_result)
+        shortcut_vote = self._deterministic_guarded_query_shortcut_vote(message)
+        if shortcut_vote is None:
+            shortcut_vote = self._trimatch_safe_service_shortcut_vote(trimatch_result)
+
         if shortcut_vote is not None:
             provider_votes = [
                 ProviderIntentVote(
@@ -405,6 +408,110 @@ class EnsembleIntentClassifier:
         )
         self.last_decision = decision
         return decision.final_vote
+
+    def _deterministic_guarded_query_shortcut_vote(
+        self,
+        message: ProcessedMessage,
+    ) -> IntentVote | None:
+        text = f"{message.normalized} {message.raw}".lower()
+
+        def has_any(values: tuple[str, ...]) -> bool:
+            return any(value in text for value in values)
+
+        def build_vote(
+            query_primary: QueryIntentType,
+            funnel_stage: SalesStage,
+            confidence: float,
+            rationale: str,
+            evidence: str,
+            service_primary: ServiceCategory | None = None,
+            needs_clarification: bool = True,
+        ) -> IntentVote:
+            return IntentVote(
+                query_primary=query_primary,
+                query_secondary=[],
+                service_primary=service_primary,
+                service_secondary=[],
+                funnel_stage=funnel_stage,
+                confidence=confidence,
+                needs_clarification=needs_clarification,
+                rationale=rationale,
+                evidence=[evidence],
+            )
+
+        asks_pricing = has_any(("pricing", "price", "quote", "cost"))
+        asks_samples = has_any(("sample", "samples", "portfolio"))
+        asks_nda = "nda" in text
+
+        if asks_pricing and asks_samples and asks_nda:
+            return build_vote(
+                query_primary=QueryIntentType.PORTFOLIO_REQUEST,
+                funnel_stage=SalesStage.SERVICE_DISCOVERY,
+                confidence=0.99,
+                needs_clarification=False,
+                rationale=(
+                    "Deterministic guarded shortcut for mixed pricing, samples, "
+                    "and NDA request without enough scope."
+                ),
+                evidence="deterministic_guarded_query_shortcut:mixed_pricing_samples_nda",
+            )
+
+        if asks_nda and has_any(("before sharing", "provide nda", "do you provide nda")):
+            return build_vote(
+                query_primary=QueryIntentType.NDA_REQUEST,
+                funnel_stage=SalesStage.NDA_REQUESTED,
+                confidence=0.99,
+                needs_clarification=False,
+                rationale="Deterministic guarded shortcut for NDA availability request.",
+                evidence="deterministic_guarded_query_shortcut:nda_request",
+            )
+
+        asks_timeline = has_any(("timeline", "estimate", "how long"))
+        asks_formatting_or_publishing = has_any(("formatting", "publishing"))
+        if asks_timeline and asks_formatting_or_publishing:
+            service = (
+                ServiceCategory.INTERIOR_FORMATTING
+                if "formatting" in text
+                else ServiceCategory.PUBLISHING_DISTRIBUTION
+            )
+            return build_vote(
+                query_primary=QueryIntentType.TIMELINE_QUESTION,
+                funnel_stage=SalesStage.SERVICE_DISCOVERY,
+                confidence=0.94,
+                service_primary=service,
+                rationale=(
+                    "Deterministic guarded shortcut for timeline estimate request "
+                    "that still requires manuscript scope."
+                ),
+                evidence="deterministic_guarded_query_shortcut:timeline_scope_needed",
+            )
+
+        has_no_manuscript = has_any(("no manuscript", "just an idea", "only an idea"))
+        if has_no_manuscript:
+            return build_vote(
+                query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.94,
+                service_primary=ServiceCategory.GHOSTWRITING,
+                rationale=(
+                    "Deterministic guarded shortcut for idea-only manuscript status."
+                ),
+                evidence="deterministic_guarded_query_shortcut:idea_only_status",
+            )
+
+        if has_any(("summarize what bookcraft knows", "next safe step")):
+            return build_vote(
+                query_primary=QueryIntentType.CONSULTATION_REQUEST,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.88,
+                service_primary=ServiceCategory.GHOSTWRITING,
+                rationale=(
+                    "Deterministic guarded shortcut for project summary and next step."
+                ),
+                evidence="deterministic_guarded_query_shortcut:project_summary",
+            )
+
+        return None
 
     def _trimatch_safe_service_shortcut_vote(
         self,

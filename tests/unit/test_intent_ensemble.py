@@ -461,3 +461,67 @@ async def test_trimatch_shortcut_does_not_apply_to_guarded_query() -> None:
     assert result.query_primary == QueryIntentType.PRICING_QUESTION
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_nda_without_providers() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("Do you provide NDA before sharing manuscript details?"),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.NDA_REQUEST
+    assert result.funnel_stage == SalesStage.NDA_REQUESTED
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "trimatch_safe_service_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_mixed_request() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("I need pricing, samples, and NDA, but do not invent links or numbers."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+    assert result.funnel_stage == SalesStage.SERVICE_DISCOVERY
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "trimatch_safe_service_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_idea_only_status() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("I have no manuscript yet, just an idea for a children's picture book."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE
+    assert result.service_primary == ServiceCategory.GHOSTWRITING
+    assert result.funnel_stage == SalesStage.NEW
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "trimatch_safe_service_shortcut"
+    )
