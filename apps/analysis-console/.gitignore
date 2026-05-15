@@ -2,3 +2,9 @@ node_modules
 dist
 .DS_Store
 *.local
+
+# Build/cache artifacts
+dist/
+node_modules/
+.vite/
+*.tsbuildinfo

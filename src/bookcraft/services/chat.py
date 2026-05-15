@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import structlog
 from prometheus_client import Counter, Histogram
 
+from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
@@ -33,7 +36,7 @@ from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.state import ThreadState
-from bookcraft.infra.redaction import redact_mapping
+from bookcraft.infra.redaction import redact_mapping, redact_text
 from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
@@ -67,6 +70,7 @@ class ChatService:
     trimatch_engine: TriMatchEngine | None = None
     trimatch_shadow_engine: TriMatchEngine | None = None
     trimatch_extra_mode: str = "off"
+    trace_store: LiveTraceStore | None = None
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -75,6 +79,7 @@ class ChatService:
         from bookcraft.api.chat import ChatTurnResponse
 
         CHAT_TURNS_TOTAL.inc()
+        turn_started = time.perf_counter()
         with CHAT_TURN_LATENCY.time():
             thread = await self._load_thread(payload)
             thread_id = thread.thread_id
@@ -100,6 +105,27 @@ class ChatService:
                     payload={"language": language.language},
                 )
                 event_ids.append(event_id)
+                self._record_live_trace(
+                    {
+                        "thread_id": str(thread_id),
+                        "customer_id": str(payload.customer_id)
+                        if payload.customer_id is not None
+                        else None,
+                        "correlation_id": payload.correlation_id,
+                        "message_preview": redact_text(payload.message)[:500],
+                        "elapsed_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                        "language_status": language.language,
+                        "assistant": {
+                            "source": "language_guard",
+                            "bubble_count": len(bubbles),
+                        },
+                        "intent": None,
+                        "decision": None,
+                        "runtime_atoms": {},
+                        "event_ids": self._debug_event_ids(event_ids),
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                    }
+                )
                 return ChatTurnResponse(
                     thread_id=thread_id,
                     bubbles=bubbles,
@@ -420,12 +446,60 @@ class ChatService:
                 )
             else:
                 self.threads[thread_id].state = state
+            self._record_live_trace(
+                {
+                    "thread_id": str(thread_id),
+                    "customer_id": str(payload.customer_id)
+                    if payload.customer_id is not None
+                    else None,
+                    "correlation_id": payload.correlation_id,
+                    "message_preview": redact_text(payload.message)[:500],
+                    "elapsed_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                    "language_status": language.language,
+                    "assistant": {
+                        "source": draft.source,
+                        "bubble_count": len(bubbles),
+                        "preview": redact_text(draft.text)[:500],
+                    },
+                    "intent": intent.model_dump(mode="json"),
+                    "decision": decision.model_dump(mode="json") if decision else None,
+                    "trimatch": trimatch_result.model_dump(mode="json")
+                    if trimatch_result is not None
+                    else None,
+                    "trimatch_shadow": trimatch_shadow_result.model_dump(mode="json")
+                    if trimatch_shadow_result is not None
+                    else None,
+                    "runtime_atoms": processed.deterministic_atoms,
+                    "components": {
+                        "event_count": len(event_ids),
+                        "event_ids": self._debug_event_ids(event_ids),
+                        "rag_chunk_count": len(rag_chunks),
+                        "state_delta_count": len(extraction.state_deltas),
+                        "pricing_quote_present": pricing_quote is not None,
+                        "timeline_estimate_present": timeline_estimate is not None,
+                        "portfolio_response_present": portfolio_response is not None,
+                    },
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                }
+            )
             return ChatTurnResponse(
                 thread_id=thread_id,
                 bubbles=bubbles,
                 intent=intent,
                 language_status=language.language,
                 debug_event_ids=self._debug_event_ids(event_ids),
+            )
+
+    def _record_live_trace(self, row: dict[str, Any]) -> None:
+        if self.trace_store is None:
+            return
+
+        try:
+            self.trace_store.append(row)
+        except Exception as exc:
+            structlog.get_logger(__name__).warning(
+                "live_trace_write_failed",
+                exception_class=exc.__class__.__name__,
             )
 
     @staticmethod
