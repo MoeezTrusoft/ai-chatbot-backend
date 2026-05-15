@@ -380,16 +380,64 @@ class EnsembleIntentClassifier:
         state: ThreadState,
         trimatch_result: TriMatchResult | None = None,
     ) -> IntentVote:
-        provider_votes = await self._classify_providers_with_early_return(
-            message,
-            state,
-        )
+        shortcut_vote = self._trimatch_safe_service_shortcut_vote(trimatch_result)
+        if shortcut_vote is not None:
+            provider_votes = [
+                ProviderIntentVote(
+                    provider="trimatch_safe_service_shortcut",
+                    status=IntentProviderStatus.SUCCEEDED,
+                    vote=shortcut_vote,
+                    latency_ms=0.0,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    cost_usd=0.0,
+                )
+            ]
+        else:
+            provider_votes = await self._classify_providers_with_early_return(
+                message,
+                state,
+            )
+
         decision = self.decision_layer.decide(
             provider_votes=provider_votes,
             trimatch_result=trimatch_result,
         )
         self.last_decision = decision
         return decision.final_vote
+
+    def _trimatch_safe_service_shortcut_vote(
+        self,
+        trimatch_result: TriMatchResult | None,
+    ) -> IntentVote | None:
+        if trimatch_result is None:
+            return None
+
+        if trimatch_result.confidence < 0.97:
+            return None
+
+        if trimatch_result.service_primary is None:
+            return None
+
+        # Only shortcut pure service detection. Guarded query/funnel flows
+        # still go through provider ensemble and deterministic tools.
+        if trimatch_result.query_primary is not None:
+            return None
+
+        if trimatch_result.funnel_stage is not None:
+            return None
+
+        return IntentVote(
+            query_primary=QueryIntentType.SERVICE_QUESTION,
+            query_secondary=[],
+            service_primary=trimatch_result.service_primary,
+            service_secondary=[],
+            funnel_stage=SalesStage.SERVICE_DISCOVERY,
+            confidence=trimatch_result.confidence,
+            needs_clarification=True,
+            rationale="High-confidence Tri-Match safe service shortcut.",
+            evidence=["trimatch_safe_service_shortcut"],
+        )
 
     async def _classify_providers_with_early_return(
         self,

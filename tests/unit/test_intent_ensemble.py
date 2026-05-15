@@ -398,3 +398,66 @@ def test_intent_vote_schema_normalizes_provider_shape_drift() -> None:
     assert [item.value for item in vote.service_secondary] == ["video_trailer"]
     assert vote.confidence == 0.91
     assert vote.evidence
+
+@pytest.mark.asyncio
+async def test_trimatch_safe_service_shortcut_skips_provider_calls() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    trimatch_result = TriMatchResult(
+        service_primary=ServiceCategory.GHOSTWRITING,
+        confidence=0.98,
+        evidence=[],
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = await classifier.classify(
+        processed("I need ghostwriting help."),
+        ThreadState(),
+        trimatch_result=trimatch_result,
+    )
+
+    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert result.service_primary == ServiceCategory.GHOSTWRITING
+    assert result.funnel_stage == SalesStage.SERVICE_DISCOVERY
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "trimatch_safe_service_shortcut"
+
+
+@pytest.mark.asyncio
+async def test_trimatch_shortcut_does_not_apply_to_guarded_query() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.PRICING_QUESTION,
+                    SalesStage.QUOTE_REQUESTED,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    trimatch_result = TriMatchResult(
+        query_primary=QueryIntentType.PRICING_QUESTION,
+        service_primary=ServiceCategory.GHOSTWRITING,
+        confidence=0.98,
+        evidence=[],
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = await classifier.classify(
+        processed("How much does ghostwriting cost?"),
+        ThreadState(),
+        trimatch_result=trimatch_result,
+    )
+
+    assert result.query_primary == QueryIntentType.PRICING_QUESTION
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
