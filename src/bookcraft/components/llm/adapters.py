@@ -88,6 +88,8 @@ class OpenAIAdapter:
                             {"role": "user", "content": user},
                         ],
                         "response_format": {"type": "json_object"},
+                        "max_tokens": 160,
+                        "stream": False,
                     },
                 )
                 response.raise_for_status()
