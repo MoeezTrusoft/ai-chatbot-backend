@@ -9,4 +9,3 @@ def test_cache_keys_are_namespaced() -> None:
     assert keys.idempotency("idem") == "bc:test:idempotency:idem"
     assert keys.embedding("en", "hash") == "bc:test:embedding:en:hash"
     assert keys.trimatch_active_state() == "bc:test:trimatch:active_state"
-

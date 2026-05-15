@@ -31,4 +31,3 @@ def test_field_meta_low_confidence_without_value_is_not_high_confidence() -> Non
     field = FieldMeta[str](value=None, confidence=1.0, source=Source.USER_STATED)
 
     assert not field.is_high_confidence()
-

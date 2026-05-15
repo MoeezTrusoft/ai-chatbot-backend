@@ -354,7 +354,7 @@ def analyze_results(
         "p95_latency_ms": percentile(latencies, 95),
         "max_latency_ms": max(latencies) if latencies else 0.0,
         "critical_issue_count": component_summary["critical_issue_count"],
-        "soft_warning_count": component_summary["soft_warning_count"],
+        "soft_warning_count": component_summary.get("soft_warning_count", 0),
     }
 
     return {
@@ -635,19 +635,54 @@ def analyze_trimatch_disagreement(disagreement: dict[str, Any] | None) -> dict[s
     }
 
 
+def _looks_like_valid_list_start(text: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped:
+        return False
+
+    valid_prefixes = ("- ", "* ", "• ")
+    if stripped.startswith(valid_prefixes):
+        return True
+
+    if len(stripped) > 3 and stripped[0].isdigit():
+        dot_index = stripped.find(". ")
+        if 0 < dot_index <= 3:
+            return True
+
+    return False
+
+
+def _looks_like_mid_sentence_fragment(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    if _looks_like_valid_list_start(stripped):
+        return False
+
+    return stripped[0].islower()
+
+
 def analyze_response_quality(text_preview: str) -> dict[str, Any]:
     stripped = text_preview.strip()
-    starts_lowercase = bool(stripped) and stripped[0].islower()
-    starts_mid_fragment = starts_lowercase or stripped.startswith(("ed ", "l ", "tion ", "- "))
-    table_warning = "|" in stripped and "|---|" in stripped.replace(" ", "")
-    empty = not stripped
+    compact = " ".join(stripped.split())
+
+    empty_response = not stripped
+    starts_mid_fragment = _looks_like_mid_sentence_fragment(stripped)
+
+    table_warning = False
+    if compact.count("|") >= 6:
+        table_warning = (
+            "|---|" in compact
+            or "| ---" in compact
+            or "--- |" in compact
+        )
 
     return {
+        "empty_response": empty_response,
         "possible_fragment_start": starts_mid_fragment,
         "table_format_warning": table_warning,
-        "empty_response": empty,
     }
-
 
 def merge_provider_health(target: dict[str, Any], source: dict[str, Any]) -> None:
     numeric_keys = [
@@ -996,7 +1031,7 @@ def markdown(report: dict[str, Any]) -> str:
         f"- Avg latency ms: `{summary['avg_latency_ms']}`",
         f"- P95 latency ms: `{summary['p95_latency_ms']}`",
         f"- Critical issues: `{summary['critical_issue_count']}`",
-        f"- Soft warnings: `{summary['soft_warning_count']}`",
+        f"- Soft warnings: `{summary.get('soft_warning_count', 0)}`",
         "",
         "## Component Summary",
         "",
@@ -1135,7 +1170,7 @@ th {{ background: #e5e7eb; }}
   {card("P95 latency ms", summary["p95_latency_ms"])}
   {card("Max latency ms", summary["max_latency_ms"])}
   {card("Critical issues", summary["critical_issue_count"])}
-  {card("Soft warnings", summary["soft_warning_count"])}
+  {card("Soft warnings", summary.get("soft_warning_count", 0))}
 </div>
 
 <h2>Component Health</h2>

@@ -39,4 +39,3 @@ def test_build_chunks_infers_service_metadata_and_stable_ids(tmp_path: Path) -> 
     assert left[0].chunk_id == right[0].chunk_id
     assert left[0].checksum == right[0].checksum
     assert left[0].metadata.service_category == ServiceCategory.GHOSTWRITING
-

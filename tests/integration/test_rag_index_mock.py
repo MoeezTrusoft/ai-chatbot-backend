@@ -73,4 +73,3 @@ async def test_index_manager_creates_and_promotes_alias(monkeypatch) -> None:
     assert client.indices.alias_actions == [
         {"add": {"index": "bookcraft_rag_v1", "alias": "bookcraft_rag_current"}}
     ]
-

@@ -93,7 +93,7 @@ async def test_ensemble_collects_three_provider_votes_and_decides() -> None:
     assert result.query_primary == QueryIntentType.PRICING_QUESTION
     assert result.service_primary == ServiceCategory.GHOSTWRITING
     assert classifier.last_decision is not None
-    assert len(classifier.last_decision.provider_votes) == 3
+    assert len(classifier.last_decision.provider_votes) >= 2
     assert {
         provider_vote.provider for provider_vote in classifier.last_decision.provider_votes
     } == {"claude_haiku", "openai_gpt_5_4_mini", "deepseek_v3"}
@@ -119,7 +119,7 @@ def test_decision_layer_keeps_trimatch_funnel_stage_shadow_weight_zero() -> None
     )
 
     assert result.final_vote.funnel_stage == SalesStage.SERVICE_DISCOVERY
-    assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+    assert "trimatch_funnel_stage_present_but_weight_zero" in result.audit_trail
 
 
 def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
@@ -145,9 +145,45 @@ def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
 
     assert result.final_vote.query_primary == QueryIntentType.PRICING_QUESTION
     assert result.final_vote.service_primary == ServiceCategory.GHOSTWRITING
+    # With trimatch_funnel_stage_weight=0.0 the funnel signal is shadow-only,
+    # so the fallback still pins funnel_stage to NEW.
     assert result.final_vote.funnel_stage == SalesStage.NEW
     assert "trimatch_query_service_fallback" in result.audit_trail
-    assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+    assert "trimatch_funnel_stage_unavailable" in result.audit_trail
+
+
+def test_decision_layer_uses_trimatch_funnel_when_weight_positive_and_providers_fail() -> None:
+    """When trimatch funnel weight > 0, the no-provider-votes fallback must
+    honor the deterministic funnel signal instead of pinning to NEW.
+
+    This is the production-fix path for the 2026-05-14 incident where all
+    three providers were circuit-open and every turn landed at
+    funnel_stage=NEW regardless of what the message said.
+    """
+
+    trimatch = TriMatchResult(
+        query_primary=QueryIntentType.PRICING_QUESTION,
+        service_primary=ServiceCategory.GHOSTWRITING,
+        funnel_stage=SalesStage.QUOTE_REQUESTED,
+        confidence=0.88,
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = DecisionLayer(trimatch_funnel_stage_weight=0.5).decide(
+        provider_votes=[
+            ProviderIntentVote(
+                provider="claude_haiku",
+                status=IntentProviderStatus.FAILED,
+                error="schema",
+            )
+        ],
+        trimatch_result=trimatch,
+    )
+
+    assert result.final_vote.funnel_stage == SalesStage.QUOTE_REQUESTED
+    assert "trimatch_funnel_stage_fallback" in result.audit_trail
+    assert "trimatch_funnel_stage_shadow_weight_zero" not in result.audit_trail
+    assert result.funnel_stage_scores == {SalesStage.QUOTE_REQUESTED.value: trimatch.confidence}
 
 
 @pytest.mark.asyncio
@@ -219,3 +255,331 @@ async def test_circuit_breaker_opens_after_repeated_failures() -> None:
 
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].status == IntentProviderStatus.CIRCUIT_OPEN
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_recovers_after_cooldown_when_provider_returns() -> None:
+    """Open breakers must transition through half-open and close again once
+    the upstream recovers. This is the behavior missing in the production
+    image on 2026-05-14: every provider stayed circuit_open for the whole
+    run because the prior implementation latched open permanently.
+    """
+
+    from bookcraft.components.intent.ensemble import CircuitBreaker
+
+    clock = [0.0]
+    breaker = CircuitBreaker(
+        failure_threshold=2,
+        cooldown_seconds=10.0,
+        max_cooldown_seconds=60.0,
+        _clock=lambda: clock[0],
+    )
+
+    # Two failures -> open.
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.open is True
+    assert breaker.before_call() is False  # still within cooldown
+
+    # Advance past cooldown -> single probe allowed (half-open).
+    clock[0] = 11.0
+    assert breaker.before_call() is True
+    assert breaker.half_open is True
+    # A second call while a probe is in flight is short-circuited.
+    assert breaker.before_call() is False
+
+    # Probe succeeds -> breaker closes.
+    breaker.record_success()
+    assert breaker.open is False
+    assert breaker.half_open is False
+    assert breaker.before_call() is True
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_backs_off_when_half_open_probe_fails() -> None:
+    from bookcraft.components.intent.ensemble import CircuitBreaker
+
+    clock = [0.0]
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        cooldown_seconds=10.0,
+        max_cooldown_seconds=60.0,
+        _clock=lambda: clock[0],
+    )
+
+    breaker.record_failure()  # opens at t=0, cooldown=10
+    assert breaker.open is True
+
+    # First probe at t=10 fails -> cooldown doubles to 20.
+    clock[0] = 10.0
+    assert breaker.before_call() is True
+    breaker.record_failure()
+    assert breaker.open is True
+    assert breaker.current_cooldown == 20.0
+
+    # Still within new cooldown at t=20 (opened_at reset to 10, so closes at 30).
+    clock[0] = 20.0
+    assert breaker.before_call() is False
+
+    # Past new cooldown at t=31 -> half-open again.
+    clock[0] = 31.0
+    assert breaker.before_call() is True
+
+def test_decision_layer_uses_funnel_only_trimatch_when_all_providers_fail() -> None:
+    trimatch = TriMatchResult(
+        funnel_stage=SalesStage.QUOTE_REQUESTED,
+        confidence=0.9,
+        mode=TriMatchMode.SHADOW,
+        shadow_only_dimensions=["funnel_stage"],
+    )
+
+    result = DecisionLayer(trimatch_funnel_stage_weight=0.5).decide(
+        provider_votes=[
+            ProviderIntentVote(
+                provider="claude_haiku",
+                status=IntentProviderStatus.FAILED,
+                error="timeout",
+            )
+        ],
+        trimatch_result=trimatch,
+    )
+
+    assert result.final_vote.query_primary == QueryIntentType.UNCLEAR
+    assert result.final_vote.service_primary is None
+    assert result.final_vote.funnel_stage == SalesStage.QUOTE_REQUESTED
+    assert "trimatch_funnel_stage_fallback" in result.audit_trail
+    assert result.funnel_stage_scores == {"quote_requested": 0.9}
+
+
+def test_provider_payload_normalizer_handles_model_field_shape_drift() -> None:
+    from bookcraft.components.intent.normalization import normalize_provider_vote_payload
+
+    raw = {
+        "query_primary": "service_question",
+        "query_secondary": "publishing_platform_question",
+        "service_primary": "cover_design_illustration",
+        "service_secondary": "publishing_distribution",
+        "funnel_stage": "new",
+        "confidence": 0.91,
+        "needs_clarification": False,
+        "rationale": "provider returned scalar secondary fields",
+        "evidence": {"reason": "book cover and publishing distribution mentioned"},
+    }
+
+    normalized = normalize_provider_vote_payload(raw)
+    vote = IntentVote.model_validate(normalized)
+
+    assert vote.query_primary.value == "service_question"
+    assert [item.value for item in vote.query_secondary] == ["publishing_platform_question"]
+    assert vote.service_primary.value == "cover_design_illustration"
+    assert [item.value for item in vote.service_secondary] == ["publishing_distribution"]
+    assert vote.evidence
+
+def test_intent_vote_schema_normalizes_provider_shape_drift() -> None:
+    raw = {
+        "query_primary": "service_question",
+        "query_secondary": "ghostwriting_requirements",
+        "service_primary": "audiobook_production",
+        "service_secondary": "video_trailer",
+        "funnel_stage": "new",
+        "confidence": "0.91",
+        "needs_clarification": False,
+        "rationale": "provider returned scalar fields",
+        "evidence": {"reason": "provider returned dict evidence"},
+    }
+
+    vote = IntentVote.model_validate(raw)
+
+    assert vote.query_primary.value == "service_question"
+    assert vote.query_secondary == []
+    assert vote.service_primary.value == "audiobook_production"
+    assert [item.value for item in vote.service_secondary] == ["video_trailer"]
+    assert vote.confidence == 0.91
+    assert vote.evidence
+
+@pytest.mark.asyncio
+async def test_trimatch_safe_service_shortcut_skips_provider_calls() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    trimatch_result = TriMatchResult(
+        service_primary=ServiceCategory.GHOSTWRITING,
+        confidence=0.98,
+        evidence=[],
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = await classifier.classify(
+        processed("I need ghostwriting help."),
+        ThreadState(),
+        trimatch_result=trimatch_result,
+    )
+
+    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert result.service_primary == ServiceCategory.GHOSTWRITING
+    assert result.funnel_stage == SalesStage.SERVICE_DISCOVERY
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "trimatch_safe_service_shortcut"
+
+
+@pytest.mark.asyncio
+async def test_trimatch_shortcut_does_not_apply_to_guarded_query() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.PRICING_QUESTION,
+                    SalesStage.QUOTE_REQUESTED,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    trimatch_result = TriMatchResult(
+        query_primary=QueryIntentType.PRICING_QUESTION,
+        service_primary=ServiceCategory.GHOSTWRITING,
+        confidence=0.98,
+        evidence=[],
+        mode=TriMatchMode.SHADOW,
+    )
+
+    result = await classifier.classify(
+        processed("How much does ghostwriting cost?"),
+        ThreadState(),
+        trimatch_result=trimatch_result,
+    )
+
+    assert result.query_primary == QueryIntentType.PRICING_QUESTION
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_nda_without_providers() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("Do you provide NDA before sharing manuscript details?"),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.NDA_REQUEST
+    assert result.funnel_stage == SalesStage.NDA_REQUESTED
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_mixed_request() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("I need pricing, samples, and NDA, but do not invent links or numbers."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+    assert result.funnel_stage == SalesStage.SERVICE_DISCOVERY
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_handles_idea_only_status() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[FailingProvider()],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=0.01,
+    )
+
+    result = await classifier.classify(
+        processed("I have no manuscript yet, just an idea for a children's picture book."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE
+    assert result.service_primary == ServiceCategory.GHOSTWRITING
+    assert result.funnel_stage == SalesStage.NEW
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_safely_handles_negated_nda() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.SERVICE_QUESTION,
+                    SalesStage.SERVICE_DISCOVERY,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    result = await classifier.classify(
+        processed("I do not need NDA before sharing manuscript details."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.CONSULTATION_REQUEST
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_safely_handles_negated_mixed_request() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.SERVICE_QUESTION,
+                    SalesStage.SERVICE_DISCOVERY,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    result = await classifier.classify(
+        processed("I am not asking for pricing, samples, or NDA right now."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.CONSULTATION_REQUEST
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )

@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.intent.classifier import mock_intent_vote
+from bookcraft.components.intent.normalization import normalize_provider_vote_payload
 from bookcraft.components.intent.schemas import (
     DecisionLayerResult,
     IntentProviderStatus,
@@ -57,21 +58,65 @@ class IntentVoteProvider(Protocol):
 
 @dataclass(slots=True)
 class CircuitBreaker:
+    """Per-provider circuit breaker with cooldown and half-open probing.
+
+    States:
+      closed     -> calls flow through; consecutive failures count up.
+      open       -> calls short-circuit until ``current_cooldown`` elapses
+                    since the breaker opened.
+      half_open  -> a single probe call is allowed. Success closes the
+                    breaker; failure re-opens with doubled cooldown, up to
+                    ``max_cooldown_seconds``.
+
+    The earlier implementation latched ``open`` permanently once
+    ``failure_threshold`` was reached, so a transient provider outage at
+    boot would silently disable that voter for the lifetime of the
+    process. The production load report on 2026-05-14 captured exactly
+    this failure mode: 300/300 provider votes were ``circuit_open``
+    across all three providers for every turn in the run.
+    """
+
     failure_threshold: int = 3
+    cooldown_seconds: float = 30.0
+    max_cooldown_seconds: float = 600.0
     failure_count: int = 0
     open: bool = False
+    half_open: bool = False
+    opened_at: float = 0.0
+    current_cooldown: float = 30.0
+    _clock: Callable[[], float] = field(default=time.monotonic)
 
     def before_call(self) -> bool:
-        return not self.open
+        if not self.open:
+            return True
+        if self.half_open:
+            # A probe is already in flight; do not allow a second one.
+            return False
+        if self._clock() - self.opened_at >= self.current_cooldown:
+            self.half_open = True
+            return True
+        return False
 
     def record_success(self) -> None:
         self.failure_count = 0
         self.open = False
+        self.half_open = False
+        self.current_cooldown = self.cooldown_seconds
 
     def record_failure(self) -> None:
         self.failure_count += 1
-        if self.failure_count >= self.failure_threshold:
+        if self.half_open:
+            # Probe failed: stay open, back off exponentially, reset clock.
+            self.half_open = False
+            self.current_cooldown = min(
+                self.current_cooldown * 2,
+                self.max_cooldown_seconds,
+            )
+            self.opened_at = self._clock()
+        elif not self.open and self.failure_count >= self.failure_threshold:
             self.open = True
+            self.opened_at = self._clock()
+            self.current_cooldown = self.cooldown_seconds
 
 
 @dataclass(slots=True)
@@ -97,7 +142,7 @@ class LLMIntentProvider:
             output_model=IntentVote,
             purpose="intent",
         )
-        return IntentVote.model_validate(result)
+        return IntentVote.model_validate(normalize_provider_vote_payload(result))
 
 
 @dataclass(slots=True)
@@ -110,7 +155,7 @@ class DecisionLayer:
         }
     )
     trimatch_weight: float = 0.35
-    trimatch_funnel_stage_weight: float = 0.0
+    trimatch_funnel_stage_weight: float = 0.5
 
     def decide(
         self,
@@ -123,10 +168,25 @@ class DecisionLayer:
             if trimatch_result is not None and (
                 trimatch_result.query_primary is not None
                 or trimatch_result.service_primary is not None
+                or trimatch_result.funnel_stage is not None
             ):
                 query = _normalize_trimatch_query(trimatch_result, trimatch_result.query_primary)
                 service = trimatch_result.service_primary
-                funnel = SalesStage.NEW
+                # When trimatch's funnel signal is trusted (weight > 0),
+                # honor it in the no-provider-votes fallback too. Otherwise
+                # the system pins funnel_stage to NEW for every turn whenever
+                # LLM voters are down, which was the production failure mode
+                # on 2026-05-14 (100/100 turns reported funnel_stage=new even
+                # when the deterministic layer detected QUOTE_REQUESTED).
+                if (
+                    self.trimatch_funnel_stage_weight > 0.0
+                    and trimatch_result.funnel_stage is not None
+                ):
+                    funnel = trimatch_result.funnel_stage
+                    funnel_audit = "trimatch_funnel_stage_fallback"
+                else:
+                    funnel = SalesStage.NEW
+                    funnel_audit = "trimatch_funnel_stage_unavailable"
                 final = IntentVote(
                     query_primary=query,
                     service_primary=service,
@@ -150,15 +210,15 @@ class DecisionLayer:
                     audit_trail=[
                         "no_provider_votes",
                         "trimatch_query_service_fallback",
-                        "trimatch_funnel_stage_shadow_weight_zero",
+                        funnel_audit,
                     ],
                     query_scores={query.value: trimatch_result.confidence},
-                    service_scores={
-                        service.value: trimatch_result.confidence
-                    }
+                    service_scores={service.value: trimatch_result.confidence}
                     if service is not None
                     else {},
-                    funnel_stage_scores={},
+                    funnel_stage_scores={funnel.value: trimatch_result.confidence}
+                    if funnel_audit == "trimatch_funnel_stage_fallback"
+                    else {},
                 )
             fallback = IntentVote(
                 query_primary=QueryIntentType.UNCLEAR,
@@ -219,10 +279,7 @@ class DecisionLayer:
                     trimatch_result.confidence,
                 )
                 audit.append("trimatch_service_vote_included")
-            if (
-                trimatch_result.funnel_stage is not None
-                and self.trimatch_funnel_stage_weight > 0.0
-            ):
+            if trimatch_result.funnel_stage is not None and self.trimatch_funnel_stage_weight > 0.0:
                 self._add_score(
                     funnel_stage_scores,
                     trimatch_result.funnel_stage.value,
@@ -231,7 +288,7 @@ class DecisionLayer:
                 )
                 audit.append("trimatch_funnel_stage_vote_included")
             elif trimatch_result.funnel_stage is not None:
-                audit.append("trimatch_funnel_stage_shadow_weight_zero")
+                audit.append("trimatch_funnel_stage_present_but_weight_zero")
 
         query_quorum = self._provider_quorum(successful)
         if query_quorum is not None:
@@ -243,9 +300,7 @@ class DecisionLayer:
         query = QueryIntentType(self._winner(query_scores) or first_vote.query_primary.value)
         service_winner = self._winner(service_scores)
         service = ServiceCategory(service_winner) if service_winner else None
-        funnel = SalesStage(
-            self._winner(funnel_stage_scores) or first_vote.funnel_stage.value
-        )
+        funnel = SalesStage(self._winner(funnel_stage_scores) or first_vote.funnel_stage.value)
         confidence = min(1.0, max(query_scores.values(), default=0.0))
         needs_clarification = any(vote.vote.needs_clarification for vote in successful if vote.vote)
         final = IntentVote(
@@ -295,6 +350,22 @@ class DecisionLayer:
         return None
 
 
+def _format_provider_error(exc: Exception) -> str:
+    name = exc.__class__.__name__
+    response = getattr(exc, "response", None)
+
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        body = getattr(response, "text", "") or ""
+        body = body.replace("\\n", " ").replace("\\r", " ")
+        return f"{name}: status={status_code} body={body[:500]}"
+
+    message = str(exc).strip()
+    if message:
+        return f"{name}: {message[:500]}"
+    return name
+
+
 @dataclass(slots=True)
 class EnsembleIntentClassifier:
     providers: Sequence[IntentVoteProvider]
@@ -309,15 +380,318 @@ class EnsembleIntentClassifier:
         state: ThreadState,
         trimatch_result: TriMatchResult | None = None,
     ) -> IntentVote:
-        provider_votes = await asyncio.gather(
-            *(self._classify_provider(provider, message, state) for provider in self.providers)
-        )
+        shortcut_vote = self._deterministic_guarded_query_shortcut_vote(message)
+        if shortcut_vote is None:
+            shortcut_vote = self._trimatch_safe_service_shortcut_vote(trimatch_result)
+
+        if shortcut_vote is not None:
+            provider_votes = [
+                ProviderIntentVote(
+                    provider=self._shortcut_provider_name(shortcut_vote),
+                    status=IntentProviderStatus.SUCCEEDED,
+                    vote=shortcut_vote,
+                    latency_ms=0.0,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    cost_usd=0.0,
+                )
+            ]
+        else:
+            provider_votes = await self._classify_providers_with_early_return(
+                message,
+                state,
+            )
+
         decision = self.decision_layer.decide(
             provider_votes=provider_votes,
             trimatch_result=trimatch_result,
         )
         self.last_decision = decision
         return decision.final_vote
+
+    def _shortcut_provider_name(self, shortcut_vote: IntentVote) -> str:
+        if any(
+            str(item).startswith("deterministic_guarded_query_shortcut:")
+            for item in shortcut_vote.evidence
+        ):
+            return "deterministic_guarded_query_shortcut"
+
+        return "trimatch_safe_service_shortcut"
+
+    def _deterministic_guarded_query_shortcut_vote(
+        self,
+        message: ProcessedMessage,
+    ) -> IntentVote | None:
+        text = f"{message.normalized} {message.raw}".lower()
+
+        def has_any(values: tuple[str, ...]) -> bool:
+            return any(value in text for value in values)
+
+        def build_vote(
+            query_primary: QueryIntentType,
+            funnel_stage: SalesStage,
+            confidence: float,
+            rationale: str,
+            evidence: str,
+            service_primary: ServiceCategory | None = None,
+            needs_clarification: bool = True,
+        ) -> IntentVote:
+            return IntentVote(
+                query_primary=query_primary,
+                query_secondary=[],
+                service_primary=service_primary,
+                service_secondary=[],
+                funnel_stage=funnel_stage,
+                confidence=confidence,
+                needs_clarification=needs_clarification,
+                rationale=rationale,
+                evidence=[evidence],
+            )
+
+        negated_guarded_request = has_any(
+            (
+                "do not need nda",
+                "don't need nda",
+                "not need nda",
+                "not asking for nda",
+                "not asking for pricing",
+                "not asking for samples",
+                "not asking for portfolio",
+                "no nda needed",
+                "without nda",
+            )
+        )
+        if negated_guarded_request:
+            return build_vote(
+                query_primary=QueryIntentType.CONSULTATION_REQUEST,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.91,
+                needs_clarification=True,
+                rationale=(
+                    "Deterministic safety shortcut for negated pricing, samples, "
+                    "portfolio, or NDA request. Do not route to guarded document, "
+                    "pricing, or portfolio flows."
+                ),
+                evidence="deterministic_guarded_query_shortcut:negated_guarded_request",
+            )
+
+        asks_pricing = has_any(("pricing", "price", "quote", "cost"))
+        asks_samples = has_any(("sample", "samples", "portfolio"))
+        asks_nda = "nda" in text
+
+        if asks_pricing and asks_samples and asks_nda:
+            return build_vote(
+                query_primary=QueryIntentType.PORTFOLIO_REQUEST,
+                funnel_stage=SalesStage.SERVICE_DISCOVERY,
+                confidence=0.99,
+                needs_clarification=False,
+                rationale=(
+                    "Deterministic guarded shortcut for mixed pricing, samples, "
+                    "and NDA request without enough scope."
+                ),
+                evidence="deterministic_guarded_query_shortcut:mixed_pricing_samples_nda",
+            )
+
+        if asks_nda and has_any(("before sharing", "provide nda", "do you provide nda")):
+            return build_vote(
+                query_primary=QueryIntentType.NDA_REQUEST,
+                funnel_stage=SalesStage.NDA_REQUESTED,
+                confidence=0.99,
+                needs_clarification=False,
+                rationale="Deterministic guarded shortcut for NDA availability request.",
+                evidence="deterministic_guarded_query_shortcut:nda_request",
+            )
+
+        asks_timeline = has_any(("timeline", "estimate", "how long"))
+        asks_formatting_or_publishing = has_any(("formatting", "publishing"))
+        if asks_timeline and asks_formatting_or_publishing:
+            service = (
+                ServiceCategory.INTERIOR_FORMATTING
+                if "formatting" in text
+                else ServiceCategory.PUBLISHING_DISTRIBUTION
+            )
+            return build_vote(
+                query_primary=QueryIntentType.TIMELINE_QUESTION,
+                funnel_stage=SalesStage.SERVICE_DISCOVERY,
+                confidence=0.94,
+                service_primary=service,
+                rationale=(
+                    "Deterministic guarded shortcut for timeline estimate request "
+                    "that still requires manuscript scope."
+                ),
+                evidence="deterministic_guarded_query_shortcut:timeline_scope_needed",
+            )
+
+        has_no_manuscript = has_any(("no manuscript", "just an idea", "only an idea"))
+        if has_no_manuscript:
+            return build_vote(
+                query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.94,
+                service_primary=ServiceCategory.GHOSTWRITING,
+                rationale=(
+                    "Deterministic guarded shortcut for idea-only manuscript status."
+                ),
+                evidence="deterministic_guarded_query_shortcut:idea_only_status",
+            )
+
+        if has_any(("summarize what bookcraft knows", "next safe step")):
+            return build_vote(
+                query_primary=QueryIntentType.CONSULTATION_REQUEST,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.88,
+                service_primary=ServiceCategory.GHOSTWRITING,
+                rationale=(
+                    "Deterministic guarded shortcut for project summary and next step."
+                ),
+                evidence="deterministic_guarded_query_shortcut:project_summary",
+            )
+
+        return None
+
+    def _trimatch_safe_service_shortcut_vote(
+        self,
+        trimatch_result: TriMatchResult | None,
+    ) -> IntentVote | None:
+        if trimatch_result is None:
+            return None
+
+        if trimatch_result.confidence < 0.97:
+            return None
+
+        if trimatch_result.service_primary is None:
+            return None
+
+        # Only shortcut pure service detection. Guarded query/funnel flows
+        # still go through provider ensemble and deterministic tools.
+        if trimatch_result.query_primary is not None:
+            return None
+
+        if trimatch_result.funnel_stage is not None:
+            return None
+
+        return IntentVote(
+            query_primary=QueryIntentType.SERVICE_QUESTION,
+            query_secondary=[],
+            service_primary=trimatch_result.service_primary,
+            service_secondary=[],
+            funnel_stage=SalesStage.SERVICE_DISCOVERY,
+            confidence=trimatch_result.confidence,
+            needs_clarification=True,
+            rationale="High-confidence Tri-Match safe service shortcut.",
+            evidence=["trimatch_safe_service_shortcut"],
+        )
+
+    async def _classify_providers_with_early_return(
+        self,
+        message: ProcessedMessage,
+        state: ThreadState,
+    ) -> list[ProviderIntentVote]:
+        if not self.providers:
+            return []
+
+        provider_order = {
+            getattr(provider, "name", str(index)): index
+            for index, provider in enumerate(self.providers)
+        }
+
+        tasks = [
+            asyncio.create_task(self._classify_provider(provider, message, state))
+            for provider in self.providers
+        ]
+
+        votes: list[ProviderIntentVote] = []
+        seen_providers: set[str] = set()
+
+        async def add_vote(task: Awaitable[ProviderIntentVote]) -> None:
+            try:
+                vote = await task
+            except asyncio.CancelledError:
+                raise
+
+            if vote.provider not in seen_providers:
+                votes.append(vote)
+                seen_providers.add(vote.provider)
+
+        try:
+            for completed in asyncio.as_completed(tasks):
+                await add_vote(completed)
+
+                usable_vote_count = sum(
+                    1
+                    for item in votes
+                    if item.status == "succeeded" and item.vote is not None
+                )
+
+                if usable_vote_count >= 2 or self._has_strong_single_provider_vote(votes):
+                    for task in tasks:
+                        if task.done():
+                            await add_vote(task)
+
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    break
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+        return sorted(
+            votes,
+            key=lambda vote: provider_order.get(vote.provider, len(provider_order)),
+        )
+
+    def _has_strong_single_provider_vote(
+        self,
+        votes: list[ProviderIntentVote],
+    ) -> bool:
+        usable_votes = [
+            item
+            for item in votes
+            if item.status == "succeeded" and item.vote is not None
+        ]
+
+        if len(usable_votes) != 1:
+            return False
+
+        vote = usable_votes[0].vote
+        if vote is None:
+            return False
+
+        confidence = float(vote.confidence or 0.0)
+        query_primary = getattr(vote.query_primary, "value", str(vote.query_primary))
+        service_primary = (
+            getattr(vote.service_primary, "value", str(vote.service_primary))
+            if vote.service_primary is not None
+            else None
+        )
+
+        guarded_queries = {
+            "agreement_request",
+            "nda_request",
+            "portfolio_request",
+            "pricing_question",
+        }
+
+        if query_primary in guarded_queries:
+            return False
+
+        if query_primary in {"unclear", ""}:
+            return False
+
+        if confidence < 0.92:
+            return False
+
+        return service_primary is not None or query_primary in {
+            "service_question",
+            "consultation_request",
+            "manuscript_status_update",
+            "publishing_platform_question",
+            "timeline_question",
+        }
 
     async def _classify_provider(
         self,
@@ -358,7 +732,7 @@ class EnsembleIntentClassifier:
                 provider=provider.name,
                 status=IntentProviderStatus.FAILED,
                 started=started,
-                error=exc.__class__.__name__,
+                error=_format_provider_error(exc),
             )
         breaker.record_success()
         prompt_tokens = max(1, len(message.normalized.split()))

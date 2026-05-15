@@ -58,4 +58,3 @@ def test_rag_verifier_accepts_clean_service_description(tmp_path: Path) -> None:
 
     assert report.verifier_status == "passed"
     assert report.rejected_count == 0
-

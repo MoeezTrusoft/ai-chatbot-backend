@@ -30,7 +30,7 @@ class ShortcutAuditCase:
 AUDIT_CASES: tuple[ShortcutAuditCase, ...] = (
     ShortcutAuditCase(
         name="service_shortcut_considered_not_applied",
-        message="I need book cover design help. rare shortcut editing marker",
+        message="I need book cover design help. rare shortcut delta marker",
         expected_extra_service="editing_proofreading",
     ),
     ShortcutAuditCase(
@@ -110,7 +110,7 @@ def _prepare_runtime_extra_rules(runtime_dir: Path) -> None:
         "rules": [
             _exact_rule(
                 rule_id="shortcut_audit_editing_marker",
-                phrase="rare shortcut editing marker",
+                phrase="rare shortcut delta marker",
                 service_intent="editing_proofreading",
             ),
             _exact_rule(

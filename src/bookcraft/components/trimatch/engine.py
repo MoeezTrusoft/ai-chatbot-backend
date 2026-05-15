@@ -83,7 +83,9 @@ class TriMatchEngine:
         funnel_stage = _best_enum(scores[TriMatchDimension.FUNNEL_STAGE], SalesStage)
         confidence = max((item.confidence for item in evidence), default=0.0)
         shortcut_eligible = self._shortcut_eligible(evidence)
-        if funnel_stage is not None and self.funnel_stage_weight == 0:
+        if funnel_stage is not None and (
+            self.mode == TriMatchMode.SHADOW or self.funnel_stage_weight == 0
+        ):
             shadow_only = [TriMatchDimension.FUNNEL_STAGE]
             FUNNEL_SIGNAL_VOTES.labels(stage=funnel_stage.value, mode="shadow").inc()
         else:

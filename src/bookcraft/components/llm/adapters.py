@@ -78,17 +78,24 @@ class OpenAIAdapter:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                payload: dict[str, object] = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "stream": False,
+                }
+                if self.name.startswith("openai"):
+                    payload["max_completion_tokens"] = 320
+                else:
+                    payload["max_tokens"] = 320
+
                 response = await client.post(
                     f"{self.base_url.rstrip('/')}/chat/completions",
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                        "response_format": {"type": "json_object"},
-                    },
+                    json=payload,
                 )
                 response.raise_for_status()
         return _parse_structured_response(response.text, output_model)
@@ -115,12 +122,48 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
 
 def _loads_json_object(text: str) -> object:
     stripped = text.strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError as exc:
-        decode_error = exc
-        pass
-    match = re.search(r"\{.*\}", stripped, flags=re.S)
-    if match is None:
-        raise decode_error
-    return json.loads(match.group(0))
+    if not stripped:
+        raise json.JSONDecodeError("empty model content", stripped, 0)
+
+    candidates = [stripped]
+
+    fenced = re.search(r"```(?:json)?\\s*(.*?)```", stripped, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidates.append(fenced.group(1).strip())
+
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    decoder = json.JSONDecoder()
+    last_error: json.JSONDecodeError | None = None
+
+    for match in re.finditer(r"[{\\[]", stripped):
+        fragment = stripped[match.start():]
+        try:
+            obj, _ = decoder.raw_decode(fragment)
+            return obj
+        except json.JSONDecodeError as exc:
+            last_error = exc
+
+        # Best-effort repair for models that return a JSON object cut off near the end.
+        if fragment.startswith("{"):
+            repaired = fragment
+            open_braces = repaired.count("{") - repaired.count("}")
+            open_brackets = repaired.count("[") - repaired.count("]")
+            if open_brackets > 0:
+                repaired += "]" * open_brackets
+            if open_braces > 0:
+                repaired += "}" * open_braces
+            try:
+                obj, _ = decoder.raw_decode(repaired)
+                return obj
+            except json.JSONDecodeError as repair_exc:
+                last_error = repair_exc
+
+    preview = stripped[:240].replace("\\n", " ")
+    message = f"could not parse JSON object from model content preview={preview!r}"
+    raise json.JSONDecodeError(message, stripped, 0) from last_error
+

@@ -58,4 +58,3 @@ def test_mutating_old_event_breaks_chain_verification_logic() -> None:
     )
 
     assert second.previous_hash != tampered_hash
-

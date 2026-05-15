@@ -19,4 +19,3 @@ def test_settings_accept_env_overrides(monkeypatch) -> None:
 
     assert settings.app_env == "test"
     assert settings.readiness_check_externals is True
-

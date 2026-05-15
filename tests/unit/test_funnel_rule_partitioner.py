@@ -31,9 +31,7 @@ def test_funnel_verifier_rejects_crm_leakage_into_trimatch_pack() -> None:
     report_with_crm_loaded = report.model_copy(
         update={"user_language_rules": [*report.user_language_rules, report.crm_rules[0]]}
     )
-    crm_rule = FunnelRulePartitioner().to_trimatch_rule_pack(
-        report_with_crm_loaded
-    )
+    crm_rule = FunnelRulePartitioner().to_trimatch_rule_pack(report_with_crm_loaded)
 
     errors = verify_funnel_partition(report, crm_rule)
 
