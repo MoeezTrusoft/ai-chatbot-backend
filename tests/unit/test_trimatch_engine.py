@@ -171,3 +171,107 @@ def test_trimatch_verifier_accepts_seed_rules_and_eval() -> None:
     assert result.valid is True
     assert result.precision
     assert result.recall
+
+
+def test_context_arbitration_suppresses_create_book_when_book_trailer_matches() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "context-arbitration-test",
+            "rules": [
+                {
+                    "id": "SERVICE-GHOST-RX-038",
+                    "layer": "regex",
+                    "target": {"service_intent": "ghostwriting"},
+                    "regex": r"\bcreate a book\b",
+                    "confidence": 0.955,
+                },
+                {
+                    "id": "SERVICE-TRAILER-EX-002",
+                    "layer": "exact",
+                    "target": {"service_intent": "video_trailer"},
+                    "phrases": ["book trailer"],
+                    "confidence": 0.985,
+                },
+            ],
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(
+        _processed("Can you create a book trailer for Instagram and YouTube?")
+    )
+
+    assert result.service_primary == ServiceCategory.VIDEO_TRAILER
+    assert all(item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence)
+
+
+def test_context_arbitration_suppresses_help_opener_greeting() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "context-arbitration-test",
+            "rules": [
+                {
+                    "id": "QUERY-GREETING-PT-016",
+                    "layer": "pattern",
+                    "target": {"query_intent": "greeting"},
+                    "pattern": ["i", "need", "help"],
+                    "confidence": 0.93,
+                }
+            ],
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(_processed("I need help with a memoir."))
+
+    assert result.query_primary is None
+    assert all(item.target != QueryIntentType.GREETING.value for item in result.evidence)
+
+
+def test_context_arbitration_keeps_greeting_only_message() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "context-arbitration-test",
+            "rules": [
+                {
+                    "id": "QUERY-GREETING-EX-001",
+                    "layer": "exact",
+                    "target": {"query_intent": "greeting"},
+                    "phrases": ["hello"],
+                    "confidence": 0.985,
+                }
+            ],
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(_processed("hello"))
+
+    assert result.query_primary == QueryIntentType.GREETING
+
+
+def test_context_arbitration_suppresses_simple_terms_agreement() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "context-arbitration-test",
+            "rules": [
+                {
+                    "id": "QUERY-AGREE-EX-007",
+                    "layer": "exact",
+                    "target": {"query_intent": "agreement_request"},
+                    "phrases": ["terms"],
+                    "confidence": 0.965,
+                }
+            ],
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(
+        _processed("Can you explain BookCraft services in simple terms?")
+    )
+
+    assert result.query_primary is None
+    assert all(
+        item.target != QueryIntentType.AGREEMENT_REQUEST.value for item in result.evidence
+    )

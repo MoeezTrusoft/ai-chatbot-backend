@@ -11,6 +11,7 @@ from bookcraft.components.preprocessor.schemas import ProcessedMessage, Span
 from bookcraft.components.trg import TRGContext
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 
+from .context_arbitration import apply_context_arbitration
 from .schemas import (
     RulePack,
     TriMatchDimension,
@@ -76,7 +77,10 @@ class TriMatchEngine:
         trg_context: TRGContext | None = None,
     ) -> TriMatchResult:
         del trg_context
-        evidence = self._collect_evidence(processed_message)
+        evidence = apply_context_arbitration(
+            self._collect_evidence(processed_message),
+            processed_message,
+        )
         scores = aggregate_scores(evidence)
         query_primary = _best_enum(scores[TriMatchDimension.QUERY_INTENT], QueryIntentType)
         service_primary = _best_enum(scores[TriMatchDimension.SERVICE_INTENT], ServiceCategory)
