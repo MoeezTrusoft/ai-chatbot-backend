@@ -352,27 +352,6 @@ def test_decision_layer_uses_funnel_only_trimatch_when_all_providers_fail() -> N
     assert "trimatch_funnel_stage_fallback" in result.audit_trail
     assert result.funnel_stage_scores == {"quote_requested": 0.9}
 
-def test_provider_payload_normalizer_handles_model_field_shape_drift() -> None:
-    raw = {
-        "query_primary": "service_question",
-        "query_secondary": "publishing_platform_question",
-        "service_primary": "cover_design_illustration",
-        "service_secondary": "publishing_distribution",
-        "funnel_stage": "new",
-        "confidence": 0.91,
-        "needs_clarification": False,
-        "rationale": "provider returned scalar secondary fields",
-        "evidence": {"reason": "book cover and publishing distribution mentioned"},
-    }
-
-    normalized = _normalize_provider_vote_payload(raw)
-    vote = IntentVote.model_validate(normalized)
-
-    assert vote.query_primary.value == "service_question"
-    assert [item.value for item in vote.query_secondary] == ["publishing_platform_question"]
-    assert vote.service_primary.value == "cover_design_illustration"
-    assert [item.value for item in vote.service_secondary] == ["publishing_distribution"]
-    assert vote.evidence
 
 def test_provider_payload_normalizer_handles_model_field_shape_drift() -> None:
     from bookcraft.components.intent.normalization import normalize_provider_vote_payload

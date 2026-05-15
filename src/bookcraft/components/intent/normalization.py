@@ -3,9 +3,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import get_args
 
-from bookcraft.components.intent.types import IntentVote
+from bookcraft.components.intent.schemas import IntentVote
 
-from bookcraft.components.intent.normalization import normalize_provider_vote_payload
+__all__ = ["normalize_provider_vote_payload"]
 
 
 def normalize_provider_vote_payload(payload: object) -> object:
