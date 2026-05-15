@@ -387,7 +387,7 @@ class EnsembleIntentClassifier:
         if shortcut_vote is not None:
             provider_votes = [
                 ProviderIntentVote(
-                    provider="trimatch_safe_service_shortcut",
+                    provider=self._shortcut_provider_name(shortcut_vote),
                     status=IntentProviderStatus.SUCCEEDED,
                     vote=shortcut_vote,
                     latency_ms=0.0,
@@ -408,6 +408,15 @@ class EnsembleIntentClassifier:
         )
         self.last_decision = decision
         return decision.final_vote
+
+    def _shortcut_provider_name(self, shortcut_vote: IntentVote) -> str:
+        if any(
+            str(item).startswith("deterministic_guarded_query_shortcut:")
+            for item in shortcut_vote.evidence
+        ):
+            return "deterministic_guarded_query_shortcut"
+
+        return "trimatch_safe_service_shortcut"
 
     def _deterministic_guarded_query_shortcut_vote(
         self,

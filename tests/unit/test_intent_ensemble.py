@@ -480,7 +480,7 @@ async def test_deterministic_guarded_shortcut_handles_nda_without_providers() ->
     assert result.funnel_stage == SalesStage.NDA_REQUESTED
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].provider == (
-        "trimatch_safe_service_shortcut"
+        "deterministic_guarded_query_shortcut"
     )
 
 
@@ -501,7 +501,7 @@ async def test_deterministic_guarded_shortcut_handles_mixed_request() -> None:
     assert result.funnel_stage == SalesStage.SERVICE_DISCOVERY
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].provider == (
-        "trimatch_safe_service_shortcut"
+        "deterministic_guarded_query_shortcut"
     )
 
 
@@ -523,5 +523,5 @@ async def test_deterministic_guarded_shortcut_handles_idea_only_status() -> None
     assert result.funnel_stage == SalesStage.NEW
     assert classifier.last_decision is not None
     assert classifier.last_decision.provider_votes[0].provider == (
-        "trimatch_safe_service_shortcut"
+        "deterministic_guarded_query_shortcut"
     )
