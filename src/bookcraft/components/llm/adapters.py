@@ -88,9 +88,9 @@ class OpenAIAdapter:
                     "stream": False,
                 }
                 if self.name.startswith("openai"):
-                    payload["max_completion_tokens"] = 160
+                    payload["max_completion_tokens"] = 320
                 else:
-                    payload["max_tokens"] = 160
+                    payload["max_tokens"] = 320
 
                 response = await client.post(
                     f"{self.base_url.rstrip('/')}/chat/completions",
