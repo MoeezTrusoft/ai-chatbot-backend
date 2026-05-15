@@ -528,7 +528,7 @@ async def test_deterministic_guarded_shortcut_handles_idea_only_status() -> None
 
 
 @pytest.mark.asyncio
-async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_nda() -> None:
+async def test_deterministic_guarded_shortcut_safely_handles_negated_nda() -> None:
     classifier = EnsembleIntentClassifier(
         providers=[
             StaticProvider(
@@ -549,13 +549,15 @@ async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_nda() -> 
         ThreadState(),
     )
 
-    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert result.query_primary == QueryIntentType.CONSULTATION_REQUEST
     assert classifier.last_decision is not None
-    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )
 
 
 @pytest.mark.asyncio
-async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_mixed_request() -> None:
+async def test_deterministic_guarded_shortcut_safely_handles_negated_mixed_request() -> None:
     classifier = EnsembleIntentClassifier(
         providers=[
             StaticProvider(
@@ -576,6 +578,8 @@ async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_mixed_req
         ThreadState(),
     )
 
-    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert result.query_primary == QueryIntentType.CONSULTATION_REQUEST
     assert classifier.last_decision is not None
-    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
+    assert classifier.last_decision.provider_votes[0].provider == (
+        "deterministic_guarded_query_shortcut"
+    )

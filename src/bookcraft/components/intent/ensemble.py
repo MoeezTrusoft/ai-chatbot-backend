@@ -462,7 +462,18 @@ class EnsembleIntentClassifier:
             )
         )
         if negated_guarded_request:
-            return None
+            return build_vote(
+                query_primary=QueryIntentType.CONSULTATION_REQUEST,
+                funnel_stage=SalesStage.NEW,
+                confidence=0.91,
+                needs_clarification=True,
+                rationale=(
+                    "Deterministic safety shortcut for negated pricing, samples, "
+                    "portfolio, or NDA request. Do not route to guarded document, "
+                    "pricing, or portfolio flows."
+                ),
+                evidence="deterministic_guarded_query_shortcut:negated_guarded_request",
+            )
 
         asks_pricing = has_any(("pricing", "price", "quote", "cost"))
         asks_samples = has_any(("sample", "samples", "portfolio"))
