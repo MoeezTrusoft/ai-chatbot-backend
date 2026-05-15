@@ -376,3 +376,25 @@ def test_provider_payload_normalizer_handles_model_field_shape_drift() -> None:
     assert vote.service_primary.value == "cover_design_illustration"
     assert [item.value for item in vote.service_secondary] == ["publishing_distribution"]
     assert vote.evidence
+
+def test_intent_vote_schema_normalizes_provider_shape_drift() -> None:
+    raw = {
+        "query_primary": "service_question",
+        "query_secondary": "ghostwriting_requirements",
+        "service_primary": "audiobook_production",
+        "service_secondary": "video_trailer",
+        "funnel_stage": "new",
+        "confidence": "0.91",
+        "needs_clarification": False,
+        "rationale": "provider returned scalar fields",
+        "evidence": {"reason": "provider returned dict evidence"},
+    }
+
+    vote = IntentVote.model_validate(raw)
+
+    assert vote.query_primary.value == "service_question"
+    assert vote.query_secondary == []
+    assert vote.service_primary.value == "audiobook_production"
+    assert [item.value for item in vote.service_secondary] == ["video_trailer"]
+    assert vote.confidence == 0.91
+    assert vote.evidence
