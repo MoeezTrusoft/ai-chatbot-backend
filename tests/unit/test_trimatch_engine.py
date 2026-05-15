@@ -275,3 +275,88 @@ def test_context_arbitration_suppresses_simple_terms_agreement() -> None:
     assert all(
         item.target != QueryIntentType.AGREEMENT_REQUEST.value for item in result.evidence
     )
+
+
+def test_trimatch_preserves_secondary_services_in_score_order() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "secondary-services-test",
+            "rules": [
+                {
+                    "id": "SERVICE-EDIT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "editing_proofreading"},
+                    "phrases": ["editing"],
+                    "confidence": 0.98,
+                },
+                {
+                    "id": "SERVICE-FORMAT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "interior_formatting"},
+                    "phrases": ["formatting"],
+                    "confidence": 0.97,
+                },
+                {
+                    "id": "SERVICE-MKT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "marketing_promotion"},
+                    "phrases": ["marketing"],
+                    "confidence": 0.96,
+                },
+            ],
+        }
+    )
+
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(_processed("I need editing, formatting, and marketing."))
+
+    assert result.service_primary == ServiceCategory.EDITING_PROOFREADING
+    assert result.service_secondary == [
+        ServiceCategory.INTERIOR_FORMATTING,
+        ServiceCategory.MARKETING_PROMOTION,
+    ]
+
+
+def test_trimatch_secondary_services_exclude_negated_service() -> None:
+    rule_pack = RulePack.model_validate(
+        {
+            "version": "secondary-services-negation-test",
+            "rules": [
+                {
+                    "id": "SERVICE-GHOST-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "ghostwriting"},
+                    "phrases": ["ghostwriting"],
+                    "confidence": 0.99,
+                },
+                {
+                    "id": "SERVICE-EDIT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "editing_proofreading"},
+                    "phrases": ["editing"],
+                    "confidence": 0.98,
+                },
+                {
+                    "id": "SERVICE-FORMAT-EX-001",
+                    "layer": "exact",
+                    "target": {"service_intent": "interior_formatting"},
+                    "phrases": ["formatting"],
+                    "confidence": 0.97,
+                },
+            ],
+        }
+    )
+
+    text = "I need editing and formatting, but no ghostwriting."
+    start = text.index("no")
+    engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
+    result = engine.classify(
+        _processed(
+            text,
+            negation_spans=[Span(start=start, end=len(text), text=text[start:], cue="no")],
+        )
+    )
+
+    assert result.service_primary == ServiceCategory.EDITING_PROOFREADING
+    assert result.service_secondary == [ServiceCategory.INTERIOR_FORMATTING]
+    assert all(item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence)

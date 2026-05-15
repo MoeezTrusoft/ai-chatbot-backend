@@ -84,6 +84,10 @@ class TriMatchEngine:
         scores = aggregate_scores(evidence)
         query_primary = _best_enum(scores[TriMatchDimension.QUERY_INTENT], QueryIntentType)
         service_primary = _best_enum(scores[TriMatchDimension.SERVICE_INTENT], ServiceCategory)
+        service_secondary = _secondary_service_enums(
+            scores[TriMatchDimension.SERVICE_INTENT],
+            service_primary,
+        )
         funnel_stage = _best_enum(scores[TriMatchDimension.FUNNEL_STAGE], SalesStage)
         confidence = max((item.confidence for item in evidence), default=0.0)
         shortcut_eligible = self._shortcut_eligible(evidence)
@@ -97,6 +101,7 @@ class TriMatchEngine:
         return TriMatchResult(
             query_primary=query_primary,
             service_primary=service_primary,
+            service_secondary=service_secondary,
             funnel_stage=funnel_stage,
             confidence=confidence,
             evidence=evidence,
@@ -258,6 +263,29 @@ def aggregate_scores(
         current = scores[item.dimension].get(item.target, 0.0)
         scores[item.dimension][item.target] = current + item.confidence * LAYER_WEIGHTS[item.layer]
     return scores
+
+
+def _secondary_service_enums(
+    scores: dict[str, float],
+    primary: QueryIntentType | ServiceCategory | SalesStage | None,
+) -> list[ServiceCategory]:
+    if not scores:
+        return []
+
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    secondary: list[ServiceCategory] = []
+
+    for value, score in ranked:
+        if score <= 0:
+            continue
+
+        service = ServiceCategory(value)
+        if service == primary:
+            continue
+
+        secondary.append(service)
+
+    return secondary
 
 
 def _best_enum(
