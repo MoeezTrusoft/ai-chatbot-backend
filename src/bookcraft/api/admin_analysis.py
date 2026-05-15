@@ -391,6 +391,94 @@ def rollback_rules(request: RollbackRequest, _: None = Depends(require_admin)) -
     return payload
 
 
+def _filter_trace_rows(
+    rows: list[dict[str, Any]],
+    *,
+    source: str | None,
+    query_primary: str | None,
+    service_primary: str | None,
+    customer_id: str | None,
+    min_latency_ms: float | None,
+    has_forbid_markers: bool | None,
+    has_negated_terms: bool | None,
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+
+    for row in rows:
+        if source and _lower(_nested(row, "assistant", "source")) != source.casefold():
+            continue
+
+        if customer_id and str(row.get("customer_id")) != customer_id:
+            continue
+
+        if query_primary and _trace_query_primary(row) != query_primary:
+            continue
+
+        if service_primary and _trace_service_primary(row) != service_primary:
+            continue
+
+        if min_latency_ms is not None:
+            elapsed = row.get("elapsed_ms")
+            if not isinstance(elapsed, int | float) or float(elapsed) < min_latency_ms:
+                continue
+
+        atoms = row.get("runtime_atoms")
+        if not isinstance(atoms, dict):
+            atoms = {}
+
+        forbid_markers = atoms.get("forbid_markers")
+        negated_terms = atoms.get("negated_terms")
+
+        if has_forbid_markers is not None:
+            present = isinstance(forbid_markers, list) and len(forbid_markers) > 0
+            if present != has_forbid_markers:
+                continue
+
+        if has_negated_terms is not None:
+            present = isinstance(negated_terms, list) and len(negated_terms) > 0
+            if present != has_negated_terms:
+                continue
+
+        filtered.append(row)
+
+    return filtered
+
+
+def _trace_filter_payload(**filters: Any) -> dict[str, Any]:
+    return {key: value for key, value in filters.items() if value is not None}
+
+
+def _trace_query_primary(row: dict[str, Any]) -> str | None:
+    value = _nested(row, "intent", "query_primary")
+    if isinstance(value, str):
+        return value
+
+    value = _nested(row, "decision", "final_vote", "query_primary")
+    return value if isinstance(value, str) else None
+
+
+def _trace_service_primary(row: dict[str, Any]) -> str | None:
+    value = _nested(row, "intent", "service_primary")
+    if isinstance(value, str):
+        return value
+
+    value = _nested(row, "decision", "final_vote", "service_primary")
+    return value if isinstance(value, str) else None
+
+
+def _nested(row: dict[str, Any], *keys: str) -> Any:
+    value: Any = row
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _lower(value: Any) -> str | None:
+    return value.casefold() if isinstance(value, str) else None
+
+
 def _safe_project_path(value: str) -> Path:
     path = (PROJECT_ROOT / value).resolve()
     if PROJECT_ROOT not in [path, *path.parents]:
