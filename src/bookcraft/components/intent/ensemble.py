@@ -167,6 +167,7 @@ class DecisionLayer:
             if trimatch_result is not None and (
                 trimatch_result.query_primary is not None
                 or trimatch_result.service_primary is not None
+                or trimatch_result.funnel_stage is not None
             ):
                 query = _normalize_trimatch_query(trimatch_result, trimatch_result.query_primary)
                 service = trimatch_result.service_primary
@@ -184,7 +185,7 @@ class DecisionLayer:
                     funnel_audit = "trimatch_funnel_stage_fallback"
                 else:
                     funnel = SalesStage.NEW
-                    funnel_audit = "trimatch_funnel_stage_shadow_weight_zero"
+                    funnel_audit = "trimatch_funnel_stage_unavailable"
                 final = IntentVote(
                     query_primary=query,
                     service_primary=service,
@@ -286,7 +287,7 @@ class DecisionLayer:
                 )
                 audit.append("trimatch_funnel_stage_vote_included")
             elif trimatch_result.funnel_stage is not None:
-                audit.append("trimatch_funnel_stage_shadow_weight_zero")
+                audit.append("trimatch_funnel_stage_present_but_weight_zero")
 
         query_quorum = self._provider_quorum(successful)
         if query_quorum is not None:

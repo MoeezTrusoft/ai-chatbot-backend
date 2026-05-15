@@ -119,7 +119,7 @@ def test_decision_layer_keeps_trimatch_funnel_stage_shadow_weight_zero() -> None
     )
 
     assert result.final_vote.funnel_stage == SalesStage.SERVICE_DISCOVERY
-    assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+    assert "trimatch_funnel_stage_present_but_weight_zero" in result.audit_trail
 
 
 def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
@@ -149,7 +149,7 @@ def test_decision_layer_uses_trimatch_when_all_providers_fail() -> None:
     # so the fallback still pins funnel_stage to NEW.
     assert result.final_vote.funnel_stage == SalesStage.NEW
     assert "trimatch_query_service_fallback" in result.audit_trail
-    assert "trimatch_funnel_stage_shadow_weight_zero" in result.audit_trail
+    assert "trimatch_funnel_stage_unavailable" in result.audit_trail
 
 
 def test_decision_layer_uses_trimatch_funnel_when_weight_positive_and_providers_fail() -> None:
@@ -326,3 +326,28 @@ async def test_circuit_breaker_backs_off_when_half_open_probe_fails() -> None:
     # Past new cooldown at t=31 -> half-open again.
     clock[0] = 31.0
     assert breaker.before_call() is True
+
+def test_decision_layer_uses_funnel_only_trimatch_when_all_providers_fail() -> None:
+    trimatch = TriMatchResult(
+        funnel_stage=SalesStage.QUOTE_REQUESTED,
+        confidence=0.9,
+        mode=TriMatchMode.SHADOW,
+        shadow_only_dimensions=["funnel_stage"],
+    )
+
+    result = DecisionLayer(trimatch_funnel_stage_weight=0.5).decide(
+        provider_votes=[
+            ProviderIntentVote(
+                provider="claude_haiku",
+                status=IntentProviderStatus.FAILED,
+                error="timeout",
+            )
+        ],
+        trimatch_result=trimatch,
+    )
+
+    assert result.final_vote.query_primary == QueryIntentType.UNCLEAR
+    assert result.final_vote.service_primary is None
+    assert result.final_vote.funnel_stage == SalesStage.QUOTE_REQUESTED
+    assert "trimatch_funnel_stage_fallback" in result.audit_trail
+    assert result.funnel_stage_scores == {"quote_requested": 0.9}
