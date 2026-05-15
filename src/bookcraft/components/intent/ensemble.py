@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -380,8 +380,9 @@ class EnsembleIntentClassifier:
         state: ThreadState,
         trimatch_result: TriMatchResult | None = None,
     ) -> IntentVote:
-        provider_votes = await asyncio.gather(
-            *(self._classify_provider(provider, message, state) for provider in self.providers)
+        provider_votes = await self._classify_providers_with_early_return(
+            message,
+            state,
         )
         decision = self.decision_layer.decide(
             provider_votes=provider_votes,
@@ -389,6 +390,68 @@ class EnsembleIntentClassifier:
         )
         self.last_decision = decision
         return decision.final_vote
+
+    async def _classify_providers_with_early_return(
+        self,
+        message: ProcessedMessage,
+        state: ThreadState,
+    ) -> list[ProviderIntentVote]:
+        if not self.providers:
+            return []
+
+        provider_order = {
+            getattr(provider, "name", str(index)): index
+            for index, provider in enumerate(self.providers)
+        }
+
+        tasks = [
+            asyncio.create_task(self._classify_provider(provider, message, state))
+            for provider in self.providers
+        ]
+
+        votes: list[ProviderIntentVote] = []
+        seen_providers: set[str] = set()
+
+        async def add_vote(task: Awaitable[ProviderIntentVote]) -> None:
+            try:
+                vote = await task
+            except asyncio.CancelledError:
+                raise
+
+            if vote.provider not in seen_providers:
+                votes.append(vote)
+                seen_providers.add(vote.provider)
+
+        try:
+            for completed in asyncio.as_completed(tasks):
+                await add_vote(completed)
+
+                usable_vote_count = sum(
+                    1
+                    for item in votes
+                    if item.status == "succeeded" and item.vote is not None
+                )
+
+                if usable_vote_count >= 2:
+                    for task in tasks:
+                        if task.done():
+                            await add_vote(task)
+
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    break
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+        return sorted(
+            votes,
+            key=lambda vote: provider_order.get(vote.provider, len(provider_order)),
+        )
 
     async def _classify_provider(
         self,
