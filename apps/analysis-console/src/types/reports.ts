@@ -2,6 +2,7 @@ export type ReportKind = 'performance' | 'context' | 'threaded' | 'unknown';
 export type PageKey =
   | 'dashboard'
   | 'trace'
+  | 'live'
   | 'waterfall'
   | 'intent'
   | 'trimatch'
@@ -182,6 +183,38 @@ export type ContextCandidateReport = {
     [key: string]: unknown;
   };
   rows: ContextReportRow[];
+};
+
+
+
+export type LiveTrace = {
+  thread_id?: string;
+  customer_id?: string | null;
+  correlation_id?: string | null;
+  message_preview?: string;
+  elapsed_ms?: number;
+  language_status?: string;
+  assistant?: {
+    source?: string;
+    bubble_count?: number;
+    preview?: string;
+    [key: string]: unknown;
+  };
+  intent?: Record<string, unknown> | null;
+  decision?: Record<string, unknown> | null;
+  trimatch?: Record<string, unknown> | null;
+  trimatch_shadow?: Record<string, unknown> | null;
+  runtime_atoms?: RuntimeAtoms;
+  components?: Record<string, unknown>;
+  recorded_at?: string;
+  [key: string]: unknown;
+};
+
+export type LiveTraceResponse = {
+  trace_path: string;
+  count: number;
+  traces: LiveTrace[];
+  thread_id?: string;
 };
 
 export type LoadedReport = {
