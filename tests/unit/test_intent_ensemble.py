@@ -525,3 +525,57 @@ async def test_deterministic_guarded_shortcut_handles_idea_only_status() -> None
     assert classifier.last_decision.provider_votes[0].provider == (
         "deterministic_guarded_query_shortcut"
     )
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_nda() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.SERVICE_QUESTION,
+                    SalesStage.SERVICE_DISCOVERY,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    result = await classifier.classify(
+        processed("I do not need NDA before sharing manuscript details."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guarded_shortcut_does_not_fire_on_negated_mixed_request() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[
+            StaticProvider(
+                "openai_gpt_5_4_mini",
+                vote(
+                    QueryIntentType.SERVICE_QUESTION,
+                    SalesStage.SERVICE_DISCOVERY,
+                    service=ServiceCategory.GHOSTWRITING,
+                ),
+            )
+        ],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    result = await classifier.classify(
+        processed("I am not asking for pricing, samples, or NDA right now."),
+        ThreadState(),
+    )
+
+    assert result.query_primary == QueryIntentType.SERVICE_QUESTION
+    assert classifier.last_decision is not None
+    assert classifier.last_decision.provider_votes[0].provider == "openai_gpt_5_4_mini"

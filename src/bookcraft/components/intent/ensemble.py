@@ -448,6 +448,22 @@ class EnsembleIntentClassifier:
                 evidence=[evidence],
             )
 
+        negated_guarded_request = has_any(
+            (
+                "do not need nda",
+                "don't need nda",
+                "not need nda",
+                "not asking for nda",
+                "not asking for pricing",
+                "not asking for samples",
+                "not asking for portfolio",
+                "no nda needed",
+                "without nda",
+            )
+        )
+        if negated_guarded_request:
+            return None
+
         asks_pricing = has_any(("pricing", "price", "quote", "cost"))
         asks_samples = has_any(("sample", "samples", "portfolio"))
         asks_nda = "nda" in text
