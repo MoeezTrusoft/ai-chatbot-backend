@@ -349,6 +349,22 @@ class DecisionLayer:
         return None
 
 
+def _format_provider_error(exc: Exception) -> str:
+    name = exc.__class__.__name__
+    response = getattr(exc, "response", None)
+
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        body = getattr(response, "text", "") or ""
+        body = body.replace("\\n", " ").replace("\\r", " ")
+        return f"{name}: status={status_code} body={body[:500]}"
+
+    message = str(exc).strip()
+    if message:
+        return f"{name}: {message[:500]}"
+    return name
+
+
 @dataclass(slots=True)
 class EnsembleIntentClassifier:
     providers: Sequence[IntentVoteProvider]
@@ -412,7 +428,7 @@ class EnsembleIntentClassifier:
                 provider=provider.name,
                 status=IntentProviderStatus.FAILED,
                 started=started,
-                error=exc.__class__.__name__,
+                error=_format_provider_error(exc),
             )
         breaker.record_success()
         prompt_tokens = max(1, len(message.normalized.split()))
