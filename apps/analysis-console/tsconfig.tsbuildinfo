@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/reportuploader.tsx","./src/components/charts.tsx","./src/components/ui.tsx","./src/data/sampledata.ts","./src/lib/apiclient.ts","./src/lib/apiconfig.ts","./src/lib/format.ts","./src/lib/reportparser.ts","./src/lib/storage.ts","./src/types/reports.ts"],"version":"5.9.3"}

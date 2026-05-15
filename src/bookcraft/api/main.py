@@ -19,6 +19,7 @@ from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
+from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
@@ -309,6 +310,7 @@ def build_chat_service(
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         trimatch_extra_mode=settings.trimatch_extra_mode,
+        trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,
     )
 

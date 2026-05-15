@@ -60,3 +60,15 @@ Rollback payload:
   "backup_dir": "data/trimatch/backups/20260515_123456_rules"
 }
 ```
+
+## Live trace endpoints
+
+```http
+GET /api/admin/analysis/traces/latest?limit=50
+GET /api/admin/analysis/traces/{thread_id}?limit=100
+
+Both endpoints require:
+
+Authorization: Bearer <BOOKCRAFT_ADMIN_ANALYSIS_TOKEN>
+
+The response contains redacted per-turn trace snapshots written by ChatService.

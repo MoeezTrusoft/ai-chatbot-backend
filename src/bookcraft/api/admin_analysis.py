@@ -12,6 +12,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
+from bookcraft.components.analysis import LiveTraceStore
+
 router = APIRouter(prefix="/api/admin/analysis", tags=["admin-analysis"])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -19,6 +21,7 @@ DATA_ROOT = PROJECT_ROOT / "data" / "trimatch"
 ACTIVE_RULE_DIR = DATA_ROOT / "rules"
 CANDIDATE_ROOT = DATA_ROOT / "candidates" / "rules_army_v2_filtered"
 REPORT_ROOT = PROJECT_ROOT / "reports"
+LIVE_TRACE_PATH = REPORT_ROOT / "live_traces" / "chat_turns.jsonl"
 REVIEW_ROOT = DATA_ROOT / "reviews"
 ANALYSIS_CANDIDATE_ROOT = DATA_ROOT / "candidates" / "analysis_console_rules"
 ACTIVATION_LOG = DATA_ROOT / "activation_log.jsonl"
@@ -121,6 +124,36 @@ def run_context_candidate_eval(_: None = Depends(require_admin)) -> dict[str, An
         raise HTTPException(status_code=404, detail=f"Missing script: {script}")
     _run([sys.executable, str(script)])
     return trimatch_context_report(None)
+
+
+@router.get("/traces/latest")
+def latest_live_traces(
+    limit: int = 50,
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    store = LiveTraceStore(LIVE_TRACE_PATH)
+    rows = store.latest(limit=limit)
+    return {
+        "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
+        "count": len(rows),
+        "traces": rows,
+    }
+
+
+@router.get("/traces/{thread_id}")
+def thread_live_traces(
+    thread_id: str,
+    limit: int = 100,
+    _: None = Depends(require_admin),
+) -> dict[str, Any]:
+    store = LiveTraceStore(LIVE_TRACE_PATH)
+    rows = store.for_thread(thread_id=thread_id, limit=limit)
+    return {
+        "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
+        "thread_id": thread_id,
+        "count": len(rows),
+        "traces": rows,
+    }
 
 
 @router.get("/rules/active")
