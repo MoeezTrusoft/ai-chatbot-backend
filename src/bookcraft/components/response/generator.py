@@ -69,6 +69,23 @@ class SonnetResponseGenerator:
             if document_status_message is not None:
                 return ResponseDraft(text=document_status_message, source=route.name)
 
+            # Deterministic guard: mixed requests for pricing, samples/portfolio,
+            # and NDA must not rely on the response LLM when required scope is
+            # missing. This keeps links, numbers, and legal/document language
+            # inside approved tools/templates.
+            if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
+                return ResponseDraft(
+                    text=(
+                        "I can help with samples, pricing, and the NDA safely. "
+                        "To avoid inventing links or numbers, BookCraft needs the service type "
+                        "and genre before showing portfolio samples; word or page count, "
+                        "manuscript status, and deadline before pricing or timelines; and "
+                        "author name, email, phone, and effective date before an NDA can enter "
+                        "the document queue."
+                    ),
+                    source="deterministic_mixed_request_guard",
+                )
+
             # Fast path: RAG-backed service/help responses already have approved
             # source text. Avoid spending 6-8 seconds on Sonnet just to restate
             # the retrieved BookCraft content. High-stakes flows above still use
