@@ -211,11 +211,11 @@ function ProviderVotes({ votes }: { votes: ProviderVote[] }) {
 
 
 
+
 function ChatTestLab({
   api,
   apiConfig,
-  setApiConfig,
-  withApi
+  setApiConfig
 }: {
   api: AdminApiClient;
   apiConfig: AdminApiConfig;
@@ -224,37 +224,33 @@ function ChatTestLab({
 }) {
   const [threadId, setThreadId] = useState('');
   const [message, setMessage] = useState('I need editing, formatting, and marketing for my manuscript.');
-  const [exchanges, setExchanges] = useState<ChatLabExchange[]>([]);
-  const [threadTraces, setThreadTraces] = useState<LiveTrace[]>([]);
-  const [selectedTraceIndex, setSelectedTraceIndex] = useState(0);
-  const [chatBusy, setChatBusy] = useState(false);
+  const [lastResponse, setLastResponse] = useState<ChatTurnResponse | undefined>();
+  const [lastTrace, setLastTrace] = useState<LiveTrace | undefined>();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState<number | undefined>();
 
-  const latestExchange = exchanges[0];
-  const selectedTrace = threadTraces[selectedTraceIndex] ?? threadTraces[0];
+  const providerInsights = getProviderInsights(lastTrace);
+  const triMatchHits = traceEvidence(lastTrace);
+  const atoms = lastTrace?.runtime_atoms;
 
-  function newThread() {
-    const next = crypto.randomUUID();
-    setThreadId(next);
-    setExchanges([]);
-    setThreadTraces([]);
-    setSelectedTraceIndex(0);
-  }
-
-  async function refreshThreadTraces(targetThreadId = threadId) {
-    if (!targetThreadId) return;
-    await withApi('Refresh thread traces', async () => {
-      const response = await api.threadLiveTraces(targetThreadId, { limit: 50 });
-      setThreadTraces(response.traces);
-      setSelectedTraceIndex(0);
-    });
+  function startNewThread() {
+    setThreadId('');
+    setLastResponse(undefined);
+    setLastTrace(undefined);
+    setElapsedMs(undefined);
+    setError('');
+    setMessage('I need editing, formatting, and marketing for my manuscript.');
   }
 
   async function sendMessage() {
     const trimmed = message.trim();
     if (!trimmed) return;
 
+    setBusy(true);
+    setError('');
+
     const started = performance.now();
-    setChatBusy(true);
 
     try {
       const response = await api.sendChatTurn({
@@ -264,67 +260,44 @@ function ChatTestLab({
         chatToken: apiConfig.chatToken || undefined
       });
 
-      const elapsedMs = Math.round((performance.now() - started) * 100) / 100;
-      const resolvedThreadId = response.thread_id;
+      const measured = Math.round((performance.now() - started) * 100) / 100;
+      setElapsedMs(measured);
+      setLastResponse(response);
+      setThreadId(response.thread_id);
 
-      setThreadId(resolvedThreadId);
-      setExchanges((current) => [
-        {
-          id: crypto.randomUUID(),
-          message: trimmed,
-          response,
-          sentAt: new Date().toISOString(),
-          elapsedMs
-        },
-        ...current
-      ]);
+      const traceResponse = await api.threadLiveTraces(response.thread_id, { limit: 10 });
+      setLastTrace(traceResponse.traces[0]);
 
       setMessage('');
-
-      const traces = await api.threadLiveTraces(resolvedThreadId, { limit: 50 });
-      setThreadTraces(traces.traces);
-      setSelectedTraceIndex(0);
-    } catch (error) {
-      setExchanges((current) => [
-        {
-          id: crypto.randomUUID(),
-          message: trimmed,
-          error: error instanceof Error ? error.message : String(error),
-          sentAt: new Date().toISOString(),
-          elapsedMs: Math.round((performance.now() - started) * 100) / 100
-        },
-        ...current
-      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setChatBusy(false);
+      setBusy(false);
     }
   }
 
   return (
-    <div className="page">
+    <div className="page chat-lab-simple">
       <SectionTitle
         kicker="Chat Test Lab"
-        title="Initiate a thread, send messages, and inspect routing intelligence"
-        subtitle="A full test bench for chatbot response, classified intent, provider votes, Tri-Match evidence, runtime atoms, latency, and raw trace diagnostics."
-        right={<Badge tone={apiConfig.enabled ? 'green' : 'purple'}>{apiConfig.enabled ? 'admin API live' : 'admin API disabled'}</Badge>}
+        title="Send a message and see how the chatbot understood it"
+        subtitle="Simple view: final response, final intent, Tri-Match rule hits, provider confidence, and timing."
+        right={<Badge tone={apiConfig.enabled ? 'green' : 'purple'}>{apiConfig.enabled ? 'connected' : 'admin API off'}</Badge>}
       />
 
-      <div className="grid cols-4">
-        <MetricCard label="Thread traces" value={threadTraces.length} tone="blue" />
-        <MetricCard label="Last chat latency" value={fmtMs(latestExchange?.elapsedMs)} tone={latencyTone(latestExchange?.elapsedMs)} />
-        <MetricCard label="Trace latency" value={fmtMs(selectedTrace?.elapsed_ms)} tone={latencyTone(selectedTrace?.elapsed_ms)} />
-        <MetricCard label="Intent confidence" value={formatConfidence(latestExchange?.response?.intent?.confidence ?? traceConfidence(selectedTrace))} tone="green" />
-      </div>
-
-      <div className="grid cols-2 mt">
-        <Card>
-          <CardHeader title="Connection and thread setup" subtitle="Chat uses the normal JWT. Trace fetch uses the admin analysis token." />
-          <div className="card-body stack-small">
-            <label className="field-label">Chat JWT for /api/v1/chat/turn</label>
+      <Card className="chat-lab-send-card">
+        <CardHeader
+          title="1. Setup and send"
+          subtitle="Paste Chat JWT once, add customer ID, then send a message. Leave Thread ID empty to start a new thread."
+          action={<Button variant="ghost" onClick={startNewThread}>New thread</Button>}
+        />
+        <div className="card-body simple-chat-grid">
+          <div className="stack-small">
+            <label className="field-label">Chat JWT</label>
             <textarea
-              className="textarea mono"
-              rows={3}
-              placeholder="Paste CHAT_JWT here"
+              className="textarea mono compact-token"
+              rows={2}
+              placeholder="Paste generated CHAT_JWT"
               value={apiConfig.chatToken ?? ''}
               onChange={(event) => setApiConfig({ ...apiConfig, chatToken: event.target.value })}
             />
@@ -332,34 +305,28 @@ function ChatTestLab({
             <label className="field-label">Customer ID</label>
             <input
               className="input mono"
-              placeholder="SMOKE_CUSTOMER_ID or customer UUID"
+              placeholder="SMOKE_CUSTOMER_ID"
               value={apiConfig.customerId ?? ''}
               onChange={(event) => setApiConfig({ ...apiConfig, customerId: event.target.value })}
             />
 
             <label className="field-label">Thread ID</label>
-            <div className="inline-controls">
-              <input
-                className="input mono"
-                placeholder="Empty = backend creates one"
-                value={threadId}
-                onChange={(event) => setThreadId(event.target.value)}
-              />
-              <Button onClick={newThread}>New thread</Button>
-              <Button variant="ghost" disabled={!threadId} onClick={() => refreshThreadTraces()}>Refresh traces</Button>
-            </div>
+            <input
+              className="input mono"
+              placeholder="Auto-created after first message"
+              value={threadId}
+              onChange={(event) => setThreadId(event.target.value)}
+            />
           </div>
-        </Card>
 
-        <Card>
-          <CardHeader title="Send message" subtitle="Send a user message, receive bubbles, then auto-load the matching live trace." />
-          <div className="card-body stack-small">
+          <div className="stack-small">
+            <label className="field-label">Message</label>
             <textarea
-              className="textarea"
+              className="textarea message-box"
               rows={8}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              placeholder="Type a test message..."
+              placeholder="Type a customer message..."
               onKeyDown={(event) => {
                 if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                   void sendMessage();
@@ -367,146 +334,203 @@ function ChatTestLab({
               }}
             />
             <div className="action-row">
-              <Button disabled={chatBusy || !apiConfig.chatToken} onClick={sendMessage}>
-                {chatBusy ? 'Sending…' : 'Send message'}
+              <Button disabled={busy || !apiConfig.chatToken || !message.trim()} onClick={sendMessage}>
+                {busy ? 'Sending…' : 'Send message'}
               </Button>
-              <Badge tone="cyan">⌘/Ctrl + Enter</Badge>
-              {!apiConfig.chatToken ? <Badge tone="yellow">chat JWT required</Badge> : null}
+              <Badge tone="cyan">Ctrl/⌘ + Enter</Badge>
+              {threadId ? <Badge tone="purple">thread active</Badge> : <Badge tone="blue">new thread</Badge>}
             </div>
+            {error ? <div className="simple-error">{error}</div> : null}
           </div>
-        </Card>
+        </div>
+      </Card>
+
+      <div className="grid cols-4 mt">
+        <MetricCard label="Chat time" value={fmtMs(elapsedMs)} tone={latencyTone(elapsedMs)} />
+        <MetricCard label="Trace time" value={fmtMs(lastTrace?.elapsed_ms)} tone={latencyTone(lastTrace?.elapsed_ms)} />
+        <MetricCard label="Intent" value={lastResponse?.intent?.query_primary ?? traceQueryPrimary(lastTrace)} tone="blue" />
+        <MetricCard label="Service" value={lastResponse?.intent?.service_primary ?? traceServicePrimary(lastTrace)} tone="cyan" />
       </div>
 
-      <div className="split mt">
-        <Card>
-          <CardHeader title="Conversation responses" subtitle="Newest exchanges first. Shows raw chatbot output and classified intent returned by the chat endpoint." />
-          <div className="card-body chat-stream">
-            {exchanges.length ? exchanges.map((exchange) => (
-              <div className="chat-exchange" key={exchange.id}>
-                <div className="chat-user">
-                  <div className="chat-meta">
-                    <Badge tone="blue">user</Badge>
-                    <span>{compactDate(exchange.sentAt)}</span>
-                    <Badge tone={latencyTone(exchange.elapsedMs)}>{fmtMs(exchange.elapsedMs)}</Badge>
+      <div className="grid cols-2 mt">
+        <Card className="final-response-card">
+          <CardHeader
+            title="2. Final chatbot response"
+            subtitle={threadId ? `Thread: ${threadId}` : 'No thread started yet'}
+          />
+          <div className="card-body">
+            {lastResponse?.bubbles?.length ? (
+              <div className="clean-bubbles">
+                {lastResponse.bubbles.map((bubble, index) => (
+                  <div className="clean-bubble" key={`${bubble.bubble_index ?? index}-${index}`}>
+                    <span>Response {index + 1}</span>
+                    <p>{bubble.text}</p>
                   </div>
-                  <p>{exchange.message}</p>
-                </div>
-
-                {exchange.error ? (
-                  <div className="chat-error">
-                    <Badge tone="red">error</Badge>
-                    <span>{exchange.error}</span>
-                  </div>
-                ) : null}
-
-                {exchange.response ? (
-                  <div className="chat-assistant">
-                    <div className="chat-meta">
-                      <Badge tone="green">assistant</Badge>
-                      <Badge tone="purple">{exchange.response.intent?.query_primary ?? 'unknown intent'}</Badge>
-                      <Badge tone="cyan">{exchange.response.intent?.service_primary ?? 'unknown service'}</Badge>
-                      <Badge tone="blue">{formatConfidence(exchange.response.intent?.confidence)}</Badge>
-                    </div>
-
-                    <div className="bubble-list">
-                      {exchange.response.bubbles.map((bubble, index) => (
-                        <div className="response-bubble" key={`${exchange.id}-${index}`}>
-                          <span>Bubble {bubble.bubble_index ?? index}</span>
-                          <p>{bubble.text}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <JsonViewer value={{ intent: exchange.response.intent, language_status: exchange.response.language_status }} maxHeight={260} />
-                  </div>
-                ) : null}
+                ))}
               </div>
-            )) : (
-              <EmptyState title="No messages sent yet" body="Paste a Chat JWT, set a customer ID, and send a message to start testing." />
+            ) : (
+              <EmptyState title="No response yet" body="Send a message to see the final chatbot response here." />
             )}
           </div>
         </Card>
 
-        <div className="stack">
-          <Card>
-            <CardHeader
-              title="Live trace diagnosis"
-              subtitle={selectedTrace?.thread_id ? `Trace for ${selectedTrace.thread_id}` : 'Send a message to generate a trace.'}
-              action={<Badge tone={latencyTone(selectedTrace?.elapsed_ms)}>{fmtMs(selectedTrace?.elapsed_ms)}</Badge>}
+        <Card>
+          <CardHeader title="3. Final classification" subtitle="What the chatbot decided." />
+          <div className="card-body">
+            <KeyValueGrid
+              items={[
+                ['Query intent', lastResponse?.intent?.query_primary ?? traceQueryPrimary(lastTrace)],
+                ['Primary service', lastResponse?.intent?.service_primary ?? traceServicePrimary(lastTrace)],
+                ['Secondary services', <ChipList values={lastResponse?.intent?.service_secondary ?? traceSecondaryServices(lastTrace)} tone="cyan" />],
+                ['Funnel stage', lastResponse?.intent?.funnel_stage ?? traceFunnelStage(lastTrace)],
+                ['Needs clarification', String(lastResponse?.intent?.needs_clarification ?? traceNeedsClarification(lastTrace) ?? '—')],
+                ['Confidence', formatConfidence(lastResponse?.intent?.confidence ?? traceConfidence(lastTrace))]
+              ]}
             />
-            <div className="card-body">
-              <KeyValueGrid
-                items={[
-                  ['Recorded', compactDate(selectedTrace?.recorded_at)],
-                  ['Assistant source', selectedTrace?.assistant?.source ?? '—'],
-                  ['Query', traceQueryPrimary(selectedTrace)],
-                  ['Service', traceServicePrimary(selectedTrace)],
-                  ['Funnel', traceFunnelStage(selectedTrace)],
-                  ['Confidence', formatConfidence(traceConfidence(selectedTrace))]
-                ]}
-              />
-            </div>
-          </Card>
+            {lastResponse?.intent?.rationale ? (
+              <p className="simple-note">{lastResponse.intent.rationale}</p>
+            ) : null}
+          </div>
+        </Card>
+      </div>
 
-          <ProviderVotes votes={traceProviderVotes(selectedTrace)} />
+      <div className="grid cols-2 mt">
+        <Card>
+          <CardHeader title="Tri-Match detection" subtitle="Deterministic rule-based understanding." />
+          <div className="card-body stack-small">
+            <KeyValueGrid
+              items={[
+                ['Detected query', traceQueryPrimary(lastTrace)],
+                ['Detected service', traceServicePrimary(lastTrace)],
+                ['Funnel', traceFunnelStage(lastTrace)],
+                ['Confidence', formatConfidence(traceConfidence(lastTrace))]
+              ]}
+            />
 
-          <TriMatchRuleHits trace={selectedTrace} />
+            <div className="simple-section-title">Rule hits</div>
+            {triMatchHits.length ? (
+              <div className="rule-hit-list">
+                {triMatchHits.map((hit, index) => (
+                  <div className="rule-hit-card" key={`${String(hit.rule_id)}-${index}`}>
+                    <div>
+                      <strong>{String(hit.rule_id ?? 'Unknown rule')}</strong>
+                      <span>{String(hit.dimension ?? '—')} → {String(hit.target ?? '—')}</span>
+                    </div>
+                    <div>
+                      <Badge tone="blue">{String(hit.layer ?? 'layer')}</Badge>
+                      <Badge tone={hit.shortcut_eligible ? 'green' : 'purple'}>{hit.shortcut_eligible ? 'shortcut' : 'no shortcut'}</Badge>
+                      <Badge tone="cyan">{typeof hit.confidence === 'number' ? hit.confidence.toFixed(3) : '—'}</Badge>
+                    </div>
+                    <p>{String(hit.matched_text ?? '')}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No Tri-Match rule hits yet" body="Send a message and matched rules will appear here." />
+            )}
+          </div>
+        </Card>
 
-          <RuntimeAtomsPanel atoms={selectedTrace?.runtime_atoms} />
+        <Card>
+          <CardHeader title="OpenAI / Claude / provider votes" subtitle="What each provider or shortcut detected." />
+          <div className="card-body provider-simple-grid">
+            {providerInsights.length ? providerInsights.map((provider) => (
+              <div className="provider-simple-card" key={provider.provider}>
+                <div className="provider-card-top">
+                  <strong>{provider.provider}</strong>
+                  <Badge tone={statusTone(provider.status)}>{provider.status}</Badge>
+                </div>
+                <KeyValueGrid
+                  items={[
+                    ['Query', provider.query],
+                    ['Service', provider.service],
+                    ['Funnel', provider.funnel],
+                    ['Confidence', provider.confidence],
+                    ['Time', provider.time],
+                    ['Error', provider.error]
+                  ]}
+                />
+              </div>
+            )) : (
+              <EmptyState title="No provider votes yet" body="This may happen if the route used a deterministic shortcut or the trace is still loading." />
+            )}
+          </div>
+        </Card>
+      </div>
 
-          <Card>
-            <CardHeader title="Trace timeline for this thread" subtitle="Click a trace row to inspect older/newer turns in the same thread." />
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Latency</th>
-                    <th>Source</th>
-                    <th>Intent</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {threadTraces.length ? threadTraces.map((trace, index) => (
-                    <tr
-                      key={`${trace.recorded_at}-${index}`}
-                      className={index === selectedTraceIndex ? 'selected' : ''}
-                      onClick={() => setSelectedTraceIndex(index)}
-                    >
-                      <td>{compactDate(trace.recorded_at)}</td>
-                      <td><Badge tone={latencyTone(trace.elapsed_ms)}>{fmtMs(trace.elapsed_ms)}</Badge></td>
-                      <td>{trace.assistant?.source ?? 'unknown'}</td>
-                      <td>{traceQueryPrimary(trace)}</td>
-                      <td>{truncate(trace.message_preview ?? '', 70)}</td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={5}><EmptyState title="No thread traces yet" /></td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+      <div className="grid cols-2 mt">
+        <Card>
+          <CardHeader title="Runtime atoms" subtitle="Concrete terms detected before routing." />
+          <div className="card-body atom-simple-grid">
+            <SimpleAtom label="Services" values={(atoms?.services as string[]) ?? []} tone="cyan" />
+            <SimpleAtom label="Negated services" values={(atoms?.negated_services as string[]) ?? []} tone="red" />
+            <SimpleAtom label="Negated terms" values={(atoms?.negated_terms as string[]) ?? []} tone="red" />
+            <SimpleAtom label="Forbid markers" values={(atoms?.forbid_markers as string[]) ?? []} tone="red" />
+            <SimpleAtom label="Context markers" values={(atoms?.context_markers as string[]) ?? []} tone="purple" />
+            <SimpleAtom label="Query cues" values={(atoms?.query_cues as string[]) ?? []} tone="blue" />
+          </div>
+        </Card>
 
-          <Card>
-            <CardHeader title="Raw selected trace JSON" />
-            <div className="card-body">
-              <JsonViewer value={selectedTrace ?? {}} maxHeight={420} />
-            </div>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader title="Internal summary" subtitle="Short component summary, no raw JSON." />
+          <div className="card-body">
+            <KeyValueGrid
+              items={[
+                ['Assistant source', lastTrace?.assistant?.source ?? '—'],
+                ['Response bubbles', lastTrace?.assistant?.bubble_count ?? lastResponse?.bubbles?.length ?? '—'],
+                ['RAG chunks', numberFromComponents(lastTrace, 'rag_chunk_count')],
+                ['Events recorded', numberFromComponents(lastTrace, 'event_count')],
+                ['Pricing quote', boolFromComponents(lastTrace, 'pricing_quote_present')],
+                ['Portfolio response', boolFromComponents(lastTrace, 'portfolio_response_present')]
+              ]}
+            />
+          </div>
+        </Card>
       </div>
     </div>
   );
+}
+
+function SimpleAtom({ label, values, tone }: { label: string; values: string[]; tone: Tone }) {
+  return (
+    <div className="simple-atom-box">
+      <span>{label}</span>
+      <ChipList values={values} tone={tone} />
+    </div>
+  );
+}
+
+function getProviderInsights(trace?: LiveTrace) {
+  const votes = traceProviderVotes(trace);
+
+  return votes.map((vote) => ({
+    provider: prettyProviderName(vote.provider ?? 'unknown'),
+    status: vote.status ?? 'unknown',
+    query: titleCase(vote.vote?.query_primary),
+    service: titleCase(vote.vote?.service_primary),
+    funnel: titleCase(vote.vote?.funnel_stage),
+    confidence: typeof vote.vote?.confidence === 'number' ? vote.vote.confidence.toFixed(3) : '—',
+    time: fmtMs(vote.latency_ms),
+    error: vote.error ? truncate(vote.error, 80) : '—'
+  }));
+}
+
+function prettyProviderName(provider: string): string {
+  const normalized = provider.toLowerCase();
+  if (normalized.includes('openai')) return 'OpenAI';
+  if (normalized.includes('claude')) return 'Claude';
+  if (normalized.includes('haiku')) return 'Claude Haiku';
+  if (normalized.includes('deepseek')) return 'DeepSeek';
+  if (normalized.includes('trimatch')) return 'Tri-Match Shortcut';
+  if (normalized.includes('deterministic')) return 'Deterministic Guard';
+  return provider;
 }
 
 function TriMatchRuleHits({ trace }: { trace?: LiveTrace }) {
   const evidence = traceEvidence(trace);
   return (
     <Card>
-      <CardHeader title="Tri-Match rule hits" subtitle="Matched rules, layers, confidence, and shortcut eligibility from the selected live trace." />
+      <CardHeader title="Tri-Match rule hits" subtitle="Matched rules, layers, confidence, and shortcut eligibility." />
       <div className="table-wrap">
         <table>
           <thead>
@@ -552,8 +576,8 @@ function traceProviderVotes(trace?: LiveTrace): ProviderVote[] {
   const decisionVotes = trace?.decision?.provider_votes;
   if (Array.isArray(decisionVotes)) return decisionVotes as ProviderVote[];
 
-  const finalVote = trace?.decision?.final_vote;
-  if (finalVote && typeof finalVote === 'object') {
+  const finalVote = traceFinalVote(trace);
+  if (finalVote) {
     return [{
       provider: 'decision_layer',
       status: 'selected',
@@ -562,6 +586,24 @@ function traceProviderVotes(trace?: LiveTrace): ProviderVote[] {
   }
 
   return [];
+}
+
+function traceSecondaryServices(trace?: LiveTrace): string[] {
+  const fromIntent = trace?.intent?.service_secondary;
+  if (Array.isArray(fromIntent)) return fromIntent;
+
+  const finalVote = traceFinalVote(trace);
+  const fromFinal = finalVote?.service_secondary;
+  return Array.isArray(fromFinal) ? fromFinal.map(String) : [];
+}
+
+function traceNeedsClarification(trace?: LiveTrace): boolean | undefined {
+  const fromIntent = trace?.intent?.needs_clarification;
+  if (typeof fromIntent === 'boolean') return fromIntent;
+
+  const finalVote = traceFinalVote(trace);
+  const fromFinal = finalVote?.needs_clarification;
+  return typeof fromFinal === 'boolean' ? fromFinal : undefined;
 }
 
 function traceQueryPrimary(trace?: LiveTrace): string {
@@ -608,6 +650,16 @@ function traceConfidence(trace?: LiveTrace): number | undefined {
 
 function formatConfidence(value?: number): string {
   return typeof value === 'number' ? value.toFixed(3) : '—';
+}
+
+function numberFromComponents(trace: LiveTrace | undefined, key: string): string {
+  const value = trace?.components?.[key];
+  return typeof value === 'number' ? String(value) : '—';
+}
+
+function boolFromComponents(trace: LiveTrace | undefined, key: string): string {
+  const value = trace?.components?.[key];
+  return typeof value === 'boolean' ? (value ? 'yes' : 'no') : '—';
 }
 
 
