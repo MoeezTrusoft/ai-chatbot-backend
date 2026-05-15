@@ -6,7 +6,11 @@ from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 
 
 def _none_like(value: object) -> bool:
-    return value is None or (isinstance(value, str) and value.strip().lower() in {"", "none", "null", "n/a"})
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"", "none", "null", "n/a"}
+    return False
 
 
 def _coerce_list(value: object) -> list[object]:
@@ -36,7 +40,11 @@ def _normalize_enum_list(value: object, enum_cls: type[Enum]) -> list[object]:
     return normalized
 
 
-def _normalize_single_enum_or_default(value: object, enum_cls: type[Enum], default: object) -> object:
+def _normalize_single_enum_or_default(
+    value: object,
+    enum_cls: type[Enum],
+    default: object,
+) -> object:
     if isinstance(value, enum_cls):
         return value
 
