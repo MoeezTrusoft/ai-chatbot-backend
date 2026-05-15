@@ -7,12 +7,13 @@ import { AdminApiClient } from './lib/apiClient';
 import { defaultApiConfig, loadApiConfig, saveApiConfig } from './lib/apiConfig';
 import { compactDate, downloadJson, fmtMs, fmtNumber, getAssistantText, intentCounts, latencyTone, objectEntries, routeSourceCounts, serviceCounts, titleCase, truncate } from './lib/format';
 import { loadReports, loadRules, saveReports, saveRules } from './lib/storage';
-import type { ActivationResult, AdminApiConfig, AdminHealth, ContextCandidateReport, ContextReportRow, LiveTrace, LoadedReport, PageKey, PerformanceReport, ProviderVote, ReportTurn, RuleCandidate, RuleCandidateStatus, RulesArmyPreflight, Tone } from './types/reports';
+import type { ActivationResult, AdminApiConfig, AdminHealth, ChatLabExchange, ChatTurnResponse, ContextCandidateReport, ContextReportRow, LiveTrace, LoadedReport, PageKey, PerformanceReport, ProviderVote, ReportTurn, RuleCandidate, RuleCandidateStatus, RulesArmyPreflight, Tone } from './types/reports';
 
 const nav: Array<{ key: PageKey; label: string; hint: string }> = [
   { key: 'dashboard', label: 'Dashboard', hint: 'System health' },
   { key: 'trace', label: 'Trace Viewer', hint: 'Turn inspection' },
   { key: 'live', label: 'Live Traces', hint: 'Fresh chat turns' },
+  { key: 'lab', label: 'Chat Test Lab', hint: 'Send + inspect' },
   { key: 'waterfall', label: 'Waterfall', hint: 'Latency timeline' },
   { key: 'intent', label: 'Intent', hint: 'Votes + decision' },
   { key: 'trimatch', label: 'Tri-Match', hint: 'Rules + evidence' },
@@ -158,6 +159,7 @@ export function App() {
         {page === 'dashboard' && <Dashboard performance={performance} context={context} onLoad={addReport} onLiveImport={importLiveReports} apiEnabled={apiConfig.enabled} />}
         {page === 'trace' && <TraceViewer report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} search={search} />}
         {page === 'live' && <LiveTracePage traces={liveTraces} refresh={refreshLiveTraces} apiEnabled={apiConfig.enabled} search={search} filters={liveTraceFilters} setFilters={setLiveTraceFilters} />}
+        {page === 'lab' && <ChatTestLab api={api} apiConfig={apiConfig} setApiConfig={setApiConfig} withApi={withApi} />}
         {page === 'waterfall' && <Waterfall report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'intent' && <IntentInspector report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'trimatch' && <TriMatchView report={context} selectedRow={selectedRow} onSelect={setSelectedRow} search={search} />}
@@ -205,6 +207,407 @@ function RuntimeAtomsPanel({ atoms }: { atoms?: Record<string, unknown> }) {
 
 function ProviderVotes({ votes }: { votes: ProviderVote[] }) {
   return <Card><CardHeader title="Provider votes" subtitle="LLM providers, deterministic shortcuts, and fallback votes." /><div className="table-wrap"><table><thead><tr><th>Provider</th><th>Status</th><th>Intent</th><th>Service</th><th>Confidence</th><th>Error</th></tr></thead><tbody>{votes.length ? votes.map((vote, index) => <tr key={`${vote.provider}-${index}`}><td>{vote.provider ?? 'unknown'}</td><td><Badge tone={statusTone(vote.status)}>{vote.status ?? 'unknown'}</Badge></td><td>{titleCase(vote.vote?.query_primary)}</td><td>{titleCase(vote.vote?.service_primary)}</td><td>{typeof vote.vote?.confidence === 'number' ? vote.vote.confidence.toFixed(3) : '—'}</td><td>{vote.error ? <Badge tone="red">{truncate(vote.error, 40)}</Badge> : '—'}</td></tr>) : <tr><td colSpan={6}><EmptyState title="No provider votes in selected turn" /></td></tr>}</tbody></table></div></Card>;
+}
+
+
+
+function ChatTestLab({
+  api,
+  apiConfig,
+  setApiConfig,
+  withApi
+}: {
+  api: AdminApiClient;
+  apiConfig: AdminApiConfig;
+  setApiConfig: (config: AdminApiConfig) => void;
+  withApi: (label: string, action: () => Promise<void>) => Promise<void>;
+}) {
+  const [threadId, setThreadId] = useState('');
+  const [message, setMessage] = useState('I need editing, formatting, and marketing for my manuscript.');
+  const [exchanges, setExchanges] = useState<ChatLabExchange[]>([]);
+  const [threadTraces, setThreadTraces] = useState<LiveTrace[]>([]);
+  const [selectedTraceIndex, setSelectedTraceIndex] = useState(0);
+  const [chatBusy, setChatBusy] = useState(false);
+
+  const latestExchange = exchanges[0];
+  const selectedTrace = threadTraces[selectedTraceIndex] ?? threadTraces[0];
+
+  function newThread() {
+    const next = crypto.randomUUID();
+    setThreadId(next);
+    setExchanges([]);
+    setThreadTraces([]);
+    setSelectedTraceIndex(0);
+  }
+
+  async function refreshThreadTraces(targetThreadId = threadId) {
+    if (!targetThreadId) return;
+    await withApi('Refresh thread traces', async () => {
+      const response = await api.threadLiveTraces(targetThreadId, { limit: 50 });
+      setThreadTraces(response.traces);
+      setSelectedTraceIndex(0);
+    });
+  }
+
+  async function sendMessage() {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+
+    const started = performance.now();
+    setChatBusy(true);
+
+    try {
+      const response = await api.sendChatTurn({
+        message: trimmed,
+        thread_id: threadId || undefined,
+        customer_id: apiConfig.customerId || undefined,
+        chatToken: apiConfig.chatToken || undefined
+      });
+
+      const elapsedMs = Math.round((performance.now() - started) * 100) / 100;
+      const resolvedThreadId = response.thread_id;
+
+      setThreadId(resolvedThreadId);
+      setExchanges((current) => [
+        {
+          id: crypto.randomUUID(),
+          message: trimmed,
+          response,
+          sentAt: new Date().toISOString(),
+          elapsedMs
+        },
+        ...current
+      ]);
+
+      setMessage('');
+
+      const traces = await api.threadLiveTraces(resolvedThreadId, { limit: 50 });
+      setThreadTraces(traces.traces);
+      setSelectedTraceIndex(0);
+    } catch (error) {
+      setExchanges((current) => [
+        {
+          id: crypto.randomUUID(),
+          message: trimmed,
+          error: error instanceof Error ? error.message : String(error),
+          sentAt: new Date().toISOString(),
+          elapsedMs: Math.round((performance.now() - started) * 100) / 100
+        },
+        ...current
+      ]);
+    } finally {
+      setChatBusy(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <SectionTitle
+        kicker="Chat Test Lab"
+        title="Initiate a thread, send messages, and inspect routing intelligence"
+        subtitle="A full test bench for chatbot response, classified intent, provider votes, Tri-Match evidence, runtime atoms, latency, and raw trace diagnostics."
+        right={<Badge tone={apiConfig.enabled ? 'green' : 'purple'}>{apiConfig.enabled ? 'admin API live' : 'admin API disabled'}</Badge>}
+      />
+
+      <div className="grid cols-4">
+        <MetricCard label="Thread traces" value={threadTraces.length} tone="blue" />
+        <MetricCard label="Last chat latency" value={fmtMs(latestExchange?.elapsedMs)} tone={latencyTone(latestExchange?.elapsedMs)} />
+        <MetricCard label="Trace latency" value={fmtMs(selectedTrace?.elapsed_ms)} tone={latencyTone(selectedTrace?.elapsed_ms)} />
+        <MetricCard label="Intent confidence" value={formatConfidence(latestExchange?.response?.intent?.confidence ?? traceConfidence(selectedTrace))} tone="green" />
+      </div>
+
+      <div className="grid cols-2 mt">
+        <Card>
+          <CardHeader title="Connection and thread setup" subtitle="Chat uses the normal JWT. Trace fetch uses the admin analysis token." />
+          <div className="card-body stack-small">
+            <label className="field-label">Chat JWT for /api/v1/chat/turn</label>
+            <textarea
+              className="textarea mono"
+              rows={3}
+              placeholder="Paste CHAT_JWT here"
+              value={apiConfig.chatToken ?? ''}
+              onChange={(event) => setApiConfig({ ...apiConfig, chatToken: event.target.value })}
+            />
+
+            <label className="field-label">Customer ID</label>
+            <input
+              className="input mono"
+              placeholder="SMOKE_CUSTOMER_ID or customer UUID"
+              value={apiConfig.customerId ?? ''}
+              onChange={(event) => setApiConfig({ ...apiConfig, customerId: event.target.value })}
+            />
+
+            <label className="field-label">Thread ID</label>
+            <div className="inline-controls">
+              <input
+                className="input mono"
+                placeholder="Empty = backend creates one"
+                value={threadId}
+                onChange={(event) => setThreadId(event.target.value)}
+              />
+              <Button onClick={newThread}>New thread</Button>
+              <Button variant="ghost" disabled={!threadId} onClick={() => refreshThreadTraces()}>Refresh traces</Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Send message" subtitle="Send a user message, receive bubbles, then auto-load the matching live trace." />
+          <div className="card-body stack-small">
+            <textarea
+              className="textarea"
+              rows={8}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Type a test message..."
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  void sendMessage();
+                }
+              }}
+            />
+            <div className="action-row">
+              <Button disabled={chatBusy || !apiConfig.chatToken} onClick={sendMessage}>
+                {chatBusy ? 'Sending…' : 'Send message'}
+              </Button>
+              <Badge tone="cyan">⌘/Ctrl + Enter</Badge>
+              {!apiConfig.chatToken ? <Badge tone="yellow">chat JWT required</Badge> : null}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="split mt">
+        <Card>
+          <CardHeader title="Conversation responses" subtitle="Newest exchanges first. Shows raw chatbot output and classified intent returned by the chat endpoint." />
+          <div className="card-body chat-stream">
+            {exchanges.length ? exchanges.map((exchange) => (
+              <div className="chat-exchange" key={exchange.id}>
+                <div className="chat-user">
+                  <div className="chat-meta">
+                    <Badge tone="blue">user</Badge>
+                    <span>{compactDate(exchange.sentAt)}</span>
+                    <Badge tone={latencyTone(exchange.elapsedMs)}>{fmtMs(exchange.elapsedMs)}</Badge>
+                  </div>
+                  <p>{exchange.message}</p>
+                </div>
+
+                {exchange.error ? (
+                  <div className="chat-error">
+                    <Badge tone="red">error</Badge>
+                    <span>{exchange.error}</span>
+                  </div>
+                ) : null}
+
+                {exchange.response ? (
+                  <div className="chat-assistant">
+                    <div className="chat-meta">
+                      <Badge tone="green">assistant</Badge>
+                      <Badge tone="purple">{exchange.response.intent?.query_primary ?? 'unknown intent'}</Badge>
+                      <Badge tone="cyan">{exchange.response.intent?.service_primary ?? 'unknown service'}</Badge>
+                      <Badge tone="blue">{formatConfidence(exchange.response.intent?.confidence)}</Badge>
+                    </div>
+
+                    <div className="bubble-list">
+                      {exchange.response.bubbles.map((bubble, index) => (
+                        <div className="response-bubble" key={`${exchange.id}-${index}`}>
+                          <span>Bubble {bubble.bubble_index ?? index}</span>
+                          <p>{bubble.text}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <JsonViewer value={{ intent: exchange.response.intent, language_status: exchange.response.language_status }} maxHeight={260} />
+                  </div>
+                ) : null}
+              </div>
+            )) : (
+              <EmptyState title="No messages sent yet" body="Paste a Chat JWT, set a customer ID, and send a message to start testing." />
+            )}
+          </div>
+        </Card>
+
+        <div className="stack">
+          <Card>
+            <CardHeader
+              title="Live trace diagnosis"
+              subtitle={selectedTrace?.thread_id ? `Trace for ${selectedTrace.thread_id}` : 'Send a message to generate a trace.'}
+              action={<Badge tone={latencyTone(selectedTrace?.elapsed_ms)}>{fmtMs(selectedTrace?.elapsed_ms)}</Badge>}
+            />
+            <div className="card-body">
+              <KeyValueGrid
+                items={[
+                  ['Recorded', compactDate(selectedTrace?.recorded_at)],
+                  ['Assistant source', selectedTrace?.assistant?.source ?? '—'],
+                  ['Query', traceQueryPrimary(selectedTrace)],
+                  ['Service', traceServicePrimary(selectedTrace)],
+                  ['Funnel', traceFunnelStage(selectedTrace)],
+                  ['Confidence', formatConfidence(traceConfidence(selectedTrace))]
+                ]}
+              />
+            </div>
+          </Card>
+
+          <ProviderVotes votes={traceProviderVotes(selectedTrace)} />
+
+          <TriMatchRuleHits trace={selectedTrace} />
+
+          <RuntimeAtomsPanel atoms={selectedTrace?.runtime_atoms} />
+
+          <Card>
+            <CardHeader title="Trace timeline for this thread" subtitle="Click a trace row to inspect older/newer turns in the same thread." />
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Latency</th>
+                    <th>Source</th>
+                    <th>Intent</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {threadTraces.length ? threadTraces.map((trace, index) => (
+                    <tr
+                      key={`${trace.recorded_at}-${index}`}
+                      className={index === selectedTraceIndex ? 'selected' : ''}
+                      onClick={() => setSelectedTraceIndex(index)}
+                    >
+                      <td>{compactDate(trace.recorded_at)}</td>
+                      <td><Badge tone={latencyTone(trace.elapsed_ms)}>{fmtMs(trace.elapsed_ms)}</Badge></td>
+                      <td>{trace.assistant?.source ?? 'unknown'}</td>
+                      <td>{traceQueryPrimary(trace)}</td>
+                      <td>{truncate(trace.message_preview ?? '', 70)}</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={5}><EmptyState title="No thread traces yet" /></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Raw selected trace JSON" />
+            <div className="card-body">
+              <JsonViewer value={selectedTrace ?? {}} maxHeight={420} />
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TriMatchRuleHits({ trace }: { trace?: LiveTrace }) {
+  const evidence = traceEvidence(trace);
+  return (
+    <Card>
+      <CardHeader title="Tri-Match rule hits" subtitle="Matched rules, layers, confidence, and shortcut eligibility from the selected live trace." />
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rule</th>
+              <th>Dimension</th>
+              <th>Target</th>
+              <th>Layer</th>
+              <th>Conf</th>
+              <th>Matched text</th>
+              <th>Shortcut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {evidence.length ? evidence.map((item, index) => (
+              <tr key={`${String(item.rule_id)}-${index}`}>
+                <td>{String(item.rule_id ?? '—')}</td>
+                <td>{String(item.dimension ?? '—')}</td>
+                <td>{String(item.target ?? '—')}</td>
+                <td><Badge tone="blue">{String(item.layer ?? '—')}</Badge></td>
+                <td>{typeof item.confidence === 'number' ? item.confidence.toFixed(3) : '—'}</td>
+                <td>{String(item.matched_text ?? '—')}</td>
+                <td><Badge tone={item.shortcut_eligible ? 'green' : 'purple'}>{item.shortcut_eligible ? 'yes' : 'no'}</Badge></td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={7}><EmptyState title="No Tri-Match evidence available" /></td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function traceEvidence(trace?: LiveTrace): Array<Record<string, unknown>> {
+  const evidence = trace?.trimatch?.evidence;
+  return Array.isArray(evidence) ? evidence as Array<Record<string, unknown>> : [];
+}
+
+function traceProviderVotes(trace?: LiveTrace): ProviderVote[] {
+  const decisionVotes = trace?.decision?.provider_votes;
+  if (Array.isArray(decisionVotes)) return decisionVotes as ProviderVote[];
+
+  const finalVote = trace?.decision?.final_vote;
+  if (finalVote && typeof finalVote === 'object') {
+    return [{
+      provider: 'decision_layer',
+      status: 'selected',
+      vote: finalVote as ProviderVote['vote']
+    }];
+  }
+
+  return [];
+}
+
+function traceQueryPrimary(trace?: LiveTrace): string {
+  return traceStringValue(trace, 'query_primary');
+}
+
+function traceServicePrimary(trace?: LiveTrace): string {
+  return traceStringValue(trace, 'service_primary');
+}
+
+function traceFunnelStage(trace?: LiveTrace): string {
+  return traceStringValue(trace, 'funnel_stage');
+}
+
+function traceStringValue(trace: LiveTrace | undefined, key: string): string {
+  const intentValue = trace?.intent?.[key];
+  if (typeof intentValue === 'string' && intentValue) return intentValue;
+
+  const decisionValue = trace?.decision?.[key];
+  if (typeof decisionValue === 'string' && decisionValue) return decisionValue;
+
+  const finalVote = traceFinalVote(trace);
+  const finalValue = finalVote?.[key];
+  return typeof finalValue === 'string' && finalValue ? finalValue : '—';
+}
+
+function traceFinalVote(trace?: LiveTrace): Record<string, unknown> | undefined {
+  const value = trace?.decision?.final_vote;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function traceConfidence(trace?: LiveTrace): number | undefined {
+  const intentConfidence = trace?.intent?.confidence;
+  if (typeof intentConfidence === 'number') return intentConfidence;
+
+  const decisionConfidence = trace?.decision?.confidence;
+  if (typeof decisionConfidence === 'number') return decisionConfidence;
+
+  const finalConfidence = traceFinalVote(trace)?.confidence;
+  return typeof finalConfidence === 'number' ? finalConfidence : undefined;
+}
+
+function formatConfidence(value?: number): string {
+  return typeof value === 'number' ? value.toFixed(3) : '—';
 }
 
 

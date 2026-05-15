@@ -3,6 +3,7 @@ import type {
   ActivationResult,
   AdminApiConfig,
   AdminHealth,
+  ChatTurnResponse,
   LoadedReport,
   LiveTraceFilters,
   LiveTraceResponse,
@@ -22,6 +23,24 @@ export class AdminApiClient {
 
   async health(): Promise<AdminHealth> {
     return this.request('/api/admin/analysis/health');
+  }
+
+  async sendChatTurn(input: {
+    message: string;
+    thread_id?: string;
+    customer_id?: string;
+    chatToken?: string;
+  }): Promise<ChatTurnResponse> {
+    const token = input.chatToken || this.config.chatToken || this.config.token;
+    return this.request('/api/v1/chat/turn', {
+      method: 'POST',
+      body: {
+        thread_id: input.thread_id || undefined,
+        customer_id: input.customer_id || this.config.customerId || undefined,
+        message: input.message
+      },
+      token
+    });
   }
 
   async latestPerformanceReport(): Promise<LoadedReport> {
@@ -109,7 +128,10 @@ export class AdminApiClient {
     return encoded ? `?${encoded}` : '';
   }
 
-  private async request<T>(path: string, init?: { method?: HttpMethod; body?: unknown }): Promise<T> {
+  private async request<T>(
+    path: string,
+    init?: { method?: HttpMethod; body?: unknown; token?: string }
+  ): Promise<T> {
     if (!this.isEnabled) {
       throw new Error('Admin API is disabled. Enable it in Settings and provide a backend URL/token.');
     }
@@ -117,7 +139,7 @@ export class AdminApiClient {
       method: init?.method ?? 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {})
+        ...((init?.token ?? this.config.token) ? { Authorization: `Bearer ${init?.token ?? this.config.token}` } : {})
       },
       body: init?.body === undefined ? undefined : JSON.stringify(init.body)
     });
