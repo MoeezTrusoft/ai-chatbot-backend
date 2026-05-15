@@ -165,3 +165,40 @@ code { color: #a5f3fc; background: rgba(34,211,238,.08); padding: 1px 5px; borde
     grid-template-columns: 1fr;
   }
 }
+
+.preset-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.preset-pill button {
+  border: 0;
+  background: transparent;
+  color: #dbeafe;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.preset-pill button:hover {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.preset-delete {
+  color: #fecaca !important;
+  border-left: 1px solid rgba(148, 163, 184, 0.2) !important;
+}
+
+.muted {
+  color: #94a3b8;
+  font-size: 13px;
+}
