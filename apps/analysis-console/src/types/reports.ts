@@ -210,6 +210,19 @@ export type LiveTrace = {
   [key: string]: unknown;
 };
 
+
+
+export type LiveTraceFilters = {
+  limit?: number;
+  source?: string;
+  query_primary?: string;
+  service_primary?: string;
+  customer_id?: string;
+  min_latency_ms?: number;
+  has_forbid_markers?: boolean;
+  has_negated_terms?: boolean;
+};
+
 export type LiveTraceResponse = {
   trace_path: string;
   count: number;

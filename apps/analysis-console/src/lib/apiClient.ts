@@ -4,6 +4,7 @@ import type {
   AdminApiConfig,
   AdminHealth,
   LoadedReport,
+  LiveTraceFilters,
   LiveTraceResponse,
   RuleCandidate,
   RuleCandidateStatus,
@@ -38,13 +39,16 @@ export class AdminApiClient {
     return parseReportJson(data, 'Fresh Tri-Match context eval');
   }
 
-  async latestLiveTraces(limit = 50): Promise<LiveTraceResponse> {
-    return this.request(`/api/admin/analysis/traces/latest?limit=${encodeURIComponent(String(limit))}`);
+  async latestLiveTraces(filters: LiveTraceFilters = {}): Promise<LiveTraceResponse> {
+    return this.request(`/api/admin/analysis/traces/latest${this.queryString(filters)}`);
   }
 
-  async threadLiveTraces(threadId: string, limit = 100): Promise<LiveTraceResponse> {
+  async threadLiveTraces(
+    threadId: string,
+    filters: LiveTraceFilters = {}
+  ): Promise<LiveTraceResponse> {
     return this.request(
-      `/api/admin/analysis/traces/${encodeURIComponent(threadId)}?limit=${encodeURIComponent(String(limit))}`
+      `/api/admin/analysis/traces/${encodeURIComponent(threadId)}${this.queryString(filters)}`
     );
   }
 
@@ -91,6 +95,18 @@ export class AdminApiClient {
       method: 'POST',
       body: { backup_dir: backupDir }
     });
+  }
+
+  private queryString(params: Record<string, unknown>): string {
+    const query = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === '') continue;
+      query.set(key, String(value));
+    }
+
+    const encoded = query.toString();
+    return encoded ? `?${encoded}` : '';
   }
 
   private async request<T>(path: string, init?: { method?: HttpMethod; body?: unknown }): Promise<T> {
