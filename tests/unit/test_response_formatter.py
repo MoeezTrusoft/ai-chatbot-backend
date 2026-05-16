@@ -5,8 +5,7 @@ def test_formatter_trims_leading_rag_sentence_fragment() -> None:
     formatter = ResponseFormatter(max_bubble_chars=500)
 
     bubbles = formatter.format(
-        "ed on the next idea.\nEngagement Models\n\n"
-        "We offer three engagement levels."
+        "ed on the next idea.\nEngagement Models\n\nWe offer three engagement levels."
     )
 
     assert bubbles

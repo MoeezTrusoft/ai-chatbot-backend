@@ -1,4 +1,3 @@
-
 import pytest
 
 from bookcraft.components.extraction.schemas import CombinedExtraction

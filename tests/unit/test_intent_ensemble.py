@@ -327,6 +327,7 @@ async def test_circuit_breaker_backs_off_when_half_open_probe_fails() -> None:
     clock[0] = 31.0
     assert breaker.before_call() is True
 
+
 def test_decision_layer_uses_funnel_only_trimatch_when_all_providers_fail() -> None:
     trimatch = TriMatchResult(
         funnel_stage=SalesStage.QUOTE_REQUESTED,
@@ -377,6 +378,7 @@ def test_provider_payload_normalizer_handles_model_field_shape_drift() -> None:
     assert [item.value for item in vote.service_secondary] == ["publishing_distribution"]
     assert vote.evidence
 
+
 def test_intent_vote_schema_normalizes_provider_shape_drift() -> None:
     raw = {
         "query_primary": "service_question",
@@ -398,6 +400,7 @@ def test_intent_vote_schema_normalizes_provider_shape_drift() -> None:
     assert [item.value for item in vote.service_secondary] == ["video_trailer"]
     assert vote.confidence == 0.91
     assert vote.evidence
+
 
 @pytest.mark.asyncio
 async def test_trimatch_safe_service_shortcut_skips_provider_calls() -> None:
@@ -583,3 +586,33 @@ async def test_deterministic_guarded_shortcut_safely_handles_negated_mixed_reque
     assert classifier.last_decision.provider_votes[0].provider == (
         "deterministic_guarded_query_shortcut"
     )
+
+
+def test_trimatch_shortcut_preserves_secondary_services() -> None:
+    from bookcraft.components.intent.ensemble import EnsembleIntentClassifier
+    from bookcraft.components.trimatch.schemas import TriMatchResult
+    from bookcraft.domain.enums import ServiceCategory
+
+    classifier = EnsembleIntentClassifier(providers=[], decision_layer=None)  # type: ignore[arg-type]
+    vote = classifier._trimatch_safe_service_shortcut_vote(
+        TriMatchResult(
+            query_primary=None,
+            service_primary=ServiceCategory.EDITING_PROOFREADING,
+            service_secondary=[
+                ServiceCategory.INTERIOR_FORMATTING,
+                ServiceCategory.MARKETING_PROMOTION,
+            ],
+            funnel_stage=None,
+            confidence=0.98,
+            evidence=[],
+            mode="shadow",
+            shortcut_eligible=False,
+            shadow_only_dimensions=[],
+        )
+    )
+
+    assert vote is not None
+    assert vote.service_secondary == [
+        ServiceCategory.INTERIOR_FORMATTING,
+        ServiceCategory.MARKETING_PROMOTION,
+    ]
