@@ -48,118 +48,165 @@ class SonnetResponseGenerator:
     ) -> ResponseDraft:
         with RESPONSE_SECONDS.time():
             route = self.router.route(intent)
+            rag_chunks = rag_chunks or []
+            runtime_atoms = runtime_atoms or {}
+
             if (
                 intent.query_primary == QueryIntentType.GREETING
                 and intent.confidence >= 0.9
                 and message.normalized.lower() in {"hi", "hello", "hey"}
             ):
                 return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
+
             if pricing_missing_question:
-                return ResponseDraft(text=pricing_missing_question, source="pricing_engine")
+                return ResponseDraft(
+                    text=_customer_safe_missing_scope_question(
+                        pricing_missing_question,
+                        intent=intent,
+                        runtime_atoms=runtime_atoms,
+                    ),
+                    source="pricing_engine",
+                )
+
             if pricing_quote is not None:
                 return ResponseDraft(
                     text=_pricing_quote_text(pricing_quote),
                     source="pricing_engine",
                 )
+
             if timeline_estimate is not None:
                 return ResponseDraft(
                     text=_timeline_quote_text(timeline_estimate),
                     source="pricing_engine",
                 )
+
             if portfolio_response is not None:
                 return _portfolio_response_text(portfolio_response)
-            if document_status_message is not None:
-                return ResponseDraft(text=document_status_message, source=route.name)
 
-            # Deterministic guard: mixed requests for pricing, samples/portfolio,
-            # and NDA must not rely on the response LLM when required scope is
-            # missing. This keeps links, numbers, and legal/document language
-            # inside approved tools/templates.
+            if document_status_message is not None:
+                return ResponseDraft(
+                    text=_clean_guarded_status_message(
+                        document_status_message,
+                        intent=intent,
+                        runtime_atoms=runtime_atoms,
+                    ),
+                    source=route.name,
+                )
+
+            # Guarded mixed request: keep legal/link/price safety, but use human copy.
             if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
                 return ResponseDraft(
                     text=(
-                        "I can help with samples, pricing, and the NDA safely. "
-                        "To avoid inventing links or numbers, BookCraft needs the service type "
-                        "and genre before showing portfolio samples; word or page count, "
-                        "manuscript status, and deadline before pricing or timelines; and "
-                        "author name, email, phone, and effective date before an NDA can enter "
-                        "the document queue."
+                        "I can help with samples, an estimate, and the NDA step without "
+                        "guessing or sending anything generic. For samples, I’d match by "
+                        "service and genre; for an estimate, I’d need word or page count, "
+                        "manuscript stage, and deadline; and for the NDA, I’d need the author "
+                        "name, email, phone, and preferred effective date. Which part would "
+                        "you like to start with?"
                     ),
                     source="deterministic_mixed_request_guard",
                 )
 
-            # Fast path: RAG-backed service/help responses already have approved
-            # source text. Avoid spending 6-8 seconds on Sonnet just to restate
-            # the retrieved BookCraft content. High-stakes flows above still use
-            # deterministic pricing/document/portfolio guards.
-            if rag_chunks:
-                return ResponseDraft(
-                    text=_humanized_template_response(
-                        intent=intent,
-                        state=state,
-                        message=message,
-                        runtime_atoms=runtime_atoms or {},
-                        rag_chunks=rag_chunks,
-                        route_name=route.name,
-                        response_hint=response_hint,
-                    ),
-                    source=route.name if route.name != "direct_answer" else "rag_fast_path",
-                )
+            template_fallback = _humanized_template_response(
+                intent=intent,
+                state=state,
+                message=message,
+                runtime_atoms=runtime_atoms,
+                rag_chunks=rag_chunks,
+                route_name=route.name,
+                response_hint=response_hint,
+            )
 
-            LLM_CALLS.labels(provider=self.provider_name, purpose="response").inc()
-            if self.adapter is not None:
-                try:
-                    generated = cast(
-                        GeneratedResponseText,
-                        await self.adapter.structured(
-                            system=_response_system_prompt(),
-                            user=_response_user_prompt(
-                                message=message,
-                                state=state,
-                                intent=intent,
-                                extraction=extraction,
-                                rag_chunks=rag_chunks or [],
-                                route_name=route.name,
-                                runtime_atoms=runtime_atoms or {},
-                                response_hint=response_hint,
-                            ),
-                            output_model=GeneratedResponseText,
-                            purpose="response",
-                        ),
-                    )
-                    text = _safe_generated_text(
-                        generated.text,
-                        fallback=_humanized_template_response(
-                            intent=intent,
-                            state=state,
-                            message=message,
-                            runtime_atoms=runtime_atoms or {},
-                            rag_chunks=rag_chunks or [],
-                            route_name=route.name,
-                            response_hint=response_hint,
-                        ),
-                    )
-                    return ResponseDraft(text=text, source=self.provider_name)
-                except Exception as exc:
-                    # Fail closed to the deterministic fallback. The chatbot must remain
-                    # usable without letting model/provider errors leak to customers.
-                    logger.warning(
-                        "response_generation_provider_failed",
-                        provider=self.provider_name,
-                        error=str(exc),
-                    )
+            if self.adapter is None:
+                return ResponseDraft(text=template_fallback, source="template_no_adapter")
+
+            text = await self._try_llm(
+                message=message,
+                state=state,
+                intent=intent,
+                extraction=extraction,
+                rag_chunks=rag_chunks[:5],
+                route_name=route.name,
+                runtime_atoms=runtime_atoms,
+                response_hint=response_hint,
+                attempt="full",
+            )
+            if text is not None:
+                return ResponseDraft(text=text, source=self.provider_name)
+
+            text = await self._try_llm(
+                message=message,
+                state=state,
+                intent=intent,
+                extraction=extraction,
+                rag_chunks=[],
+                route_name=route.name,
+                runtime_atoms=runtime_atoms,
+                response_hint=response_hint,
+                attempt="reduced",
+            )
+            if text is not None:
+                return ResponseDraft(text=text, source=f"{self.provider_name}_reduced")
+
             return ResponseDraft(
-                text=_humanized_template_response(
-                    intent=intent,
-                    state=state,
-                    message=message,
-                    runtime_atoms=runtime_atoms or {},
-                    rag_chunks=rag_chunks or [],
-                    route_name=route.name,
-                    response_hint=response_hint,
-                ),
+                text=template_fallback,
                 source=route.name if route.name != "direct_answer" else self.provider_name,
             )
+
+    async def _try_llm(
+        self,
+        *,
+        message: ProcessedMessage,
+        state: ThreadState,
+        intent: IntentVote,
+        extraction: CombinedExtraction,
+        rag_chunks: list[RetrievedChunk],
+        route_name: str,
+        runtime_atoms: dict[str, Any],
+        response_hint: str | None,
+        attempt: str,
+    ) -> str | None:
+        assert self.adapter is not None
+
+        LLM_CALLS.labels(provider=self.provider_name, purpose=f"response_{attempt}").inc()
+
+        try:
+            generated = cast(
+                GeneratedResponseText,
+                await self.adapter.structured(
+                    system=_response_system_prompt(),
+                    user=_response_user_prompt(
+                        message=message,
+                        state=state,
+                        intent=intent,
+                        extraction=extraction,
+                        rag_chunks=rag_chunks,
+                        route_name=route_name,
+                        runtime_atoms=runtime_atoms,
+                        response_hint=response_hint,
+                    ),
+                    output_model=GeneratedResponseText,
+                    purpose=f"response_{attempt}",
+                ),
+            )
+        except Exception as exc:
+            logger.warning(
+                "response_generation_provider_failed",
+                provider=self.provider_name,
+                attempt=attempt,
+                error=str(exc),
+            )
+            return None
+
+        cleaned = _safe_generated_text(generated.text)
+        if cleaned is None:
+            logger.info(
+                "response_generation_validation_rejected",
+                provider=self.provider_name,
+                attempt=attempt,
+                preview=generated.text[:120],
+            )
+        return cleaned
 
     @staticmethod
     def _mock_response(
@@ -167,45 +214,48 @@ class SonnetResponseGenerator:
         rag_chunks: list[RetrievedChunk],
         route_name: str,
     ) -> str:
-        del route_name
-        quote_intents = {QueryIntentType.PRICING_QUESTION, QueryIntentType.TIMELINE_QUESTION}
-        if intent.query_primary in quote_intents:
+        del rag_chunks, route_name
+
+        if intent.query_primary in {
+            QueryIntentType.PRICING_QUESTION,
+            QueryIntentType.TIMELINE_QUESTION,
+        }:
             return (
-                "I can help scope that, but pricing and timelines must come from BookCraft's "
-                "deterministic quote engine. To prepare that, please share your service, genre, "
-                "manuscript word count or page count, and how urgent the project is."
+                "I can help prepare a realistic estimate, but I don’t want to guess. "
+                "Please share the service mix, genre, manuscript word or page count, "
+                "manuscript stage, and deadline so the quote can be scoped properly."
             )
+
         if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
             return (
-                "I can help with samples, but portfolio links must come from the approved "
-                "BookCraft registry. Which service and genre should I match?"
+                "Yes — I can help match samples to your project. Which service and "
+                "genre should I use so the examples are actually relevant?"
             )
+
         if intent.query_primary == QueryIntentType.NDA_REQUEST:
             return (
-                "I can help start the NDA request. Legal documents must use approved templates "
-                "and manual gating, so I need the author name, email, phone, and date."
+                "Absolutely — confidentiality should be clear before you share the "
+                "manuscript. Would you like to start the NDA step by sharing the "
+                "author name, email, phone, and preferred effective date?"
             )
+
         if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
             return (
-                "I can help start the service agreement request. Agreement text must come from "
-                "the approved template, not from the language model."
+                "I can help start the agreement step once the service scope is clear. "
+                "Which services should the agreement cover?"
             )
+
         if intent.query_primary == QueryIntentType.CONSULTATION_REQUEST:
             return (
-                "A human consultant should review the service mix, missing scope fields, "
-                "pricing readiness, NDA requirements, agreement readiness, and production "
-                "planning next. Before pricing, NDA, agreement, or production planning can "
-                "move forward, BookCraft still needs the exact services, manuscript status, "
-                "word or page count, genre, deadline, contact details, and any approved "
-                "quote or document requirements."
+                "A consultation makes sense here because the service mix needs to be "
+                "scoped carefully. What manuscript stage, genre, deadline, and services "
+                "should we review first?"
             )
-        if rag_chunks:
-            first = rag_chunks[0]
-            return f"{first.content}\n\nSource: {first.title}, section: {first.section}."
+
         return (
-            "BookCraft can help with ghostwriting, editing, cover design, formatting, audiobook "
-            "production, publishing, marketing, author websites, and video trailers. Tell me "
-            "which service you are considering and what stage your manuscript is in."
+            "I can help with the book project. What stage is the manuscript in, and "
+            "which support do you need most right now: writing, editing, design, "
+            "formatting, publishing, or marketing?"
         )
 
 
@@ -225,26 +275,40 @@ def _humanized_template_response(
     service_phrase = _service_phrase(services)
     cta = _cta_for_intent(intent, runtime_atoms, state)
 
+    forbid_markers = runtime_atoms.get("forbid_markers", [])
+    has_guarantee_pressure = isinstance(forbid_markers, list) and "guarantee" in {
+        str(item) for item in forbid_markers
+    }
+
+    if has_guarantee_pressure or intent.query_primary.value == "complaint_or_objection":
+        return (
+            "I wouldn’t want to promise a bestseller rank or a fixed sales number, "
+            "because that would not be honest. What BookCraft can do is build a "
+            f"realistic plan around {service_phrase}: positioning, publishing setup, "
+            "launch assets, and promotion steps that give the book a stronger chance. "
+            "Would you like me to scope a practical launch plan instead of a guarantee?"
+        )
+
     if response_hint == "repeat_message":
         return (
-            f"Same scope as your last message — {service_phrase}. "
-            "To move this forward, I still need the key project details instead of "
-            f"repeating the service overview. {cta}"
+            f"I’m with you — the project still looks like {service_phrase}. "
+            "Rather than repeat the same overview, the useful next step is to pin down "
+            f"the missing project details. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.READY_TO_BUY:
         return (
-            f"Great — {service_phrase} sounds like the right working scope for this "
-            "project. Since you already have a drafted manuscript, the clean order is "
-            "to confirm the editorial stage first, then move into production and "
-            f"publishing once the text is stable. {cta}"
+            f"Perfect — for {service_phrase}, you’re already close to a proper project "
+            "scope because you’ve shared the manuscript stage and category. I’d start "
+            "by confirming the file condition, deadline, and which services should be "
+            f"quoted together. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.NDA_REQUEST:
         return (
-            "Absolutely — we can keep confidentiality clear before you share sensitive "
-            f"manuscript details. I also noted the service fit as {service_phrase}, so "
-            f"once the NDA is started we can scope that work safely. {cta}"
+            "Absolutely — confidentiality should be clear before you share sensitive "
+            f"manuscript material. Once that’s handled, we can safely scope {service_phrase} "
+            f"around the memoir. {cta}"
         )
 
     if intent.query_primary in {
@@ -252,36 +316,36 @@ def _humanized_template_response(
         QueryIntentType.TIMELINE_QUESTION,
     }:
         return (
-            f"I can help scope {service_phrase}, but I should not guess prices or "
-            "timelines. Those need to come from BookCraft’s approved quote engine "
-            f"once the project details are complete. {cta}"
+            f"I can help you get a realistic estimate for {service_phrase}, but I don’t "
+            "want to guess and give you something inaccurate. The estimate depends on "
+            f"the manuscript condition, word or page count, genre, and deadline. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
         return (
-            f"Yes — I can help match samples to {service_phrase}. The useful way to "
-            "do that is by matching the service type, genre, and book category "
-            f"instead of sending random examples. {cta}"
+            f"Yes — for {service_phrase}, the best samples are the ones closest to your "
+            "genre and project type, not random examples. For a better match, I’d narrow "
+            f"them by service, book category, and style. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE:
         return (
-            f"That helps — based on what you shared, {service_phrase} is probably "
-            "the right starting point. If the book is still at idea or rough-draft "
-            f"stage, the first step is clarifying creation versus polishing. {cta}"
+            f"That helps. Based on what you shared, {service_phrase} may be the right "
+            "direction, but the first decision is whether you need creation, restructuring, "
+            f"or polishing. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.CONSULTATION_REQUEST:
         return (
-            f"Based on your message, {service_phrase} should be reviewed together "
-            "rather than as separate pieces. A consultant-style scope will help avoid "
-            f"quoting the wrong service or skipping an important production step. {cta}"
+            f"For {service_phrase}, I’d treat this as one connected book-production plan "
+            "instead of separate tasks. That keeps editing, design, formatting, publishing, "
+            f"and launch support from happening out of order. {cta}"
         )
 
     return (
-        f"Got it — {service_phrase} is the scope I’m seeing from your message. "
-        "The best next step is to clarify the manuscript stage and project basics "
-        f"so BookCraft can guide you without guessing. {cta}"
+        f"Thanks — based on your message, {service_phrase} is the main direction. "
+        "I’d first confirm what stage the manuscript is in, then map the right services "
+        f"around that instead of giving a generic recommendation. {cta}"
     )
 
 
@@ -354,8 +418,8 @@ def _cta_for_intent(
 
     if intent.query_primary == QueryIntentType.NDA_REQUEST:
         return (
-            "Should I start the NDA queue if you share the author name, email, "
-            "phone, and effective date?"
+            "Would you like me to help start the NDA step if you share the author "
+            "name, email, phone, and preferred effective date?"
         )
 
     if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
@@ -366,20 +430,40 @@ def _cta_for_intent(
         QueryIntentType.TIMELINE_QUESTION,
     }:
         if has_word_count:
-            return "What manuscript stage, genre, and deadline should I use?"
-        return "What word count or page count, genre, manuscript stage, and deadline should I use?"
+            return "What manuscript stage, genre, and deadline should I use for the estimate?"
+        return (
+            "What word count or page count, genre, manuscript stage, and deadline "
+            "should I use for the estimate?"
+        )
 
     if intent.query_primary == QueryIntentType.READY_TO_BUY:
-        return "What launch date are you aiming for, and should I scope the full bundle together?"
+        return (
+            "What launch date are you aiming for, and do you want the full service "
+            "bundle scoped together?"
+        )
 
     return (
-        "Want me to scope these together if you share the word count, genre, "
-        "manuscript stage, and target launch window?"
+        "Can you share the word count, genre, manuscript stage, and target launch "
+        "window so I can guide the next step properly?"
     )
 
 
 def _contains_doc_artifacts(text: str) -> bool:
     patterns = [
+        r"\bquote engine\b",
+        r"\bpricing engine\b",
+        r"\bapproved engine\b",
+        r"\bdeterministic\b",
+        r"\bNDA queue\b",
+        r"\bdocument queue\b",
+        r"\bapproved template\b",
+        r"\bapproved tool\b",
+        r"\btool output\b",
+        r"\bRAG\b",
+        r"\bruntime atoms\b",
+        r"\bprovider votes\b",
+        r"\bclassifier\b",
+        r"\bbackend\b",
         r"^\s*#{1,6}\s",
         r"\n\s*\|.*\|",
         r"\bSource:\s*",
@@ -410,28 +494,29 @@ def _clean_customer_text(text: str) -> str:
 
 
 def _response_system_prompt() -> str:
-    return "\n".join(
-        [
-            "You are a senior BookCraft project consultant.",
-            "Help authors choose the right services and move toward a quote, "
-            "sample request, NDA, or consultation.",
-            'Return strict JSON only: {"text": "..."}',
-            "",
-            "Voice:",
-            "- Warm, plain-spoken, concise, and consultative.",
-            "- Use first person naturally: I, we, BookCraft.",
-            "- Mirror all services the lead mentioned.",
-            "- Acknowledge deadline, NDA, genre, manuscript status, platform, or urgency.",
-            "- End with one clear next-step question.",
-            "- Do not use headings, markdown tables, source labels, or copied KB sections.",
-            "",
-            "Hard rules:",
-            "- Do not call tools.",
-            "- Do not invent prices, timelines, sample links, legal clauses, or guarantees.",
-            "- Pricing and timelines must come from the deterministic quote engine.",
-            "- Legal documents must render from approved templates only.",
-            "- Portfolio links must come from approved tool output only.",
-        ]
+    return (
+        "You are a senior BookCraft project consultant talking with an author "
+        "who is considering BookCraft for their book.\n\n"
+        "Your job is to help them get clarity and move one concrete step closer "
+        "to a quote, sample request, NDA, or consultation. Talk like a real "
+        "human consultant who has done this hundreds of times — warm, "
+        "plain-spoken, and direct. Use first person naturally: I, we, BookCraft. "
+        "Acknowledge what they actually said — their deadline, NDA concern, "
+        "genre, manuscript stage, platform, frustration, or excitement — before "
+        "pivoting to the next step. End with exactly one question that moves "
+        "things forward. Keep it to 3–5 sentences.\n\n"
+        "What you must NOT do:\n"
+        "- Do not invent prices, timelines, sample links, legal clauses, or guarantees. "
+        "If you do not have an approved number, say we should scope it together.\n"
+        "- Do not use markdown headings, tables, bullet lists, or Source labels.\n"
+        "- Do not say: is the scope I am seeing, BookCraft cannot show, deterministic "
+        "engine, approved engine, quote engine, document queue, tool output, backend, "
+        "classifier, provider votes, or runtime atoms.\n"
+        "- Do not repeat the same opener every turn. Avoid sounding scripted.\n\n"
+        "RAG context, if provided, is private grounding only. Use it to inform your "
+        "reply, but do not quote it, summarize it back, cite it, or copy its structure.\n\n"
+        'Output protocol: respond with one JSON object: {"text": "your reply"} '
+        "and nothing else. The text field is plain prose, no markdown."
     )
 
 
@@ -446,86 +531,157 @@ def _response_user_prompt(
     runtime_atoms: dict[str, Any],
     response_hint: str | None = None,
 ) -> str:
-    state_summary = {
-        "sales_stage": state.sales_stage.value,
-        "services": {
-            "primary": intent.service_primary.value if intent.service_primary else None,
-            "secondary": [service.value for service in intent.service_secondary],
-            "runtime_detected": runtime_atoms.get("services", []),
-            "negated": runtime_atoms.get("negated_services", []),
-        },
-        "query": {
-            "primary": intent.query_primary.value,
-            "secondary": [query.value for query in intent.query_secondary],
-            "runtime_cues": runtime_atoms.get("query_cues", []),
-        },
-        "project": {
-            "genre": state.project.genre.value,
-            "word_count_known": state.project.word_count.value is not None,
-            "page_count_known": state.project.page_count.value is not None,
-            "manuscript_status": state.project.manuscript_status.value,
-        },
-        "commercial": {
-            "latest_quote_id": state.commercial.latest_quote_id.value,
-        },
-    }
-    rag_context = [
-        {
-            "title": chunk.title,
-            "section": chunk.section,
-            "content": chunk.content[:900],
-            "checksum": chunk.checksum,
-        }
-        for chunk in rag_chunks[:5]
-    ]
-    payload = {
-        "route": route_name,
-        "normalized_message": message.normalized,
-        "intent": intent.model_dump(mode="json"),
-        "state_summary": state_summary,
-        "extraction_delta_count": len(extraction.state_deltas),
-        "rag_context": rag_context,
-        "instruction": (
-            "Write the next assistant reply as a human BookCraft sales consultant. "
-            "Use RAG only as private grounding. Do not quote it, expose source labels, "
-            "or use tables/headings. Mirror all detected services and end with one "
-            "clear next-step question."
-        ),
-        "response_hint": response_hint,
-        "runtime_atoms": runtime_atoms,
-    }
-    return str(payload)
+    del extraction, route_name
+
+    services = _ordered_human_services(intent, runtime_atoms)
+    service_phrase = _service_phrase(services) if services else "their book project"
+
+    known: list[str] = []
+    if getattr(state.project.genre, "value", None):
+        known.append(f"genre: {state.project.genre.value}")
+    if state.project.word_count.value is not None:
+        known.append(f"word count: {state.project.word_count.value}")
+    if state.project.page_count.value is not None:
+        known.append(f"page count: {state.project.page_count.value}")
+    if getattr(state.project.manuscript_status, "value", None):
+        known.append(f"manuscript status: {state.project.manuscript_status.value}")
+    known_str = "; ".join(known) if known else "nothing confirmed yet"
+
+    missing: list[str] = []
+    if state.project.word_count.value is None and state.project.page_count.value is None:
+        missing.append("word or page count")
+    if not getattr(state.project.genre, "value", None):
+        missing.append("genre")
+    if not getattr(state.project.manuscript_status, "value", None):
+        missing.append("manuscript stage")
+    missing_str = ", ".join(missing) if missing else "no major basics missing"
+
+    intent_label = intent.query_primary.value.replace("_", " ")
+
+    negated = runtime_atoms.get("negated_services") or []
+    negated_str = (
+        f"\nThey explicitly do NOT want: {', '.join(str(item) for item in negated)}."
+        if isinstance(negated, list) and negated
+        else ""
+    )
+
+    rag_notes = ""
+    if rag_chunks:
+        notes: list[str] = []
+        for chunk in rag_chunks[:3]:
+            snippet = (chunk.content or "")[:400].strip().replace("\n", " ")
+            if snippet:
+                notes.append(f"- {snippet}")
+        if notes:
+            rag_notes = (
+                "\n\nPrivate grounding notes "
+                "(do NOT quote, paraphrase verbatim, cite, or copy structure):\n" + "\n".join(notes)
+            )
+
+    hint_str = f"\nSpecial note for this turn: {response_hint}." if response_hint else ""
+
+    return (
+        f'The author just wrote:\n"{message.normalized}"\n\n'
+        "What I can tell from this message:\n"
+        f"- They seem to be asking about: {intent_label}\n"
+        f"- Services in scope: {service_phrase}\n"
+        f"- What we already know about the project: {known_str}\n"
+        f"- What we still need: {missing_str}"
+        f"{negated_str}"
+        f"{hint_str}"
+        f"{rag_notes}\n\n"
+        "Write the next reply now."
+    )
 
 
-def _safe_generated_text(text: str, *, fallback: str) -> str:
+def _safe_generated_text(text: str) -> str | None:
     stripped = _clean_customer_text(text.strip())
-    if (
-        _contains_forbidden_generation(stripped)
-        or _contains_doc_artifacts(stripped)
-        or not _has_human_opener(stripped)
-    ):
-        return fallback
+    if not stripped:
+        return None
+    if _contains_forbidden_generation(stripped):
+        return None
+    if _contains_doc_artifacts(stripped):
+        return None
+    if not _has_human_opener(stripped):
+        return None
     return stripped
+
+
+_PRICE_PATTERNS = (
+    r"\$\s*\d",
+    r"£\s*\d",
+    r"€\s*\d",
+    r"\b\d[\d,]*\s*(?:usd|gbp|eur|dollars?|pounds?|euros?)\b",
+    r"\b(?:usd|gbp|eur)\s*\d",
+    r"\b\d+\s*%\s*(?:off|discount)\b",
+)
+
+_COMMITTED_TIMELINE_PATTERNS = (
+    r"\b(?:in|within|after|takes|ready in|delivered in|completed in|"
+    r"finished in|done in|by)\s+\d+\s*(?:to\s*\d+\s*)?(?:business\s+)?"
+    r"(?:day|days|week|weeks|month|months)\b",
+    r"\b\d+\s*(?:-\s*\d+\s*)?(?:business\s+)?"
+    r"(?:day|days|week|weeks|month|months)\s+"
+    r"(?:turnaround|delivery|lead time|timeline|schedule)\b",
+    r"\b\d+\s*-\s*(?:business-)?(?:day|week|month)\s+"
+    r"(?:turnaround|delivery|lead time|timeline|schedule|process|window)\b",
+    r"\b(?:turnaround|delivery|lead time|timeline|schedule)\b[^.]{0,40}"
+    r"\b\d+\s*(?:business\s+)?(?:day|days|week|weeks|month|months)\b",
+    r"\bguarantee[ds]?\b[^.]{0,40}"
+    r"\b\d+\s*(?:day|days|week|weeks|month|months)\b",
+)
+
+_FORBIDDEN_FRAGMENTS = (
+    "```json",
+    "obligations of confidentiality",
+    "<%",
+    "%>",
+)
 
 
 def _contains_forbidden_generation(text: str) -> bool:
     lowered = text.lower()
-    forbidden = ["<%", "%>", "```json", "obligations of confidentiality"]
-    if any(fragment in lowered for fragment in forbidden):
+    if any(fragment in lowered for fragment in _FORBIDDEN_FRAGMENTS):
         return True
-    if re.search(r"\$ ?\d|\busd\b|£ ?\d|€ ?\d", text, flags=re.IGNORECASE):
-        return True
-    if re.search(
-        r"\b\d+\s*(business\s+)?(day|days|week|weeks|month|months)\b",
-        text,
-        flags=re.IGNORECASE,
-    ):
-        return True
-    if re.search(r"\b\d+\s*%|\b\d+\s*percent\b", text, flags=re.IGNORECASE):
-        return True
-    if _contains_doc_artifacts(text):
-        return True
+    for pattern in _PRICE_PATTERNS:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return True
+    for pattern in _COMMITTED_TIMELINE_PATTERNS:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return True
     return False
+
+
+def _customer_safe_missing_scope_question(
+    question: str,
+    *,
+    intent: IntentVote,
+    runtime_atoms: dict[str, Any],
+) -> str:
+    del question
+    services = _ordered_human_services(intent, runtime_atoms)
+    service_phrase = _service_phrase(services)
+    return (
+        f"I can help prepare a realistic estimate for {service_phrase}, but I need "
+        "the missing project details first. What word count or page count, genre, "
+        "manuscript stage, and deadline should I use?"
+    )
+
+
+def _clean_guarded_status_message(
+    message: str,
+    *,
+    intent: IntentVote,
+    runtime_atoms: dict[str, Any],
+) -> str:
+    cleaned = _clean_customer_text(message)
+    if _contains_doc_artifacts(cleaned) or _contains_forbidden_generation(cleaned):
+        return _customer_safe_missing_scope_question(
+            cleaned,
+            intent=intent,
+            runtime_atoms=runtime_atoms,
+        )
+    return cleaned
 
 
 def _pricing_quote_text(quote: PricingTimelineQuote) -> str:
@@ -533,31 +689,51 @@ def _pricing_quote_text(quote: PricingTimelineQuote) -> str:
         return quote.missing_inputs[0].question
     if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
         return (
-            "I can scope this, but BookCraft's v2.2 pricing values are not approved for "
-            "customer-facing use yet. I won't guess at numbers."
+            "I can scope this, but I do not want to guess at numbers until the "
+            "approved pricing details are ready. What deadline and manuscript stage "
+            "should I note for the estimate?"
         )
     return (
-        f"The deterministic engine returned a {quote.total_price_range.low.currency} "
-        f"{quote.total_price_range.low.amount}-{quote.total_price_range.high.amount} range "
-        f"and {quote.timeline.total_timeline.low}-{quote.timeline.total_timeline.high} "
-        "business days, subject to assumptions."
+        f"Based on the scoped details, the estimate is {quote.total_price_range.low.currency} "
+        f"{quote.total_price_range.low.amount}-{quote.total_price_range.high.amount}, "
+        f"with an estimated timeline of {quote.timeline.total_timeline.low}-"
+        f"{quote.timeline.total_timeline.high} business days. Would you like me to "
+        "prepare the next-step intake for this scope?"
     )
 
 
 def _portfolio_response_text(response: PortfolioResponse) -> ResponseDraft:
     if response.status != PortfolioStatus.FOUND:
-        return ResponseDraft(text=response.message, source="portfolio_engine")
-    lines = [response.message]
+        return ResponseDraft(
+            text=(
+                "I can help find relevant samples, but I need to match them by service "
+                "and genre first. Which type of work do you want to review: cover, "
+                "formatting, marketing, or something else?"
+            ),
+            source="portfolio_engine",
+        )
+
     approved_urls: list[str] = []
-    for sample in response.samples:
+    lines = [
+        "Yes — here are a few samples that may help you compare the work. "
+        "I’d still match the final examples to your exact genre, service, and style:"
+    ]
+
+    for sample in response.samples[:4]:
         link = sample.url or sample.cover_image
         if link:
             approved_urls.append(link)
             lines.append(f"- {sample.title}: {link}")
         else:
             lines.append(f"- {sample.title}")
+
+    lines.append(
+        "Which direction should I narrow these toward: cover design, interior formatting, "
+        "or marketing examples?"
+    )
+
     return ResponseDraft(
-        text="\n".join(lines),
+        text="\\n".join(lines),
         source="portfolio_engine",
         approved_urls=approved_urls,
     )
@@ -568,10 +744,11 @@ def _timeline_quote_text(quote: PricingTimelineQuote) -> str:
         return quote.missing_inputs[0].question
     if any(warning.code == "VALUES_NOT_APPROVED" for warning in quote.warnings):
         return (
-            "I can scope this, but BookCraft's v2.2 timeline values are not approved for "
-            "customer-facing use yet. I won't guess at timing."
+            "I can scope the timeline, but I do not want to guess at timing until the "
+            "project details are clear. What manuscript stage and deadline should I use?"
         )
     return (
-        f"The deterministic engine returned a {quote.timeline.total_timeline.low}-"
-        f"{quote.timeline.total_timeline.high} business day range, subject to assumptions."
+        f"Based on the scoped details, the estimated timeline is "
+        f"{quote.timeline.total_timeline.low}-{quote.timeline.total_timeline.high} "
+        "business days. Would you like me to help confirm the service scope next?"
     )

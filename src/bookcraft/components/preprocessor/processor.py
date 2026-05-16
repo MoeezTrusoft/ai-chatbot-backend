@@ -47,6 +47,24 @@ CUE_TERMINATOR_RE = re.compile(
     r"[,.!?;]|\b(?:but|however|instead|rather|except|unless|although)\b",
     flags=re.IGNORECASE,
 )
+NEGATION_TERMINATOR_RE = re.compile(
+    r"[.!?;]|\b(?:but|however|instead|rather|except|unless|although)\b",
+    flags=re.IGNORECASE,
+)
+NEGATION_CUES_WITH_LIST_SCOPE = {
+    "no",
+    "not",
+    "never",
+    "without",
+    "do not",
+    "don't",
+    "does not",
+    "doesn't",
+    "did not",
+    "didn't",
+    "cannot",
+    "can't",
+}
 BACKWARD_NEGATION_RE = re.compile(
     r"\b(?P<subject>quote|pricing|price|timeline|agreement|contract|nda|"
     r"document|documents|manuscript|service|scope)\b"
@@ -123,7 +141,11 @@ class SharedPreprocessor:
         spans: list[Span] = []
         for cue in cues:
             for match in re.finditer(rf"\b{re.escape(cue)}\b", text, flags=re.IGNORECASE):
-                end = _cue_span_end(text, match.end())
+                end = (
+                    _negation_span_end(text, match.end())
+                    if cue.casefold() in NEGATION_CUES_WITH_LIST_SCOPE
+                    else _cue_span_end(text, match.end())
+                )
                 spans.append(
                     Span(start=match.start(), end=end, text=text[match.start() : end], cue=cue)
                 )
@@ -242,6 +264,19 @@ def _overlaps(token: TokenInfo, spans: list[Span]) -> bool:
     return any(token.start < span.end and token.end > span.start for span in spans)
 
 
+def _negation_span_end(text: str, cue_end: int) -> int:
+    window_end = min(len(text), cue_end + CUE_SPAN_WINDOW_CHARS)
+    window = text[cue_end:window_end]
+    terminator = NEGATION_TERMINATOR_RE.search(window)
+    if terminator is None:
+        return window_end
+
+    end = cue_end + terminator.start()
+    if terminator.group(0) in {".", "!", "?", ";"}:
+        end += 1
+    return max(cue_end, end)
+
+
 def _cue_span_end(text: str, cue_end: int) -> int:
     window_end = min(len(text), cue_end + CUE_SPAN_WINDOW_CHARS)
     window = text[cue_end:window_end]
@@ -317,6 +352,7 @@ def _ordered_unique(values: Iterable[object]) -> list[str]:
 
 def _span_overlaps(start: int, end: int, spans: list[Span]) -> bool:
     return any(start < span.end and end > span.start for span in spans)
+
 
 def _negated_terms(text: str, negation_spans: list[Span]) -> list[str]:
     terms = ["quote", "pricing", "timeline", "agreement", "contract", "nda", "payment"]
@@ -441,4 +477,3 @@ def _query_cues(text: str) -> list[str]:
         add("service_question")
 
     return cues
-

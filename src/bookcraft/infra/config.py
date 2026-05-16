@@ -42,8 +42,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"
-    anthropic_haiku_model: str = "claude-haiku-4-5"
-    anthropic_sonnet_model: str = "claude-sonnet-4-5"
+    anthropic_haiku_model: str = "claude-haiku-4-5-20251001"
+    anthropic_sonnet_model: str = "claude-sonnet-4-6"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_intent_model: str = "gpt-5.4-mini"
@@ -115,7 +115,7 @@ class Settings(BaseSettings):
     portfolio_samples_docx_path: str = "data/portfolio/portfolio_samples.docx"
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
-    intent_ensemble_timeout_seconds: float = 2.5
+    intent_ensemble_timeout_seconds: float = 6.0
     deepseek_timeout_seconds: float = 4.0
     shared_processor_cache_size: int = 1000
     trg_hot_nodes_limit: int = 24
