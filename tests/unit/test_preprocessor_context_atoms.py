@@ -82,3 +82,26 @@ async def test_preprocessor_preserves_multiservice_order_and_negation(
         "marketing_promotion",
     ]
     assert result.deterministic_atoms["negated_services"] == ["ghostwriting"]
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_negates_comma_separated_service_list(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    result = await preprocessor.process(
+        "I do not need cover design, audiobook production, video trailer, "
+        "author website, or marketing. I only need proofreading and "
+        "clean print-ready formatting."
+    )
+
+    assert result.deterministic_atoms["services"] == [
+        "editing_proofreading",
+        "interior_formatting",
+    ]
+    assert set(result.deterministic_atoms["negated_services"]) == {
+        "cover_design_illustration",
+        "audiobook_production",
+        "video_trailer",
+        "author_website",
+        "marketing_promotion",
+    }

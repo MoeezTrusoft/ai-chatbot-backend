@@ -31,7 +31,7 @@ class AnthropicAdapter:
     api_key: str
     base_url: str
     timeout_seconds: float
-    model: str = "claude-haiku-4-5"
+    model: str = "claude-haiku-4-5-20251001"
     name: str = "anthropic"
 
     async def structured(
@@ -141,7 +141,7 @@ def _loads_json_object(text: str) -> object:
     last_error: json.JSONDecodeError | None = None
 
     for match in re.finditer(r"[{\\[]", stripped):
-        fragment = stripped[match.start():]
+        fragment = stripped[match.start() :]
         try:
             obj, _ = decoder.raw_decode(fragment)
             return obj
@@ -166,4 +166,3 @@ def _loads_json_object(text: str) -> object:
     preview = stripped[:240].replace("\\n", " ")
     message = f"could not parse JSON object from model content preview={preview!r}"
     raise json.JSONDecodeError(message, stripped, 0) from last_error
-

@@ -42,7 +42,7 @@ async def test_portfolio_pricing_nda_mixed_request_uses_deterministic_guard() ->
     )
 
     assert draft.source == "deterministic_mixed_request_guard"
-    assert "avoid inventing links or numbers" in draft.text
-    assert "service type and genre" in draft.text
+    assert "without guessing or sending anything generic" in draft.text
+    assert "service and genre" in draft.text
     assert "word or page count" in draft.text
     assert "author name, email, phone" in draft.text
