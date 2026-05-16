@@ -386,6 +386,8 @@ class ChatService:
                 pricing_missing_question=pricing_missing_question,
                 portfolio_response=portfolio_response,
                 document_status_message=document_status_message,
+                runtime_atoms=processed.deterministic_atoms,
+                response_hint=None,
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:

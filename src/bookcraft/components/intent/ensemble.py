@@ -162,6 +162,7 @@ class DecisionLayer:
         *,
         provider_votes: Sequence[ProviderIntentVote],
         trimatch_result: TriMatchResult | None,
+        runtime_atoms: dict[str, object] | None = None,
     ) -> DecisionLayerResult:
         successful = [vote for vote in provider_votes if vote.vote is not None]
         if not successful:
@@ -190,6 +191,19 @@ class DecisionLayer:
                 final = IntentVote(
                     query_primary=query,
                     service_primary=service,
+                    service_secondary=_service_secondary_from_signals(
+                        primary=service,
+                        trimatch_result=trimatch_result,
+                        provider_votes=provider_votes,
+                        runtime_atoms=runtime_atoms,
+                    ),
+                    query_secondary=_query_secondary_from_signals(
+                        primary=query,
+                        provider_votes=provider_votes,
+                        trimatch_result=trimatch_result,
+                        runtime_atoms=runtime_atoms,
+                        query_scores={query.value: trimatch_result.confidence},
+                    ),
                     funnel_stage=funnel,
                     needs_clarification=query == QueryIntentType.UNCLEAR,
                     confidence=trimatch_result.confidence,
@@ -306,6 +320,19 @@ class DecisionLayer:
         final = IntentVote(
             query_primary=query,
             service_primary=service,
+            query_secondary=_query_secondary_from_signals(
+                primary=query,
+                provider_votes=provider_votes,
+                trimatch_result=trimatch_result,
+                runtime_atoms=runtime_atoms,
+                query_scores=query_scores,
+            ),
+            service_secondary=_service_secondary_from_signals(
+                primary=service,
+                trimatch_result=trimatch_result,
+                provider_votes=provider_votes,
+                runtime_atoms=runtime_atoms,
+            ),
             funnel_stage=funnel,
             needs_clarification=needs_clarification,
             confidence=confidence,
@@ -405,6 +432,7 @@ class EnsembleIntentClassifier:
         decision = self.decision_layer.decide(
             provider_votes=provider_votes,
             trimatch_result=trimatch_result,
+            runtime_atoms=message.deterministic_atoms,
         )
         self.last_decision = decision
         return decision.final_vote
@@ -435,12 +463,14 @@ class EnsembleIntentClassifier:
             evidence: str,
             service_primary: ServiceCategory | None = None,
             needs_clarification: bool = True,
+            query_secondary: list[QueryIntentType] | None = None,
+            service_secondary: list[ServiceCategory] | None = None,
         ) -> IntentVote:
             return IntentVote(
                 query_primary=query_primary,
-                query_secondary=[],
+                query_secondary=query_secondary or [],
+                service_secondary=service_secondary or [],
                 service_primary=service_primary,
-                service_secondary=[],
                 funnel_stage=funnel_stage,
                 confidence=confidence,
                 needs_clarification=needs_clarification,
@@ -529,9 +559,7 @@ class EnsembleIntentClassifier:
                 funnel_stage=SalesStage.NEW,
                 confidence=0.94,
                 service_primary=ServiceCategory.GHOSTWRITING,
-                rationale=(
-                    "Deterministic guarded shortcut for idea-only manuscript status."
-                ),
+                rationale=("Deterministic guarded shortcut for idea-only manuscript status."),
                 evidence="deterministic_guarded_query_shortcut:idea_only_status",
             )
 
@@ -541,9 +569,7 @@ class EnsembleIntentClassifier:
                 funnel_stage=SalesStage.NEW,
                 confidence=0.88,
                 service_primary=ServiceCategory.GHOSTWRITING,
-                rationale=(
-                    "Deterministic guarded shortcut for project summary and next step."
-                ),
+                rationale=("Deterministic guarded shortcut for project summary and next step."),
                 evidence="deterministic_guarded_query_shortcut:project_summary",
             )
 
@@ -574,7 +600,7 @@ class EnsembleIntentClassifier:
             query_primary=QueryIntentType.SERVICE_QUESTION,
             query_secondary=[],
             service_primary=trimatch_result.service_primary,
-            service_secondary=[],
+            service_secondary=trimatch_result.service_secondary,
             funnel_stage=SalesStage.SERVICE_DISCOVERY,
             confidence=trimatch_result.confidence,
             needs_clarification=True,
@@ -618,9 +644,7 @@ class EnsembleIntentClassifier:
                 await add_vote(completed)
 
                 usable_vote_count = sum(
-                    1
-                    for item in votes
-                    if item.status == "succeeded" and item.vote is not None
+                    1 for item in votes if item.status == "succeeded" and item.vote is not None
                 )
 
                 if usable_vote_count >= 2 or self._has_strong_single_provider_vote(votes):
@@ -649,9 +673,7 @@ class EnsembleIntentClassifier:
         votes: list[ProviderIntentVote],
     ) -> bool:
         usable_votes = [
-            item
-            for item in votes
-            if item.status == "succeeded" and item.vote is not None
+            item for item in votes if item.status == "succeeded" and item.vote is not None
         ]
 
         if len(usable_votes) != 1:
@@ -789,6 +811,126 @@ def _normalize_provider_vote(vote: IntentVote, message: ProcessedMessage) -> Int
             "evidence": [*vote.evidence, "greeting_vote_rejected_for_substantive_message"],
         }
     )
+
+
+def _service_secondary_from_signals(
+    *,
+    primary: ServiceCategory | None,
+    trimatch_result: TriMatchResult | None,
+    provider_votes: Sequence[ProviderIntentVote],
+    runtime_atoms: dict[str, object] | None,
+) -> list[ServiceCategory]:
+    seen: set[ServiceCategory] = set()
+    if primary is not None:
+        seen.add(primary)
+
+    negated = _service_set_from_runtime(runtime_atoms, "negated_services")
+    candidates: list[ServiceCategory] = []
+
+    if trimatch_result is not None:
+        candidates.extend(trimatch_result.service_secondary)
+
+    for provider_vote in provider_votes:
+        if provider_vote.vote is None:
+            continue
+        if provider_vote.vote.service_primary is not None:
+            candidates.append(provider_vote.vote.service_primary)
+        candidates.extend(provider_vote.vote.service_secondary)
+
+    candidates.extend(_service_list_from_runtime(runtime_atoms, "services"))
+
+    ordered: list[ServiceCategory] = []
+    for service in candidates:
+        if service in seen or service in negated:
+            continue
+        seen.add(service)
+        ordered.append(service)
+
+    return ordered
+
+
+def _query_secondary_from_signals(
+    *,
+    primary: QueryIntentType,
+    provider_votes: Sequence[ProviderIntentVote],
+    trimatch_result: TriMatchResult | None,
+    runtime_atoms: dict[str, object] | None,
+    query_scores: dict[str, float],
+) -> list[QueryIntentType]:
+    seen = {primary, QueryIntentType.UNCLEAR}
+    candidates: list[QueryIntentType] = []
+
+    if trimatch_result is not None and trimatch_result.query_primary is not None:
+        candidates.append(
+            _normalize_trimatch_query(
+                trimatch_result,
+                trimatch_result.query_primary,
+            )
+        )
+
+    for score_key in query_scores:
+        try:
+            candidates.append(QueryIntentType(score_key))
+        except ValueError:
+            continue
+
+    for provider_vote in provider_votes:
+        if provider_vote.vote is None:
+            continue
+        candidates.append(provider_vote.vote.query_primary)
+        candidates.extend(provider_vote.vote.query_secondary)
+
+    query_cues = _runtime_object_list(runtime_atoms, "query_cues")
+    for cue_value in query_cues:
+        if not isinstance(cue_value, str):
+            continue
+        try:
+            candidates.append(QueryIntentType(cue_value))
+        except ValueError:
+            continue
+
+    ordered: list[QueryIntentType] = []
+    for query in candidates:
+        if query in seen:
+            continue
+        seen.add(query)
+        ordered.append(query)
+
+    return ordered
+
+
+def _runtime_object_list(
+    runtime_atoms: dict[str, object] | None,
+    key: str,
+) -> list[object]:
+    if runtime_atoms is None:
+        return []
+    value = runtime_atoms.get(key, [])
+    return value if isinstance(value, list) else []
+
+
+def _service_list_from_runtime(
+    runtime_atoms: dict[str, object] | None,
+    key: str,
+) -> list[ServiceCategory]:
+    values = _runtime_object_list(runtime_atoms, key)
+
+    services: list[ServiceCategory] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        try:
+            services.append(ServiceCategory(value))
+        except ValueError:
+            continue
+    return services
+
+
+def _service_set_from_runtime(
+    runtime_atoms: dict[str, object] | None,
+    key: str,
+) -> set[ServiceCategory]:
+    return set(_service_list_from_runtime(runtime_atoms, key))
 
 
 def _normalize_trimatch_query(
