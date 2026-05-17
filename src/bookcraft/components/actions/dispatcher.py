@@ -18,6 +18,8 @@ class SalesActionDispatcher:
             action_type=plan.action_type,
             success=False,
             customer_safe_summary="This action is planned but not implemented yet.",
-            internal_summary="Sales action dispatcher foundation only; concrete tools come in later PRs.",
+            internal_summary=(
+                "Sales action dispatcher foundation only; concrete tools come in later PRs."
+            ),
             error_code="not_implemented",
         )
