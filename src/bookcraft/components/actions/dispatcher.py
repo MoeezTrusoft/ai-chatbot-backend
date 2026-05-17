@@ -103,6 +103,17 @@ class SalesActionDispatcher:
                 error_code="missing_contact",
                 duration_ms=_elapsed_ms(started),
             )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.CREATE_LEAD,
+                success=False,
+                customer_safe_summary=(
+                    "I got your contact details, but I could not save the lead just now."
+                ),
+                internal_summary=exc.__class__.__name__,
+                error_code="lead_creation_failed",
+                duration_ms=_elapsed_ms(started),
+            )
 
         verb = "created" if result.created else "updated"
         return ActionResult(
