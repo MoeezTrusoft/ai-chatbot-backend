@@ -51,7 +51,12 @@ class SalesActionPlanner:
             return self._pricing_plan(project=project, services=services, state=state)
 
         if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
-            return self._portfolio_plan(intent=intent, services=services, extraction=extraction)
+            return self._portfolio_plan(
+                intent=intent,
+                services=services,
+                extraction=extraction,
+                state=state,
+            )
 
         if intent.query_primary == QueryIntentType.NDA_REQUEST:
             return self._nda_plan(contact=contact, state=state)
@@ -243,12 +248,15 @@ class SalesActionPlanner:
         intent: IntentVote,
         services: list[str],
         extraction: CombinedExtraction,
+        state: ThreadState,
     ) -> ActionPlan:
         requested_service = (
             extraction.sample_request.service
             or (intent.service_primary.value if intent.service_primary else None)
             or (services[0] if services else None)
+            or state.sales_actions.portfolio.requested_service
         )
+        requested_genre = extraction.sample_request.genre or state.sales_actions.portfolio.genre
 
         if not requested_service:
             return ActionPlan(
@@ -263,7 +271,8 @@ class SalesActionPlanner:
             status=ActionStatus.READY,
             collected_slots={
                 "service": requested_service,
-                "genre": extraction.sample_request.genre,
+                "genre": requested_genre,
+                "exclude_sample_ids": state.sales_actions.portfolio.seen_sample_ids,
             },
             reason="Portfolio lookup has enough service context.",
         )

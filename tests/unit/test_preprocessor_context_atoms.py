@@ -142,3 +142,22 @@ async def test_preprocessor_detects_image_heavy_cookbook_formatting(
 
     assert "interior_formatting" in services
     assert "editing_proofreading" in services
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_detects_childrens_picture_book_idea_stage_services(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    result = await preprocessor.process(
+        "I only have an idea for a children’s picture book about a shy robot and "
+        "a brave little girl. I need help writing the story, creating illustrations, "
+        "formatting it for print and Kindle, and publishing it on Amazon. I don’t "
+        "know the word count or page count yet."
+    )
+
+    services = result.deterministic_atoms["services"]
+
+    assert "ghostwriting" in services
+    assert "cover_design_illustration" in services
+    assert "interior_formatting" in services
+    assert "publishing_distribution" in services
