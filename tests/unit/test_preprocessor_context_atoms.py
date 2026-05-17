@@ -105,3 +105,23 @@ async def test_preprocessor_negates_comma_separated_service_list(
         "author_website",
         "marketing_promotion",
     }
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_detects_complex_production_order_services(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    result = await preprocessor.process(
+        "I have a completed fantasy novel and I’m not sure what order to do things "
+        "in. It still needs a final proofread, a professional cover, interior "
+        "formatting, publishing setup, and some basic launch preparation. I don’t "
+        "want to waste money doing steps in the wrong sequence."
+    )
+
+    assert result.deterministic_atoms["services"] == [
+        "editing_proofreading",
+        "cover_design_illustration",
+        "interior_formatting",
+        "publishing_distribution",
+        "marketing_promotion",
+    ]

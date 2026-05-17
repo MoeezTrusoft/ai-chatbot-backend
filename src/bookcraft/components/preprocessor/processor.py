@@ -27,7 +27,16 @@ COUNTERFACTUAL_SPANS_TOTAL = Counter(
 SERVICE_KEYWORDS = {
     ServiceCategory.GHOSTWRITING: ["ghostwriting", "ghost writer", "write my book"],
     ServiceCategory.EDITING_PROOFREADING: ["editing", "proofreading", "proofread"],
-    ServiceCategory.COVER_DESIGN_ILLUSTRATION: ["cover design", "illustration", "book cover"],
+    ServiceCategory.COVER_DESIGN_ILLUSTRATION: [
+        "cover design",
+        "illustration",
+        "book cover",
+        "professional cover",
+        "cover artwork",
+        "cover art",
+        "cover illustration",
+        "cover",
+    ],
     ServiceCategory.INTERIOR_FORMATTING: ["interior formatting", "formatting", "typesetting"],
     ServiceCategory.AUDIOBOOK_PRODUCTION: ["audiobook", "audio book", "narration"],
     ServiceCategory.PUBLISHING_DISTRIBUTION: [
