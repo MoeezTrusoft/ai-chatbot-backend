@@ -36,6 +36,10 @@ from bookcraft.components.leads import LeadRepository, LeadService
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.portfolio.tools import register_portfolio_tools
+from bookcraft.components.portfolio_actions import (
+    PortfolioActionService,
+    PortfolioViewRepository,
+)
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.pricing.tools import register_pricing_tools
@@ -307,6 +311,14 @@ def build_chat_service(
             repository=PricingQuoteRepository(session_factory=session_factory),
         )
     )
+    portfolio_action_service = (
+        None
+        if session_factory is None
+        else PortfolioActionService(
+            portfolio_engine=portfolio_engine,
+            repository=PortfolioViewRepository(session_factory=session_factory),
+        )
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -332,6 +344,7 @@ def build_chat_service(
         action_dispatcher=SalesActionDispatcher(
             lead_service=lead_service,
             pricing_action_service=pricing_action_service,
+            portfolio_action_service=portfolio_action_service,
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,

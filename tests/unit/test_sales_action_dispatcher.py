@@ -117,3 +117,50 @@ async def test_dispatcher_handles_pricing_action_missing_inputs() -> None:
     assert result.result_id is not None
     assert result.payload["status"] == "needs_clarification"
     assert result.payload["missing_fields"]
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_handles_portfolio_lookup() -> None:
+    from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
+    from bookcraft.components.portfolio_actions import PortfolioActionService
+    from bookcraft.components.portfolio_actions.repository import (
+        InMemoryPortfolioViewRepository,
+    )
+
+    registry = PortfolioRegistry.from_files(
+        samples_registry_path="data/portfolio/samples.registry.js",
+        genre_hierarchy_path="data/portfolio/genre_hierarchy_links.json",
+        portfolio_docx_path="data/portfolio/portfolio_samples.docx",
+    )
+    dispatcher = SalesActionDispatcher(
+        portfolio_action_service=PortfolioActionService(
+            portfolio_engine=PortfolioEngine(registry),
+            repository=InMemoryPortfolioViewRepository(),
+        )
+    )
+
+    result = await dispatcher.dispatch(
+        ActionPlan(
+            action_type=ActionType.PORTFOLIO_LOOKUP,
+            status=ActionStatus.READY,
+            collected_slots={
+                "service": "interior_formatting",
+                "genre": "business",
+                "limit": 2,
+            },
+            reason="test",
+        ),
+        thread_id=uuid4(),
+        customer_id=uuid4(),
+    )
+
+    assert result is not None
+    assert result.action_type == ActionType.PORTFOLIO_LOOKUP
+    assert result.success is True
+    assert result.payload["service"] == "interior_formatting"
+    assert result.payload["status"] in {
+        "found",
+        "no_match",
+        "unavailable_pending",
+        "unavailable_confidential",
+    }

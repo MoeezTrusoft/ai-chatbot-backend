@@ -95,6 +95,18 @@ class SalesPricingQuoteRecord(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class PortfolioSampleViewRecord(SQLModel, table=True):
+    __tablename__ = "portfolio_sample_views"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
+    thread_id: UUID | None = Field(default=None, index=True)
+    sample_id: str = Field(index=True, max_length=500)
+    service_category: str = Field(index=True, max_length=100)
+    genre: str | None = Field(default=None, max_length=255)
+    shown_at: datetime = Field(default_factory=utc_now)
+
+
 class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 

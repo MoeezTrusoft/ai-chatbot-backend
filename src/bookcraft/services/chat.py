@@ -397,8 +397,13 @@ class ChatService:
                             ]
                         ),
                     )
-            portfolio_response: PortfolioResponse | None = None
-            if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
+            portfolio_response: PortfolioResponse | None = self._portfolio_response_from_action(
+                action_result
+            )
+            if (
+                portfolio_response is None
+                and intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+            ):
                 portfolio_response = await self._portfolio_turn(
                     thread_id=thread_id,
                     customer_id=payload.customer_id,
@@ -528,6 +533,36 @@ class ChatService:
             )
 
     @staticmethod
+    def _portfolio_response_from_action(
+        action_result: ActionResult | None,
+    ) -> PortfolioResponse | None:
+        if action_result is None or not action_result.success:
+            return None
+        if action_result.action_type != ActionType.PORTFOLIO_LOOKUP:
+            return None
+
+        payload = action_result.payload
+        try:
+            return PortfolioResponse.model_validate(
+                {
+                    "service": payload.get("service"),
+                    "requested_genre": payload.get("requested_genre"),
+                    "status": payload.get("status"),
+                    "samples": payload.get("samples") or [],
+                    "message": payload.get("message") or action_result.customer_safe_summary,
+                    "registry_version": "portfolio_action",
+                    "matched_genre": payload.get("matched_genre"),
+                    "fallback_used": bool(payload.get("fallback_used")),
+                }
+            )
+        except Exception as exc:
+            structlog.get_logger(__name__).warning(
+                "portfolio_action_response_invalid",
+                exception_class=exc.__class__.__name__,
+            )
+            return None
+
+    @staticmethod
     def _apply_sales_action_result_to_state(
         state: ThreadState,
         action_result: ActionResult | None,
@@ -566,6 +601,24 @@ class ChatService:
             state.sales_actions.pricing.assumptions = (
                 assumptions if isinstance(assumptions, dict) else None
             )
+            return
+
+        if action_result.action_type == ActionType.PORTFOLIO_LOOKUP:
+            state.sales_actions.portfolio.requested = True
+            state.sales_actions.portfolio.requested_service = _optional_string(
+                action_result.payload.get("service")
+            )
+            state.sales_actions.portfolio.genre = _optional_string(
+                action_result.payload.get("matched_genre")
+                or action_result.payload.get("requested_genre")
+            )
+            sample_ids = action_result.payload.get("sample_ids")
+            if isinstance(sample_ids, list):
+                new_ids = [str(sample_id) for sample_id in sample_ids]
+                state.sales_actions.portfolio.last_sample_ids = new_ids
+                state.sales_actions.portfolio.seen_sample_ids = list(
+                    dict.fromkeys([*state.sales_actions.portfolio.seen_sample_ids, *new_ids])
+                )
             return
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
