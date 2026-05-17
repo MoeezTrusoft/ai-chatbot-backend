@@ -125,3 +125,20 @@ async def test_preprocessor_detects_complex_production_order_services(
         "publishing_distribution",
         "marketing_promotion",
     ]
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_detects_image_heavy_cookbook_formatting(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    result = await preprocessor.process(
+        "I have a cookbook with photos, recipe tables, ingredient lists, and "
+        "section dividers. I need it to look clean as paperback and Kindle without "
+        "the layout breaking. I may also need light proofreading because the recipes "
+        "came from different contributors."
+    )
+
+    services = result.deterministic_atoms["services"]
+
+    assert "interior_formatting" in services
+    assert "editing_proofreading" in services
