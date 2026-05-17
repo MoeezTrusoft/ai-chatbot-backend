@@ -12,7 +12,9 @@ import structlog
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.actions import (
+    ActionPlan,
     ActionResult,
+    ActionStatus,
     ActionType,
     SalesActionDispatcher,
     SalesActionPlanner,
@@ -317,6 +319,7 @@ class ChatService:
                 intent=intent,
                 extraction=extraction,
             )
+            self._apply_sales_action_plan_to_state(state, action_plan)
             action_result = await self.action_dispatcher.dispatch(
                 action_plan,
                 thread_id=thread_id,
@@ -413,7 +416,9 @@ class ChatService:
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
-            document_status_message = _document_status_message(intent)
+            document_status_message = self._sales_action_status_message(
+                action_plan, action_result
+            ) or _document_status_message(intent)
             draft = await self.response_generator.generate(
                 message=processed,
                 state=state,
@@ -533,6 +538,74 @@ class ChatService:
             )
 
     @staticmethod
+    def _apply_sales_action_plan_to_state(
+        state: ThreadState,
+        action_plan: ActionPlan,
+    ) -> None:
+        if action_plan.confirmation_required and action_plan.pending_confirmation_key:
+            state.sales_actions.pending_confirmation.type = action_plan.pending_confirmation_key
+            state.sales_actions.pending_confirmation.payload = action_plan.collected_slots
+            state.sales_actions.pending_confirmation.created_at = datetime.now(UTC)
+
+        if action_plan.action_type == ActionType.GENERATE_NDA:
+            state.sales_actions.documents.nda.requested = True
+            state.sales_actions.documents.nda.missing_fields = action_plan.missing_slots
+            effective_date = action_plan.collected_slots.get("effective_date")
+            if effective_date is not None:
+                state.sales_actions.documents.nda.effective_date = str(effective_date)
+
+    @staticmethod
+    def _sales_action_status_message(
+        action_plan: ActionPlan,
+        action_result: ActionResult | None,
+    ) -> str | None:
+        if action_result is not None:
+            if action_result.action_type == ActionType.GENERATE_NDA:
+                return action_result.customer_safe_summary
+            return None
+
+        if action_plan.action_type != ActionType.GENERATE_NDA:
+            return None
+
+        if action_plan.status == ActionStatus.MISSING_INFO:
+            missing = set(action_plan.missing_slots)
+            parts: list[str] = []
+            if "name" in missing:
+                parts.append("your full name")
+            if "email" in missing:
+                parts.append("your email")
+            if "phone" in missing:
+                parts.append("your phone number")
+            if "effective_date" in missing:
+                parts.append("the NDA effective date")
+
+            if parts:
+                if len(parts) == 1:
+                    details = parts[0]
+                else:
+                    details = ", ".join(parts[:-1]) + f", and {parts[-1]}"
+            else:
+                details = "the missing NDA details"
+
+            return (
+                "Absolutely — we can handle confidentiality before you share the "
+                f"manuscript. I just need {details} to prepare it."
+            )
+
+        if action_plan.status == ActionStatus.NEEDS_CONFIRMATION:
+            name = action_plan.collected_slots.get("name") or "the author"
+            email = action_plan.collected_slots.get("email") or "your email"
+            effective_date = (
+                action_plan.collected_slots.get("effective_date") or "the selected effective date"
+            )
+            return (
+                f"I have the NDA details ready for {name} at {email}, effective "
+                f"{effective_date}. Should I send it there?"
+            )
+
+        return None
+
+    @staticmethod
     def _portfolio_response_from_action(
         action_result: ActionResult | None,
     ) -> PortfolioResponse | None:
@@ -619,6 +692,19 @@ class ChatService:
                 state.sales_actions.portfolio.seen_sample_ids = list(
                     dict.fromkeys([*state.sales_actions.portfolio.seen_sample_ids, *new_ids])
                 )
+            return
+
+        if action_result.action_type == ActionType.GENERATE_NDA:
+            state.sales_actions.documents.nda.requested = True
+            state.sales_actions.documents.nda.document_id = action_result.result_id
+            state.sales_actions.documents.nda.delivery_status = _optional_string(
+                action_result.payload.get("delivery_status") or action_result.payload.get("status")
+            )
+            state.sales_actions.documents.nda.missing_fields = []
+            state.sales_actions.pending_confirmation.type = None
+            state.sales_actions.pending_confirmation.payload = None
+            state.sales_actions.pending_confirmation.created_at = None
+            state.sales_actions.pending_confirmation.expires_at = None
             return
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:

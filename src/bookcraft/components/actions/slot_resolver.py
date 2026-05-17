@@ -46,7 +46,37 @@ DATE_HINT_RE = re.compile(
 def is_confirmation_text(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", text.strip().casefold())
     normalized = normalized.strip(".! ")
-    return normalized in YES_CONFIRMATIONS
+
+    if normalized in YES_CONFIRMATIONS:
+        return True
+
+    affirmative_starts = (
+        "yes ",
+        "yes,",
+        "yes please",
+        "yeah ",
+        "yeah,",
+        "yep ",
+        "yep,",
+        "sure ",
+        "sure,",
+        "ok ",
+        "okay ",
+    )
+    confirmation_actions = (
+        "send it",
+        "send",
+        "book it",
+        "book",
+        "confirm",
+        "go ahead",
+        "please do",
+        "do it",
+    )
+
+    return normalized.startswith(affirmative_starts) and any(
+        action in normalized for action in confirmation_actions
+    )
 
 
 def field_value(value: object) -> object | None:
