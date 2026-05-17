@@ -19,6 +19,7 @@ from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
+from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
@@ -31,6 +32,7 @@ from bookcraft.components.intent import (
     build_mock_ensemble_classifier,
 )
 from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.leads import LeadRepository, LeadService
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.portfolio.tools import register_portfolio_tools
@@ -288,6 +290,11 @@ def build_chat_service(
             portfolio_docx_path=settings.portfolio_samples_docx_path,
         )
     )
+    lead_service = (
+        None
+        if session_factory is None
+        else LeadService(repository=LeadRepository(session_factory=session_factory))
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -310,6 +317,7 @@ def build_chat_service(
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         trimatch_extra_mode=settings.trimatch_extra_mode,
+        action_dispatcher=SalesActionDispatcher(lead_service=lead_service),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,
     )

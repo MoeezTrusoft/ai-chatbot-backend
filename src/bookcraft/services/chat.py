@@ -11,7 +11,13 @@ from uuid import UUID, uuid4
 import structlog
 from prometheus_client import Counter, Histogram
 
-from bookcraft.components.actions import SalesActionPlanner, action_trace_payload
+from bookcraft.components.actions import (
+    ActionResult,
+    ActionType,
+    SalesActionDispatcher,
+    SalesActionPlanner,
+    action_trace_payload,
+)
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
@@ -73,6 +79,7 @@ class ChatService:
     trimatch_extra_mode: str = "off"
     trace_store: LiveTraceStore | None = None
     action_planner: SalesActionPlanner = field(default_factory=SalesActionPlanner)
+    action_dispatcher: SalesActionDispatcher = field(default_factory=SalesActionDispatcher)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -310,12 +317,22 @@ class ChatService:
                 intent=intent,
                 extraction=extraction,
             )
-            action_payload = action_trace_payload(action_plan)
+            action_result = await self.action_dispatcher.dispatch(
+                action_plan,
+                thread_id=thread_id,
+                customer_id=payload.customer_id,
+            )
+            self._apply_sales_action_result_to_state(state, action_result)
+            action_payload = action_trace_payload(action_plan, action_result)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
                 sequence=event_sequence,
                 previous_hash=previous_event_hash,
-                event_type="sales_action.planned",
+                event_type=(
+                    "sales_action.processed"
+                    if action_result is not None
+                    else "sales_action.planned"
+                ),
                 payload=action_payload or {},
             )
             event_ids.append(event_id)
@@ -489,7 +506,7 @@ class ChatService:
                     if trimatch_shadow_result is not None
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
-                    "action_plan": action_trace_payload(action_plan),
+                    "action_plan": action_trace_payload(action_plan, action_result),
                     "components": {
                         "event_count": len(event_ids),
                         "event_ids": self._debug_event_ids(event_ids),
@@ -509,6 +526,31 @@ class ChatService:
                 language_status=language.language,
                 debug_event_ids=self._debug_event_ids(event_ids),
             )
+
+    @staticmethod
+    def _apply_sales_action_result_to_state(
+        state: ThreadState,
+        action_result: ActionResult | None,
+    ) -> None:
+        if action_result is None or not action_result.success:
+            return
+
+        if action_result.action_type != ActionType.CREATE_LEAD:
+            return
+
+        lead = action_result.payload.get("lead")
+        if not isinstance(lead, dict):
+            return
+
+        state.sales_actions.lead.lead_id = str(lead.get("id") or action_result.result_id)
+        state.sales_actions.lead.name = _optional_string(lead.get("name"))
+        state.sales_actions.lead.email = _optional_string(lead.get("email"))
+        state.sales_actions.lead.phone = _optional_string(lead.get("phone"))
+        state.sales_actions.lead.preferred_contact_method = _optional_string(
+            lead.get("preferred_contact_method")
+        )
+        state.sales_actions.lead.created = True
+        state.sales_actions.lead.last_updated_at = datetime.now(UTC)
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
         if self.trace_store is None:
@@ -1772,3 +1814,10 @@ def _genre_category(genre: str | None) -> str:
     if "young" in lowered:
         return "young_adult"
     return "fiction_standard"
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
