@@ -6,6 +6,10 @@ from uuid import UUID
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
 from bookcraft.components.leads import CreateOrUpdateLeadRequest, LeadService
+from bookcraft.components.portfolio_actions import (
+    PortfolioActionRequest,
+    PortfolioActionService,
+)
 from bookcraft.components.pricing_actions import PricingActionRequest, PricingActionService
 
 
@@ -13,6 +17,7 @@ from bookcraft.components.pricing_actions import PricingActionRequest, PricingAc
 class SalesActionDispatcher:
     lead_service: LeadService | None = None
     pricing_action_service: PricingActionService | None = None
+    portfolio_action_service: PortfolioActionService | None = None
 
     async def dispatch(
         self,
@@ -39,6 +44,14 @@ class SalesActionDispatcher:
 
         if plan.action_type == ActionType.PRICE_QUOTE:
             return await self._price_quote(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+
+        if plan.action_type == ActionType.PORTFOLIO_LOOKUP:
+            return await self._portfolio_lookup(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
@@ -138,6 +151,75 @@ class SalesActionDispatcher:
                 "updated_fields": result.updated_fields,
                 "recommended_follow_up_slots": plan.recommended_follow_up_slots,
             },
+            duration_ms=_elapsed_ms(started),
+        )
+
+    async def _portfolio_lookup(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+    ) -> ActionResult:
+        if self.portfolio_action_service is None:
+            return ActionResult(
+                action_type=ActionType.PORTFOLIO_LOOKUP,
+                success=False,
+                customer_safe_summary=(
+                    "I can collect the sample request, but sample lookup is not connected yet."
+                ),
+                internal_summary="PortfolioActionService is not configured.",
+                error_code="portfolio_action_service_unavailable",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        slots = plan.collected_slots
+        service = _string_or_none(slots.get("service"))
+        if service is None:
+            return ActionResult(
+                action_type=ActionType.PORTFOLIO_LOOKUP,
+                success=False,
+                customer_safe_summary=("I need to know which service you want samples for first."),
+                internal_summary="Portfolio lookup missing service.",
+                error_code="missing_portfolio_service",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        try:
+            result = await self.portfolio_action_service.lookup(
+                PortfolioActionRequest(
+                    customer_id=customer_id,
+                    thread_id=thread_id,
+                    service=service,
+                    genre=_string_or_none(slots.get("genre")),
+                    exclude_sample_ids=[
+                        str(sample_id) for sample_id in slots.get("exclude_sample_ids", [])
+                    ]
+                    if isinstance(slots.get("exclude_sample_ids"), list)
+                    else [],
+                    limit=_int_or_none(slots.get("limit")) or 3,
+                )
+            )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.PORTFOLIO_LOOKUP,
+                success=False,
+                customer_safe_summary=(
+                    "I have the sample request, but I could not fetch samples just now."
+                ),
+                internal_summary=exc.__class__.__name__,
+                error_code="portfolio_lookup_failed",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        return ActionResult(
+            action_type=ActionType.PORTFOLIO_LOOKUP,
+            success=True,
+            result_id=",".join(result.sample_ids) if result.sample_ids else None,
+            customer_safe_summary=result.customer_safe_summary,
+            internal_summary=(f"Portfolio lookup processed for {result.service}: {result.status}"),
+            payload=result.model_dump(mode="json"),
             duration_ms=_elapsed_ms(started),
         )
 
