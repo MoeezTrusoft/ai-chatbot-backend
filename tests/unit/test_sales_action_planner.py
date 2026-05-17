@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+from bookcraft.components.actions import ActionStatus, ActionType, SalesActionPlanner
+from bookcraft.components.extraction.schemas import CombinedExtraction
+from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
+from bookcraft.domain.state import ThreadState
+
+
+def _message(text: str, atoms: dict[str, object] | None = None) -> ProcessedMessage:
+    return ProcessedMessage(
+        raw=text,
+        normalized=text,
+        tokens=[],
+        negation_spans=[],
+        hedge_spans=[],
+        counterfactual_spans=[],
+        deterministic_atoms=atoms or {},
+        embedding=[],
+        language="en",
+        char_count=len(text),
+    )
+
+
+def _intent(
+    query: QueryIntentType,
+    service: ServiceCategory | None = None,
+    secondary: list[ServiceCategory] | None = None,
+) -> IntentVote:
+    return IntentVote(
+        query_primary=query,
+        query_secondary=[],
+        service_primary=service,
+        service_secondary=secondary or [],
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=True,
+        confidence=0.95,
+        rationale="test",
+        evidence=[],
+    )
+
+
+def test_lead_with_email_is_ready_but_recommends_name_and_phone() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message(
+            "Email me at author@example.com",
+            atoms={"emails": ["author@example.com"]},
+        ),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.CONTACT_INFO_PROVIDED),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.CREATE_LEAD
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["email"] == "author@example.com"
+    assert plan.recommended_follow_up_slots == ["name", "phone"]
+
+
+def test_lead_without_email_or_phone_is_missing_contact() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("I am interested."),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.READY_TO_BUY),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.CREATE_LEAD
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert plan.missing_slots == ["email_or_phone"]
+
+
+def test_schedule_request_missing_name_contact_and_time() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("Schedule a consultation."),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.CONSULTATION_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.SCHEDULE_CONSULTATION
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert plan.missing_slots == [
+        "name",
+        "email_or_phone",
+        "preferred_date_or_time_window",
+    ]
+
+
+def test_schedule_pending_slot_yes_resolves_confirmation() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pending_confirmation.type = ActionType.SCHEDULE_CONSULTATION.value
+    state.sales_actions.pending_confirmation.payload = {
+        "csr_name": "Jerry Miller",
+        "houston_display_time": "Tuesday 4:00 PM",
+    }
+
+    plan = planner.plan(
+        processed=_message("yes"),
+        state=state,
+        intent=_intent(QueryIntentType.UNCLEAR),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.SCHEDULE_CONSULTATION
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["confirmed"] is True
+
+
+def test_pricing_missing_info_asks_for_required_slots() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("Give me a quote."),
+        state=ThreadState(),
+        intent=_intent(
+            QueryIntentType.PRICING_QUESTION,
+            service=ServiceCategory.EDITING_PROOFREADING,
+        ),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PRICE_QUOTE
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert "word_or_page_count" in plan.missing_slots
+    assert "genre" in plan.missing_slots
+    assert "manuscript_status" in plan.missing_slots
+    assert "deadline" in plan.missing_slots
+
+
+def test_persistent_pricing_request_uses_default_assumption_confirmation() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pricing.quote_attempt_count = 1
+
+    plan = planner.plan(
+        processed=_message("Just give me a rough quote."),
+        state=state,
+        intent=_intent(
+            QueryIntentType.PRICING_QUESTION,
+            service=ServiceCategory.EDITING_PROOFREADING,
+        ),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PRICE_QUOTE
+    assert plan.status == ActionStatus.NEEDS_CONFIRMATION
+    assert plan.confirmation_required is True
+    assert plan.collected_slots["use_default_assumptions"] is True
+
+
+def test_portfolio_request_without_service_is_missing_service() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("Show me samples."),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.PORTFOLIO_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PORTFOLIO_LOOKUP
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert plan.missing_slots == ["service"]
+
+
+def test_nda_request_missing_required_params() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("Can you send an NDA?"),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.NDA_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_NDA
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert plan.missing_slots == ["name", "email", "effective_date"]
+
+
+def test_agreement_without_quote_is_blocked() -> None:
+    planner = SalesActionPlanner()
+    plan = planner.plan(
+        processed=_message("Send me the agreement."),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.AGREEMENT_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_AGREEMENT
+    assert plan.status == ActionStatus.BLOCKED
+    assert plan.missing_slots == ["quote_id"]
