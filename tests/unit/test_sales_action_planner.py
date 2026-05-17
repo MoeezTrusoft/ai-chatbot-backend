@@ -193,3 +193,36 @@ def test_agreement_without_quote_is_blocked() -> None:
     assert plan.action_type == ActionType.GENERATE_AGREEMENT
     assert plan.status == ActionStatus.BLOCKED
     assert plan.missing_slots == ["quote_id"]
+
+
+def test_portfolio_followup_reuses_previous_service_context() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.portfolio.requested = True
+    state.sales_actions.portfolio.requested_service = "interior_formatting"
+    state.sales_actions.portfolio.genre = "default"
+    state.sales_actions.portfolio.seen_sample_ids = [
+        "Formatting:default:0",
+        "Formatting:default:1",
+        "Formatting:default:2",
+    ]
+
+    plan = planner.plan(
+        processed=_message(
+            "Show me more samples like those.",
+            atoms={"query_cues": ["portfolio_request"]},
+        ),
+        state=state,
+        intent=_intent(QueryIntentType.PORTFOLIO_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PORTFOLIO_LOOKUP
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["service"] == "interior_formatting"
+    assert plan.collected_slots["genre"] == "default"
+    assert plan.collected_slots["exclude_sample_ids"] == [
+        "Formatting:default:0",
+        "Formatting:default:1",
+        "Formatting:default:2",
+    ]
