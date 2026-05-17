@@ -39,6 +39,10 @@ from bookcraft.components.portfolio.tools import register_portfolio_tools
 from bookcraft.components.preprocessor import EmbeddingClient, SharedPreprocessor, load_sidecars
 from bookcraft.components.pricing import PricingTimelineEngine
 from bookcraft.components.pricing.tools import register_pricing_tools
+from bookcraft.components.pricing_actions import (
+    PricingActionService,
+    PricingQuoteRepository,
+)
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.db import create_engine, create_session_factory
@@ -295,6 +299,14 @@ def build_chat_service(
         if session_factory is None
         else LeadService(repository=LeadRepository(session_factory=session_factory))
     )
+    pricing_action_service = (
+        None
+        if session_factory is None
+        else PricingActionService(
+            pricing_engine=pricing_engine,
+            repository=PricingQuoteRepository(session_factory=session_factory),
+        )
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -317,7 +329,10 @@ def build_chat_service(
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         trimatch_extra_mode=settings.trimatch_extra_mode,
-        action_dispatcher=SalesActionDispatcher(lead_service=lead_service),
+        action_dispatcher=SalesActionDispatcher(
+            lead_service=lead_service,
+            pricing_action_service=pricing_action_service,
+        ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,
     )

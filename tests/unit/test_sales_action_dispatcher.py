@@ -80,3 +80,40 @@ async def test_dispatcher_returns_none_for_missing_info_plan() -> None:
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_handles_pricing_action_missing_inputs() -> None:
+    from bookcraft.components.pricing import PricingTimelineEngine
+    from bookcraft.components.pricing_actions import PricingActionService
+    from bookcraft.components.pricing_actions.repository import (
+        InMemoryPricingQuoteRepository,
+    )
+
+    dispatcher = SalesActionDispatcher(
+        pricing_action_service=PricingActionService(
+            pricing_engine=PricingTimelineEngine.from_config_dir(
+                "data/pricing/v2",
+                values_approved=False,
+            ),
+            repository=InMemoryPricingQuoteRepository(),
+        )
+    )
+
+    result = await dispatcher.dispatch(
+        ActionPlan(
+            action_type=ActionType.PRICE_QUOTE,
+            status=ActionStatus.READY,
+            collected_slots={"services": ["editing_proofreading"]},
+            reason="test",
+        ),
+        thread_id=uuid4(),
+        customer_id=uuid4(),
+    )
+
+    assert result is not None
+    assert result.action_type == ActionType.PRICE_QUOTE
+    assert result.success is True
+    assert result.result_id is not None
+    assert result.payload["status"] == "needs_clarification"
+    assert result.payload["missing_fields"]

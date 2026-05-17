@@ -6,11 +6,13 @@ from uuid import UUID
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
 from bookcraft.components.leads import CreateOrUpdateLeadRequest, LeadService
+from bookcraft.components.pricing_actions import PricingActionRequest, PricingActionService
 
 
 @dataclass(slots=True)
 class SalesActionDispatcher:
     lead_service: LeadService | None = None
+    pricing_action_service: PricingActionService | None = None
 
     async def dispatch(
         self,
@@ -29,6 +31,14 @@ class SalesActionDispatcher:
 
         if plan.action_type == ActionType.CREATE_LEAD:
             return await self._create_lead(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+
+        if plan.action_type == ActionType.PRICE_QUOTE:
+            return await self._price_quote(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
@@ -131,6 +141,66 @@ class SalesActionDispatcher:
             duration_ms=_elapsed_ms(started),
         )
 
+    async def _price_quote(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+    ) -> ActionResult:
+        if self.pricing_action_service is None:
+            return ActionResult(
+                action_type=ActionType.PRICE_QUOTE,
+                success=False,
+                customer_safe_summary=(
+                    "I can collect the quote details, but estimate creation is not connected yet."
+                ),
+                internal_summary="PricingActionService is not configured.",
+                error_code="pricing_action_service_unavailable",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        slots = plan.collected_slots
+        services = (
+            [str(service) for service in slots.get("services", []) if service is not None]
+            if isinstance(slots.get("services"), list)
+            else []
+        )
+
+        try:
+            result = await self.pricing_action_service.quote(
+                PricingActionRequest(
+                    customer_id=customer_id,
+                    thread_id=thread_id,
+                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    services=services,
+                    collected_slots=slots,
+                    use_default_assumptions=bool(slots.get("use_default_assumptions")),
+                )
+            )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.PRICE_QUOTE,
+                success=False,
+                customer_safe_summary=(
+                    "I have the quote request, but I could not prepare the estimate just now."
+                ),
+                internal_summary=exc.__class__.__name__,
+                error_code="pricing_quote_failed",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        return ActionResult(
+            action_type=ActionType.PRICE_QUOTE,
+            success=True,
+            result_id=str(result.quote_id),
+            customer_safe_summary=result.customer_safe_summary,
+            internal_summary=f"Pricing quote processed: {result.quote_id}",
+            payload=result.model_dump(mode="json"),
+            duration_ms=_elapsed_ms(started),
+        )
+
 
 def _elapsed_ms(started: float) -> float:
     return round((time.perf_counter() - started) * 1000, 2)
@@ -150,5 +220,16 @@ def _int_or_none(value: object) -> int | None:
         return value
     try:
         return int(str(value))
+    except ValueError:
+        return None
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
     except ValueError:
         return None

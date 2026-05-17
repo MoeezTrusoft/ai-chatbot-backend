@@ -67,6 +67,34 @@ class SalesLeadRecord(SQLModel, table=True):
     deleted_at: datetime | None = Field(default=None, index=True)
 
 
+class SalesPricingQuoteRecord(SQLModel, table=True):
+    __tablename__ = "sales_pricing_quotes"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    quote_id: UUID = Field(default_factory=uuid4, index=True)
+    lead_id: UUID | None = Field(default=None, foreign_key="sales_leads.id", index=True)
+    customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
+    thread_id: UUID | None = Field(default=None, index=True)
+    services: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    input_params: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    used_default_assumptions: bool = False
+    assumptions: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    quote_output: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    customer_safe_summary: str | None = None
+    status: str = Field(default="created", max_length=64, index=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 
