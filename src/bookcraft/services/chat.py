@@ -535,22 +535,38 @@ class ChatService:
         if action_result is None or not action_result.success:
             return
 
-        if action_result.action_type != ActionType.CREATE_LEAD:
+        if action_result.action_type == ActionType.CREATE_LEAD:
+            lead = action_result.payload.get("lead")
+            if not isinstance(lead, dict):
+                return
+
+            state.sales_actions.lead.lead_id = str(lead.get("id") or action_result.result_id)
+            state.sales_actions.lead.name = _optional_string(lead.get("name"))
+            state.sales_actions.lead.email = _optional_string(lead.get("email"))
+            state.sales_actions.lead.phone = _optional_string(lead.get("phone"))
+            state.sales_actions.lead.preferred_contact_method = _optional_string(
+                lead.get("preferred_contact_method")
+            )
+            state.sales_actions.lead.created = True
+            state.sales_actions.lead.last_updated_at = datetime.now(UTC)
             return
 
-        lead = action_result.payload.get("lead")
-        if not isinstance(lead, dict):
+        if action_result.action_type == ActionType.PRICE_QUOTE:
+            state.sales_actions.pricing.requested = True
+            state.sales_actions.pricing.quote_id = action_result.result_id
+            state.sales_actions.pricing.last_quote_summary = action_result.customer_safe_summary
+            missing_fields = action_result.payload.get("missing_fields")
+            state.sales_actions.pricing.missing_fields = (
+                [str(field) for field in missing_fields] if isinstance(missing_fields, list) else []
+            )
+            state.sales_actions.pricing.used_default_assumptions = bool(
+                action_result.payload.get("used_default_assumptions")
+            )
+            assumptions = action_result.payload.get("assumptions")
+            state.sales_actions.pricing.assumptions = (
+                assumptions if isinstance(assumptions, dict) else None
+            )
             return
-
-        state.sales_actions.lead.lead_id = str(lead.get("id") or action_result.result_id)
-        state.sales_actions.lead.name = _optional_string(lead.get("name"))
-        state.sales_actions.lead.email = _optional_string(lead.get("email"))
-        state.sales_actions.lead.phone = _optional_string(lead.get("phone"))
-        state.sales_actions.lead.preferred_contact_method = _optional_string(
-            lead.get("preferred_contact_method")
-        )
-        state.sales_actions.lead.created = True
-        state.sales_actions.lead.last_updated_at = datetime.now(UTC)
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
         if self.trace_store is None:

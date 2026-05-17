@@ -1,0 +1,99 @@
+{
+  "editing_proofreading": {
+    "global_inputs": {
+      "word_count": 50000,
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft"
+    },
+    "service_inputs": {
+      "editing_level": "copyediting",
+      "manuscript_condition": "standard"
+    }
+  },
+  "interior_formatting": {
+    "global_inputs": {
+      "page_count": 220,
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft",
+      "format_targets": ["kdp_paperback", "kindle"]
+    },
+    "service_inputs": {
+      "complexity": "standard",
+      "image_table_complexity": "standard"
+    }
+  },
+  "cover_design_illustration": {
+    "global_inputs": {
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft"
+    },
+    "service_inputs": {
+      "cover_type": "paperback_and_ebook",
+      "complexity": "standard"
+    }
+  },
+  "publishing_distribution": {
+    "global_inputs": {
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft",
+      "format_targets": ["kdp_paperback", "kindle"]
+    },
+    "service_inputs": {
+      "platforms": ["amazon_kdp"],
+      "distribution_scope": "standard"
+    }
+  },
+  "marketing_promotion": {
+    "global_inputs": {
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft",
+      "launch_goal": "standard_visibility"
+    },
+    "service_inputs": {
+      "scope": "basic_launch_plan",
+      "launch_window": "standard"
+    }
+  },
+  "ghostwriting": {
+    "global_inputs": {
+      "word_count": 50000,
+      "genre": "nonfiction",
+      "manuscript_status": "idea_or_outline"
+    },
+    "service_inputs": {
+      "source_material": "outline_and_notes",
+      "complexity": "standard"
+    }
+  },
+  "author_website": {
+    "global_inputs": {
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft"
+    },
+    "service_inputs": {
+      "page_count": 5,
+      "complexity": "standard"
+    }
+  },
+  "audiobook_production": {
+    "global_inputs": {
+      "word_count": 50000,
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft"
+    },
+    "service_inputs": {
+      "narration_type": "standard",
+      "finished_hours": 6
+    }
+  },
+  "video_trailer": {
+    "global_inputs": {
+      "genre": "nonfiction",
+      "manuscript_status": "completed_draft"
+    },
+    "service_inputs": {
+      "video_seconds": 45,
+      "complexity": "standard"
+    }
+  }
+}
