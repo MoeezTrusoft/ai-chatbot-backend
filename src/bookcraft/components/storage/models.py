@@ -36,6 +36,37 @@ class Customer(SQLModel, table=True):
     deleted_at: datetime | None = Field(default=None, index=True)
 
 
+class SalesLeadRecord(SQLModel, table=True):
+    __tablename__ = "sales_leads"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
+    thread_id: UUID | None = Field(default=None, index=True)
+    name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, index=True, max_length=255)
+    phone: str | None = Field(default=None, index=True, max_length=50)
+    preferred_contact_method: str | None = Field(default=None, max_length=32)
+    services: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    genre: str | None = Field(default=None, max_length=255)
+    word_count: int | None = None
+    page_count: int | None = None
+    manuscript_status: str | None = Field(default=None, max_length=64)
+    deadline: str | None = Field(default=None, max_length=255)
+    source: str = Field(default="chatbot", max_length=64)
+    status: str = Field(default="new", max_length=32, index=True)
+    notes: str | None = None
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column("metadata", JSON, nullable=False),
+    )
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    deleted_at: datetime | None = Field(default=None, index=True)
+
+
 class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 
