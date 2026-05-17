@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 import structlog
 from prometheus_client import Counter, Histogram
 
+from bookcraft.components.actions import SalesActionPlanner, action_trace_payload
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
@@ -71,6 +72,7 @@ class ChatService:
     trimatch_shadow_engine: TriMatchEngine | None = None
     trimatch_extra_mode: str = "off"
     trace_store: LiveTraceStore | None = None
+    action_planner: SalesActionPlanner = field(default_factory=SalesActionPlanner)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -302,6 +304,21 @@ class ChatService:
                 payload={"delta_count": len(extraction.state_deltas)},
             )
             event_ids.append(event_id)
+            action_plan = self.action_planner.plan(
+                processed=processed,
+                state=state,
+                intent=intent,
+                extraction=extraction,
+            )
+            action_payload = action_trace_payload(action_plan)
+            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                thread_id=thread_id,
+                sequence=event_sequence,
+                previous_hash=previous_event_hash,
+                event_type="sales_action.planned",
+                payload=action_payload or {},
+            )
+            event_ids.append(event_id)
             rag_chunks = []
             if self.rag_retriever is not None and _allow_rag_for_intent(intent):
                 try:
@@ -472,6 +489,7 @@ class ChatService:
                     if trimatch_shadow_result is not None
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
+                    "action_plan": action_trace_payload(action_plan),
                     "components": {
                         "event_count": len(event_ids),
                         "event_ids": self._debug_event_ids(event_ids),
