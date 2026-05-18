@@ -860,10 +860,6 @@ class ChatService:
         if intent.service_primary == active_service:
             return intent
 
-        service_secondary = list(intent.service_secondary)
-        if intent.service_primary is not None and intent.service_primary not in service_secondary:
-            service_secondary.append(intent.service_primary)
-
         evidence = list(intent.evidence)
         if "state_service_inertia" not in evidence:
             evidence.append("state_service_inertia")
@@ -871,9 +867,9 @@ class ChatService:
         return intent.model_copy(
             update={
                 "service_primary": active_service,
-                "service_secondary": [
-                    service for service in service_secondary if service != active_service
-                ],
+                # When the current turn has no explicit service, any conflicting
+                # service guess is weak inference. Do not keep it as secondary.
+                "service_secondary": [],
                 "rationale": (f"{intent.rationale} Service focus retained from thread state."),
                 "evidence": evidence,
             }

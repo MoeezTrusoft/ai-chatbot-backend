@@ -16,11 +16,16 @@ def test_active_service_is_retained_when_later_turn_has_no_explicit_service() ->
     service = ChatService.__new__(ChatService)
 
     processed = ProcessedMessage(
-        raw_text="Its fiction children book as I told you.",
+        raw="Its fiction children book as I told you.",
         normalized="Its fiction children book as I told you.",
-        language="en",
-        embedding=[1.0],
+        tokens=[],
+        negation_spans=[],
+        hedge_spans=[],
+        counterfactual_spans=[],
         deterministic_atoms={"genre": "children's fiction"},
+        embedding=[1.0],
+        language="en",
+        char_count=len("Its fiction children book as I told you."),
     )
 
     intent = IntentVote(
@@ -42,5 +47,5 @@ def test_active_service_is_retained_when_later_turn_has_no_explicit_service() ->
 
     assert _active_service_from_state(state) == ServiceCategory.COVER_DESIGN_ILLUSTRATION
     assert stabilized.service_primary == ServiceCategory.COVER_DESIGN_ILLUSTRATION
-    assert ServiceCategory.GHOSTWRITING in stabilized.service_secondary
+    assert ServiceCategory.GHOSTWRITING not in stabilized.service_secondary
     assert "state_service_inertia" in stabilized.evidence
