@@ -302,6 +302,12 @@ class SharedPreprocessor:
         if status:
             atoms["manuscript_status"] = status.value
             ATOMS_EXTRACTED.labels(atom_type="manuscript_status").inc()
+
+        genre = self._genre(text)
+        if genre:
+            atoms["genre"] = genre
+            ATOMS_EXTRACTED.labels(atom_type="genre").inc()
+
         return atoms
 
     @staticmethod
@@ -312,17 +318,97 @@ class SharedPreprocessor:
 
     @staticmethod
     def _manuscript_status(text: str) -> ManuscriptStatus | None:
-        lowered = text.lower()
-        if "idea" in lowered:
-            return ManuscriptStatus.IDEA_ONLY
-        if "outline" in lowered:
-            return ManuscriptStatus.OUTLINE
-        if "partial draft" in lowered:
-            return ManuscriptStatus.PARTIAL_DRAFT
-        if "completed draft" in lowered or "finished manuscript" in lowered:
-            return ManuscriptStatus.COMPLETED_DRAFT
+        lowered = text.casefold()
+
         if "published" in lowered:
             return ManuscriptStatus.PUBLISHED
+
+        completed_markers = (
+            "completed draft",
+            "complete draft",
+            "finished manuscript",
+            "finished my manuscript",
+            "manuscript is finished",
+            "manuscript finished",
+            "finished the manuscript",
+            "i have finished my manuscript",
+            "i've finished my manuscript",
+            "i have a finished manuscript",
+            "i have completed my manuscript",
+            "i completed my manuscript",
+            "draft is complete",
+            "draft is finished",
+        )
+        if any(marker in lowered for marker in completed_markers):
+            return ManuscriptStatus.COMPLETED_DRAFT
+
+        partial_markers = (
+            "partial draft",
+            "partially written",
+            "some chapters",
+            "3 chapters",
+            "three chapters",
+            "120 pages done",
+            "pages done",
+            "chapters done",
+            "in progress",
+            "not finished",
+            "unfinished",
+        )
+        if any(marker in lowered for marker in partial_markers):
+            return ManuscriptStatus.PARTIAL_DRAFT
+
+        if "outline" in lowered:
+            return ManuscriptStatus.OUTLINE
+
+        idea_markers = (
+            "idea only",
+            "only have an idea",
+            "just an idea",
+            "starting from scratch",
+            "don't have time to write",
+            "do not have time to write",
+            "need someone to write it",
+        )
+        if any(marker in lowered for marker in idea_markers):
+            return ManuscriptStatus.IDEA_ONLY
+
+        return None
+
+    @staticmethod
+    def _genre(text: str) -> str | None:
+        lowered = text.casefold()
+
+        children_markers = (
+            "children book",
+            "children's book",
+            "childrens book",
+            "children’s book",
+            "kids book",
+            "kid's book",
+            "picture book",
+        )
+        is_children = any(marker in lowered for marker in children_markers)
+        is_fiction = "fiction" in lowered or "story" in lowered or "novel" in lowered
+
+        if is_children and is_fiction:
+            return "children's fiction"
+
+        if is_children:
+            return "children's book"
+
+        if is_fiction:
+            return "fiction"
+
+        if "non-fiction" in lowered or "nonfiction" in lowered:
+            return "non-fiction"
+
+        if "memoir" in lowered:
+            return "memoir"
+
+        if "business book" in lowered:
+            return "business"
+
         return None
 
 
@@ -530,10 +616,7 @@ def _query_cues(text: str) -> list[str]:
     ):
         add("agreement_request")
 
-    if any(
-        phrase in lowered
-        for phrase in ("cut the price", "price by", "pricing", "price", "quote", "40 percent")
-    ):
+    if _has_pricing_intent(lowered):
         add("pricing_question")
 
     if any(phrase in lowered for phrase in ("portfolio", "sample", "samples")):
@@ -543,3 +626,47 @@ def _query_cues(text: str) -> list[str]:
         add("service_question")
 
     return cues
+
+
+def _has_pricing_intent(text: str) -> bool:
+    """Return true only for commercial pricing intent.
+
+    Important: the word "quote" is ambiguous. It can mean a price quote,
+    but it can also mean quoted text, an author quote, or "I can't quote
+    an exact page count." Plain "quote" must not force pricing.
+    """
+
+    if _is_non_pricing_quote_usage(text):
+        return False
+
+    if re.search(
+        r"\b(how much|pricing|price|cost|fee|fees|charge|charges|budget|rate|rates)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return True
+
+    if "40 percent" in text or "cut the price" in text or "price by" in text:
+        return True
+
+    quote_patterns = (
+        r"\b(get|give|send|prepare|provide|need|want)\s+(me\s+)?(a\s+)?"
+        r"(price\s+|pricing\s+|cost\s+)?quote\b",
+        r"\b(price|pricing|cost)\s+quote\b",
+        r"\bquote\s+(me|for|on)\b",
+    )
+
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in quote_patterns)
+
+
+def _is_non_pricing_quote_usage(text: str) -> bool:
+    non_pricing_patterns = (
+        r"\b(can't|cannot|can not|don't|do not|won't|will not)\s+quote\s+"
+        r"(a\s+)?(fixed|exact|final|specific)\b",
+        r"\bquote\s+(a\s+)?(fixed|exact|final|specific)\b",
+        r"\b(use|add|include|insert|rewrite|polish|edit)\s+(this\s+)?quote\b",
+        r"\b(author|opening|chapter|book|manuscript|testimonial|line|text)\s+quote\b",
+        r"\bquote\s+(from|in)\s+(the\s+)?(book|manuscript|chapter|text)\b",
+    )
+
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in non_pricing_patterns)

@@ -420,3 +420,50 @@ def test_agreement_ignores_legacy_commercial_quote_id_without_ready_pricing_quot
     assert plan.action_type == ActionType.GENERATE_AGREEMENT
     assert plan.status == ActionStatus.BLOCKED
     assert plan.missing_slots == ["quote_id"]
+
+
+def test_consultation_request_with_required_details_needs_confirmation() -> None:
+    planner = SalesActionPlanner()
+
+    plan = planner.plan(
+        processed=_message(
+            "Please schedule a consultation tomorrow at 4pm. "
+            "My name is Maya Author and my email is maya@example.com.",
+            atoms={"emails": ["maya@example.com"]},
+        ),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.CONSULTATION_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.SCHEDULE_CONSULTATION
+    assert plan.status == ActionStatus.NEEDS_CONFIRMATION
+    assert plan.confirmation_required is True
+    assert plan.pending_confirmation_key == ActionType.SCHEDULE_CONSULTATION.value
+    assert plan.collected_slots["email"] == "maya@example.com"
+    assert plan.collected_slots["duration_minutes"] == 30
+
+
+def test_consultation_pending_confirmation_yes_carries_payload() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pending_confirmation.type = ActionType.SCHEDULE_CONSULTATION.value
+    state.sales_actions.pending_confirmation.payload = {
+        "name": "Maya Author",
+        "email": "maya@example.com",
+        "requested_time_text": "tomorrow at 4pm",
+        "duration_minutes": 30,
+        "business_timezone": "America/Chicago",
+    }
+
+    plan = planner.plan(
+        processed=_message("yes, book it"),
+        state=state,
+        intent=_intent(QueryIntentType.UNCLEAR),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.SCHEDULE_CONSULTATION
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["confirmed"] is True
+    assert plan.collected_slots["name"] == "Maya Author"

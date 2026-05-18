@@ -21,6 +21,10 @@ from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.consultations import (
+    ConsultationActionService,
+    ConsultationRepository,
+)
 from bookcraft.components.document_actions import (
     AgreementActionService,
     DocumentRequestRepository,
@@ -363,6 +367,13 @@ def build_chat_service(
             email_client=email_client,
         )
     )
+    consultation_action_service = (
+        None
+        if session_factory is None
+        else ConsultationActionService(
+            repository=ConsultationRepository(session_factory=session_factory)
+        )
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -387,6 +398,7 @@ def build_chat_service(
         trimatch_extra_mode=settings.trimatch_extra_mode,
         action_dispatcher=SalesActionDispatcher(
             lead_service=lead_service,
+            consultation_action_service=consultation_action_service,
             pricing_action_service=pricing_action_service,
             portfolio_action_service=portfolio_action_service,
             nda_action_service=nda_action_service,

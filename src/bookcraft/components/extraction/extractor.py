@@ -97,6 +97,20 @@ class CombinedExtractor:
                     )
                 )
                 EXTRACTION_FIELDS.labels(category="project").inc()
+            if genre := atoms.get("genre"):
+                genre_text = str(genre)
+                extraction.project.genre = genre_text
+                extraction.state_deltas.append(
+                    StateDelta(
+                        path="project.genre",
+                        value=genre_text,
+                        confidence=0.9,
+                        source=Source.USER_STATED,
+                        extracted_by="deterministic_preextractor.v1",
+                        raw_excerpt=genre_text,
+                    )
+                )
+                EXTRACTION_FIELDS.labels(category="project").inc()
             if services := _string_list(atoms.get("services")):
                 service_list = services
                 extraction.service_interest.services = service_list

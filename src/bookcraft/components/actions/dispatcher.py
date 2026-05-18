@@ -8,6 +8,10 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
+from bookcraft.components.consultations import (
+    ConsultationActionRequest,
+    ConsultationActionService,
+)
 from bookcraft.components.document_actions import (
     AgreementActionRequest,
     AgreementActionService,
@@ -25,6 +29,7 @@ from bookcraft.components.pricing_actions import PricingActionRequest, PricingAc
 @dataclass(slots=True)
 class SalesActionDispatcher:
     lead_service: LeadService | None = None
+    consultation_action_service: ConsultationActionService | None = None
     pricing_action_service: PricingActionService | None = None
     portfolio_action_service: PortfolioActionService | None = None
     nda_action_service: NDAActionService | None = None
@@ -44,6 +49,14 @@ class SalesActionDispatcher:
 
         if plan.action_type == ActionType.CREATE_LEAD:
             return await self._create_lead(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+
+        if plan.action_type == ActionType.SCHEDULE_CONSULTATION:
+            return await self._schedule_consultation(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
@@ -90,6 +103,118 @@ class SalesActionDispatcher:
                 "Sales action dispatcher foundation only; concrete tools come in later PRs."
             ),
             error_code="not_implemented",
+            duration_ms=_elapsed_ms(started),
+        )
+
+    async def _schedule_consultation(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+    ) -> ActionResult:
+        if self.consultation_action_service is None:
+            return ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=False,
+                customer_safe_summary=(
+                    "I can collect the consultation details, but scheduling is not connected yet."
+                ),
+                internal_summary="ConsultationActionService is not configured.",
+                error_code="consultation_action_service_unavailable",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        slots = plan.collected_slots
+        lead_id: UUID | None = _uuid_or_none(slots.get("lead_id"))
+
+        if self.lead_service is not None:
+            try:
+                lead_result = await self.lead_service.create_or_update(
+                    CreateOrUpdateLeadRequest(
+                        customer_id=customer_id,
+                        thread_id=thread_id,
+                        name=_string_or_none(slots.get("name")),
+                        email=_string_or_none(slots.get("email")),
+                        phone=_string_or_none(slots.get("phone")),
+                        preferred_contact_method=_string_or_none(
+                            slots.get("preferred_contact_method")
+                        ),
+                        services=[
+                            str(service)
+                            for service in slots.get("services", [])
+                            if service is not None
+                        ]
+                        if isinstance(slots.get("services"), list)
+                        else [],
+                        genre=_string_or_none(slots.get("genre")),
+                        word_count=_int_or_none(slots.get("word_count")),
+                        page_count=_int_or_none(slots.get("page_count")),
+                        manuscript_status=_string_or_none(slots.get("manuscript_status")),
+                        deadline=_string_or_none(slots.get("deadline")),
+                        metadata={"source_action": "schedule_consultation"},
+                    )
+                )
+                lead_id = lead_result.lead.id
+            except Exception as exc:
+                return ActionResult(
+                    action_type=ActionType.SCHEDULE_CONSULTATION,
+                    success=False,
+                    customer_safe_summary=(
+                        "I have the consultation details, but I could not save the lead "
+                        "before booking just now."
+                    ),
+                    internal_summary=_exception_summary(exc),
+                    error_code="consultation_lead_creation_failed",
+                    duration_ms=_elapsed_ms(started),
+                )
+
+        try:
+            result = await self.consultation_action_service.schedule(
+                ConsultationActionRequest(
+                    customer_id=customer_id,
+                    lead_id=lead_id,
+                    thread_id=thread_id,
+                    name=_string_or_none(slots.get("name")) or "",
+                    email=_string_or_none(slots.get("email")),
+                    phone=_string_or_none(slots.get("phone")),
+                    services=[
+                        str(service) for service in slots.get("services", []) if service is not None
+                    ]
+                    if isinstance(slots.get("services"), list)
+                    else [],
+                    requested_time_text=_string_or_none(slots.get("requested_time_text")) or "",
+                    customer_timezone=_string_or_none(slots.get("customer_timezone")),
+                    business_timezone=_string_or_none(slots.get("business_timezone"))
+                    or "America/Chicago",
+                    duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,
+                    metadata={"action_plan_reason": plan.reason},
+                )
+            )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=False,
+                customer_safe_summary=(
+                    "I have the consultation request, but I could not book the slot just now."
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="consultation_scheduling_failed",
+                payload={
+                    "exception_class": exc.__class__.__name__,
+                    "exception_detail": _exception_summary(exc),
+                },
+                duration_ms=_elapsed_ms(started),
+            )
+
+        return ActionResult(
+            action_type=ActionType.SCHEDULE_CONSULTATION,
+            success=True,
+            result_id=str(result.appointment_id),
+            customer_safe_summary=result.customer_safe_summary,
+            internal_summary=f"Consultation scheduled: {result.appointment_id}",
+            payload=result.model_dump(mode="json"),
             duration_ms=_elapsed_ms(started),
         )
 
