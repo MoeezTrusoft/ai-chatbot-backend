@@ -4,14 +4,13 @@ Revision ID: 8ecbc096ba76
 Revises: 20260508_0002
 Create Date: 2026-05-18 09:00:30.937709
 """
+
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
-
-revision: str = '8ecbc096ba76'
-down_revision: str | None = '20260508_0002'
+revision: str = "8ecbc096ba76"
+down_revision: str | None = "20260508_0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

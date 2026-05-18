@@ -10,6 +10,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -197,6 +198,18 @@ BAD_RESPONSE_PATTERNS = [
 ]
 
 
+def _ensure_http_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme for canary request: {parsed.scheme!r}")
+
+    if not parsed.netloc:
+        raise ValueError("Canary request URL must include a host.")
+
+    return url
+
+
 def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
 
@@ -237,7 +250,9 @@ def request_json(
         data = json.dumps(body).encode("utf-8")
         headers = {**headers, "Content-Type": "application/json"}
 
-    request = urllib.request.Request(
+    url = _ensure_http_url(url)
+
+    request = urllib.request.Request(  # noqa: S310
         url=url,
         data=data,
         method=method,
@@ -245,7 +260,10 @@ def request_json(
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(  # noqa: S310
+            request,
+            timeout=timeout,
+        ) as response:
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
@@ -310,8 +328,7 @@ def first_trace_for_thread(
         time.sleep(0.5)
 
     raise RuntimeError(
-        f"No live trace found for thread_id={thread_id}. "
-        f"Last payload={last_payload}"
+        f"No live trace found for thread_id={thread_id}. Last payload={last_payload}"
     )
 
 
@@ -542,21 +559,16 @@ def main() -> int:
         rows.append(row)
 
         if not source_ok:
-            failures.append(
-                f"{item.id}: expected Claude/Sonnet/Anthropic source, got {source!r}"
-            )
+            failures.append(f"{item.id}: expected Claude/Sonnet/Anthropic source, got {source!r}")
         if bad_text_hits:
-            failures.append(
-                f"{item.id}: response contains blocked artifacts {bad_text_hits}"
-            )
+            failures.append(f"{item.id}: response contains blocked artifacts {bad_text_hits}")
         if missing_services:
             failures.append(
                 f"{item.id}: missing expected services {missing_services}; detected={services}"
             )
 
         print(
-            f"    source={source} source_ok={source_ok} "
-            f"text_ok={text_ok} service_ok={service_ok}"
+            f"    source={source} source_ok={source_ok} text_ok={text_ok} service_ok={service_ok}"
         )
 
     summary = {
@@ -565,7 +577,9 @@ def main() -> int:
         "base_url": base_url,
         "customer_id": args.customer_id,
         "message_count": len(TEST_MESSAGES),
-        "passed_count": len(TEST_MESSAGES) - len({failure.split(':', 1)[0] for failure in failures}),
+        "passed_count": (
+            len(TEST_MESSAGES) - len({failure.split(":", 1)[0] for failure in failures})
+        ),
         "failure_count": len(failures),
         "valid": not failures,
         "failures": failures,
