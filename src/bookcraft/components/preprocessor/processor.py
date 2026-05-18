@@ -302,6 +302,12 @@ class SharedPreprocessor:
         if status:
             atoms["manuscript_status"] = status.value
             ATOMS_EXTRACTED.labels(atom_type="manuscript_status").inc()
+
+        genre = self._genre(text)
+        if genre:
+            atoms["genre"] = genre
+            ATOMS_EXTRACTED.labels(atom_type="genre").inc()
+
         return atoms
 
     @staticmethod
@@ -312,17 +318,97 @@ class SharedPreprocessor:
 
     @staticmethod
     def _manuscript_status(text: str) -> ManuscriptStatus | None:
-        lowered = text.lower()
-        if "idea" in lowered:
-            return ManuscriptStatus.IDEA_ONLY
-        if "outline" in lowered:
-            return ManuscriptStatus.OUTLINE
-        if "partial draft" in lowered:
-            return ManuscriptStatus.PARTIAL_DRAFT
-        if "completed draft" in lowered or "finished manuscript" in lowered:
-            return ManuscriptStatus.COMPLETED_DRAFT
+        lowered = text.casefold()
+
         if "published" in lowered:
             return ManuscriptStatus.PUBLISHED
+
+        completed_markers = (
+            "completed draft",
+            "complete draft",
+            "finished manuscript",
+            "finished my manuscript",
+            "manuscript is finished",
+            "manuscript finished",
+            "finished the manuscript",
+            "i have finished my manuscript",
+            "i've finished my manuscript",
+            "i have a finished manuscript",
+            "i have completed my manuscript",
+            "i completed my manuscript",
+            "draft is complete",
+            "draft is finished",
+        )
+        if any(marker in lowered for marker in completed_markers):
+            return ManuscriptStatus.COMPLETED_DRAFT
+
+        partial_markers = (
+            "partial draft",
+            "partially written",
+            "some chapters",
+            "3 chapters",
+            "three chapters",
+            "120 pages done",
+            "pages done",
+            "chapters done",
+            "in progress",
+            "not finished",
+            "unfinished",
+        )
+        if any(marker in lowered for marker in partial_markers):
+            return ManuscriptStatus.PARTIAL_DRAFT
+
+        if "outline" in lowered:
+            return ManuscriptStatus.OUTLINE
+
+        idea_markers = (
+            "idea only",
+            "only have an idea",
+            "just an idea",
+            "starting from scratch",
+            "don't have time to write",
+            "do not have time to write",
+            "need someone to write it",
+        )
+        if any(marker in lowered for marker in idea_markers):
+            return ManuscriptStatus.IDEA_ONLY
+
+        return None
+
+    @staticmethod
+    def _genre(text: str) -> str | None:
+        lowered = text.casefold()
+
+        children_markers = (
+            "children book",
+            "children's book",
+            "childrens book",
+            "children’s book",
+            "kids book",
+            "kid's book",
+            "picture book",
+        )
+        is_children = any(marker in lowered for marker in children_markers)
+        is_fiction = "fiction" in lowered or "story" in lowered or "novel" in lowered
+
+        if is_children and is_fiction:
+            return "children's fiction"
+
+        if is_children:
+            return "children's book"
+
+        if is_fiction:
+            return "fiction"
+
+        if "non-fiction" in lowered or "nonfiction" in lowered:
+            return "non-fiction"
+
+        if "memoir" in lowered:
+            return "memoir"
+
+        if "business book" in lowered:
+            return "business"
+
         return None
 
 

@@ -161,3 +161,15 @@ async def test_preprocessor_detects_childrens_picture_book_idea_stage_services(
     assert "cover_design_illustration" in services
     assert "interior_formatting" in services
     assert "publishing_distribution" in services
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_detects_finished_my_manuscript_and_children_fiction(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    result = await preprocessor.process(
+        "I have finished my manuscript. Its fiction children book as I told you."
+    )
+
+    assert result.deterministic_atoms["manuscript_status"] == "completed_draft"
+    assert result.deterministic_atoms["genre"] == "children's fiction"
