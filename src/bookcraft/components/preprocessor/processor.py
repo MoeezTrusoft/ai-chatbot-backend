@@ -530,10 +530,7 @@ def _query_cues(text: str) -> list[str]:
     ):
         add("agreement_request")
 
-    if any(
-        phrase in lowered
-        for phrase in ("cut the price", "price by", "pricing", "price", "quote", "40 percent")
-    ):
+    if _has_pricing_intent(lowered):
         add("pricing_question")
 
     if any(phrase in lowered for phrase in ("portfolio", "sample", "samples")):
@@ -543,3 +540,47 @@ def _query_cues(text: str) -> list[str]:
         add("service_question")
 
     return cues
+
+
+def _has_pricing_intent(text: str) -> bool:
+    """Return true only for commercial pricing intent.
+
+    Important: the word "quote" is ambiguous. It can mean a price quote,
+    but it can also mean quoted text, an author quote, or "I can't quote
+    an exact page count." Plain "quote" must not force pricing.
+    """
+
+    if _is_non_pricing_quote_usage(text):
+        return False
+
+    if re.search(
+        r"\b(how much|pricing|price|cost|fee|fees|charge|charges|budget|rate|rates)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return True
+
+    if "40 percent" in text or "cut the price" in text or "price by" in text:
+        return True
+
+    quote_patterns = (
+        r"\b(get|give|send|prepare|provide|need|want)\s+(me\s+)?(a\s+)?"
+        r"(price\s+|pricing\s+|cost\s+)?quote\b",
+        r"\b(price|pricing|cost)\s+quote\b",
+        r"\bquote\s+(me|for|on)\b",
+    )
+
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in quote_patterns)
+
+
+def _is_non_pricing_quote_usage(text: str) -> bool:
+    non_pricing_patterns = (
+        r"\b(can't|cannot|can not|don't|do not|won't|will not)\s+quote\s+"
+        r"(a\s+)?(fixed|exact|final|specific)\b",
+        r"\bquote\s+(a\s+)?(fixed|exact|final|specific)\b",
+        r"\b(use|add|include|insert|rewrite|polish|edit)\s+(this\s+)?quote\b",
+        r"\b(author|opening|chapter|book|manuscript|testimonial|line|text)\s+quote\b",
+        r"\bquote\s+(from|in)\s+(the\s+)?(book|manuscript|chapter|text)\b",
+    )
+
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in non_pricing_patterns)

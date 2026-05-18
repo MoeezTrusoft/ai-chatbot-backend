@@ -616,3 +616,31 @@ def test_trimatch_shortcut_preserves_secondary_services() -> None:
         ServiceCategory.INTERIOR_FORMATTING,
         ServiceCategory.MARKETING_PROMOTION,
     ]
+
+
+@pytest.mark.asyncio
+async def test_deterministic_guard_does_not_treat_non_pricing_quote_as_pricing() -> None:
+    classifier = EnsembleIntentClassifier(
+        providers=[],
+        decision_layer=DecisionLayer(),
+        timeout_seconds=1.0,
+    )
+
+    message = processed(
+        "I can't quote a fixed one but approximately it will be 500 pages "
+        "or 150K words, but now I just have about 120 pages done."
+    )
+
+    result = await classifier.classify(message, ThreadState())
+
+    assert result.query_primary != QueryIntentType.PRICING_QUESTION
+
+
+def test_pricing_intent_helper_keeps_real_price_quote_as_pricing() -> None:
+    from bookcraft.components.intent.ensemble import _has_pricing_intent
+
+    assert _has_pricing_intent("Can you give me a quote for ghostwriting?")
+    assert _has_pricing_intent("How much does ghostwriting cost?")
+    assert not _has_pricing_intent(
+        "I can't quote a fixed one but approximately it will be 500 pages."
+    )
