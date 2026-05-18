@@ -152,6 +152,21 @@ def _name_from_text(text: str) -> str | None:
 def _clean_name_candidate(value: str) -> str | None:
     candidate = value.strip(" ,.;:-")
 
+    # Stop names before contact-info phrases.
+    # Example: "Maya Author and my email is maya@example.com" -> "Maya Author"
+    candidate = re.split(
+        r"\band\s+(?:my\s+)?(?:email|phone|number)\b",
+        candidate,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    candidate = re.split(
+        r"\b(?:my\s+)?(?:email|phone|number)\b",
+        candidate,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+
     candidate = re.split(r"\b[\w.+-]+@[\w.-]+\b", candidate)[0]
     candidate = re.split(r"\+?\d[\d\s().-]{4,}", candidate)[0]
     candidate = candidate.strip(" ,.;:-")
