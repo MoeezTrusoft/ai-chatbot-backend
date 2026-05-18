@@ -44,7 +44,8 @@ from bookcraft.components.storage.thread_repository import (
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
-from bookcraft.domain.state import ThreadState
+from bookcraft.domain.meta import FieldMeta
+from bookcraft.domain.state import ServiceInterest, ThreadState
 from bookcraft.infra.redaction import redact_mapping, redact_text
 from bookcraft.tools import ToolContext, ToolDispatcher
 
@@ -205,6 +206,11 @@ class ChatService:
             )
             ensemble_intent = intent
             intent = harden_intent_from_message(intent, processed)
+            intent = self._stabilize_service_context(
+                intent=intent,
+                processed=processed,
+                state=state,
+            )
             decision = self.intent_classifier.last_decision
 
             if self.trimatch_extra_mode == "advisory" and trimatch_shadow_result is not None:
@@ -304,6 +310,11 @@ class ChatService:
             extraction = await self.extractor.extract(processed, state)
             previous_state = state.model_copy(deep=True)
             state = self.state_applier.apply(state, extraction)
+            self._apply_service_focus_to_state(
+                state=state,
+                processed=processed,
+                intent=intent,
+            )
             STATE_UPDATES.labels(result="applied").inc()
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -416,6 +427,11 @@ class ChatService:
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
+            trg_response_hint = await self._build_trg_response_hint(
+                thread_id=thread_id,
+                state=state,
+                intent=intent,
+            )
             document_status_message = self._sales_action_status_message(
                 action_plan, action_result
             ) or _document_status_message(intent)
@@ -431,7 +447,7 @@ class ChatService:
                 portfolio_response=portfolio_response,
                 document_status_message=document_status_message,
                 runtime_atoms=processed.deterministic_atoms,
-                response_hint=None,
+                response_hint=trg_response_hint,
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
@@ -517,6 +533,7 @@ class ChatService:
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
                     "action_plan": action_trace_payload(action_plan, action_result),
+                    "trg_response_hint": trg_response_hint,
                     "components": {
                         "event_count": len(event_ids),
                         "event_ids": self._debug_event_ids(event_ids),
@@ -824,6 +841,107 @@ class ChatService:
             state.sales_actions.pending_confirmation.created_at = None
             state.sales_actions.pending_confirmation.expires_at = None
             return
+
+    def _stabilize_service_context(
+        self,
+        *,
+        intent: IntentVote,
+        processed: object,
+        state: ThreadState,
+    ) -> IntentVote:
+        explicit_services = _explicit_services_from_processed(processed)
+        if explicit_services:
+            return intent
+
+        active_service = _active_service_from_state(state)
+        if active_service is None:
+            return intent
+
+        if intent.service_primary == active_service:
+            return intent
+
+        service_secondary = list(intent.service_secondary)
+        if intent.service_primary is not None and intent.service_primary not in service_secondary:
+            service_secondary.append(intent.service_primary)
+
+        evidence = list(intent.evidence)
+        if "state_service_inertia" not in evidence:
+            evidence.append("state_service_inertia")
+
+        return intent.model_copy(
+            update={
+                "service_primary": active_service,
+                "service_secondary": [
+                    service for service in service_secondary if service != active_service
+                ],
+                "rationale": (f"{intent.rationale} Service focus retained from thread state."),
+                "evidence": evidence,
+            }
+        )
+
+    def _apply_service_focus_to_state(
+        self,
+        *,
+        state: ThreadState,
+        processed: object,
+        intent: IntentVote,
+    ) -> None:
+        explicit_services = _explicit_services_from_processed(processed)
+
+        services_to_store = explicit_services
+        if not services_to_store and intent.service_primary is not None:
+            # Only use inferred service when there is no existing durable service.
+            # This prevents a later weak inference from replacing the active thread focus.
+            if _active_service_from_state(state) is None:
+                services_to_store = [intent.service_primary]
+
+        for service in services_to_store:
+            _append_service_focus(state, service)
+
+    async def _build_trg_response_hint(
+        self,
+        *,
+        thread_id: UUID,
+        state: ThreadState,
+        intent: IntentVote,
+    ) -> str | None:
+        state_hint = _state_context_response_hint(state, intent)
+
+        if self.trg_engine is None:
+            return state_hint
+
+        graph = await self.trg_engine.repository.load(thread_id)
+        if graph is None:
+            return state_hint
+
+        trg_context = self.trg_engine.build_context(graph)
+        parts: list[str] = []
+
+        if state_hint:
+            parts.append(state_hint)
+
+        if trg_context.outstanding_questions:
+            parts.append(
+                "Previous assistant questions already asked: "
+                + " | ".join(trg_context.outstanding_questions[-3:])
+            )
+
+        if trg_context.repeated_user_messages:
+            parts.append(
+                "The user appears to be repeating themselves. Do not ask the same "
+                "question again; acknowledge the repeated information and move forward."
+            )
+
+        if trg_context.contradiction_count:
+            parts.append(
+                "There may be contradictory project details. Ask one focused "
+                "clarifying question instead of assuming."
+            )
+
+        if not parts:
+            return None
+
+        return " ".join(parts)
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
         if self.trace_store is None:
@@ -2154,3 +2272,101 @@ def _money_like_amount(value: object) -> float | None:
         return amount if amount > 0 else None
 
     return None
+
+
+def _explicit_services_from_processed(processed: object) -> list[ServiceCategory]:
+    atoms = getattr(processed, "deterministic_atoms", {}) or {}
+    raw_services = atoms.get("services")
+
+    if not isinstance(raw_services, list):
+        return []
+
+    services: list[ServiceCategory] = []
+    for raw_service in raw_services:
+        if not isinstance(raw_service, str):
+            continue
+        try:
+            service = ServiceCategory(raw_service)
+        except ValueError:
+            continue
+        if service not in services:
+            services.append(service)
+
+    return services
+
+
+def _active_service_from_state(state: ThreadState) -> ServiceCategory | None:
+    for interest in reversed(state.project.services_discussed):
+        raw_service = interest.service.value
+        if isinstance(raw_service, ServiceCategory):
+            return raw_service
+        if isinstance(raw_service, str):
+            try:
+                return ServiceCategory(raw_service)
+            except ValueError:
+                continue
+
+    return None
+
+
+def _append_service_focus(state: ThreadState, service: ServiceCategory) -> None:
+    existing = {
+        interest.service.value
+        for interest in state.project.services_discussed
+        if interest.service.value is not None
+    }
+
+    if service in existing or service.value in existing:
+        return
+
+    state.project.services_discussed.append(
+        ServiceInterest(
+            service=FieldMeta(
+                value=service,
+                confidence=0.94,
+                source=Source.USER_STATED,
+                extracted_at=datetime.now(UTC),
+                extracted_by="deterministic_service_focus.v1",
+                raw_excerpt=service.value,
+            ),
+            confidence=0.94,
+        )
+    )
+
+
+def _state_context_response_hint(state: ThreadState, intent: IntentVote) -> str | None:
+    known: list[str] = []
+    missing: list[str] = []
+
+    if state.project.manuscript_status.value is not None:
+        known.append(f"manuscript status is {state.project.manuscript_status.value}")
+    else:
+        missing.append("manuscript stage")
+
+    if state.project.genre.value:
+        known.append(f"genre is {state.project.genre.value}")
+    else:
+        missing.append("genre")
+
+    if state.project.word_count.value is not None:
+        known.append(f"word count is {state.project.word_count.value}")
+    elif state.project.page_count.value is not None:
+        known.append(f"page count is {state.project.page_count.value}")
+    else:
+        missing.append("word or page count")
+
+    if not known:
+        return None
+
+    hint = "Known project facts: " + "; ".join(known) + ". Do not ask again for these known facts."
+
+    if missing:
+        hint += " Still missing: " + ", ".join(missing) + "."
+
+    active_service = _active_service_from_state(state)
+    if active_service is not None:
+        hint += f" Current service focus: {active_service.value}."
+    elif intent.service_primary is not None:
+        hint += f" Current service focus: {intent.service_primary.value}."
+
+    return hint

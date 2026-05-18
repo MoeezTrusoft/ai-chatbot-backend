@@ -437,19 +437,22 @@ def _cta_for_intent(
         QueryIntentType.PRICING_QUESTION,
         QueryIntentType.TIMELINE_QUESTION,
     }:
-        missing: list[str] = []
+        pricing_missing_fields: list[str] = []
         if not has_length:
-            missing.append("word count or page count")
+            pricing_missing_fields.append("word count or page count")
         if not has_genre:
-            missing.append("genre")
+            pricing_missing_fields.append("genre")
         if not has_stage:
-            missing.append("manuscript stage")
-        missing.append("deadline")
+            pricing_missing_fields.append("manuscript stage")
+        pricing_missing_fields.append("deadline")
 
-        if len(missing) == 1:
-            return f"What {missing[0]} should I use for the estimate?"
+        if len(pricing_missing_fields) == 1:
+            return f"What {pricing_missing_fields[0]} should I use for the estimate?"
 
-        return f"What {', '.join(missing[:-1])}, and {missing[-1]} should I use for the estimate?"
+        return (
+            f"What {', '.join(pricing_missing_fields[:-1])}, and "
+            f"{pricing_missing_fields[-1]} should I use for the estimate?"
+        )
 
     if intent.query_primary == QueryIntentType.READY_TO_BUY:
         return (
@@ -457,20 +460,23 @@ def _cta_for_intent(
             "bundle scoped together?"
         )
 
-    missing: list[str] = []
+    general_missing_fields: list[str] = []
     if not has_length:
-        missing.append("rough word count or page count")
+        general_missing_fields.append("rough word count or page count")
     if not has_genre:
-        missing.append("genre")
+        general_missing_fields.append("genre")
     if not has_stage:
-        missing.append("manuscript stage")
+        general_missing_fields.append("manuscript stage")
 
-    if missing:
-        if len(missing) == 1:
-            return f"Can you share the {missing[0]} so I can guide the next step properly?"
+    if general_missing_fields:
+        if len(general_missing_fields) == 1:
+            return (
+                f"Can you share the {general_missing_fields[0]} "
+                "so I can guide the next step properly?"
+            )
         return (
-            f"Can you share the {', '.join(missing[:-1])}, and {missing[-1]} "
-            "so I can guide the next step properly?"
+            f"Can you share the {', '.join(general_missing_fields[:-1])}, and "
+            f"{general_missing_fields[-1]} so I can guide the next step properly?"
         )
 
     return (
@@ -539,8 +545,10 @@ def _response_system_prompt() -> str:
         "What you must NOT do:\n"
         "- Do not invent prices, timelines, sample links, legal clauses, or guarantees. "
         "If you do not have an approved number, say we should scope it together.\n"
-        "- Do not ask again for facts already listed under 'What we already know about the project'. "
-        "If manuscript status is already known, do not ask whether they have a draft or are starting from scratch. "
+        "- Do not ask again for facts already listed under "
+        "'What we already know about the project'. "
+        "If manuscript status is already known, do not ask whether they have "
+        "a draft or are starting from scratch. "
         "If genre is already known, do not ask for genre again.\n"
         "- Do not use markdown headings, tables, bullet lists, or Source labels.\n"
         "- Do not say: is the scope I am seeing, BookCraft cannot show, deterministic "
@@ -612,7 +620,13 @@ def _response_user_prompt(
                 "(do NOT quote, paraphrase verbatim, cite, or copy structure):\n" + "\n".join(notes)
             )
 
-    hint_str = f"\nSpecial note for this turn: {response_hint}." if response_hint else ""
+    hint_str = (
+        "\nContext control note for this turn: "
+        f"{response_hint} "
+        "You must not ask again for known facts listed here."
+        if response_hint
+        else ""
+    )
 
     return (
         f'The author just wrote:\n"{message.normalized}"\n\n'
