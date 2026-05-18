@@ -7,13 +7,14 @@ import { AdminApiClient } from './lib/apiClient';
 import { defaultApiConfig, loadApiConfig, saveApiConfig } from './lib/apiConfig';
 import { compactDate, downloadJson, fmtMs, fmtNumber, getAssistantText, intentCounts, latencyTone, objectEntries, routeSourceCounts, serviceCounts, titleCase, truncate } from './lib/format';
 import { loadReports, loadRules, saveReports, saveRules } from './lib/storage';
+import { ChatbotTestRoom } from './pages/ChatbotTestRoom';
 import type { ActivationResult, AdminApiConfig, AdminHealth, ChatLabExchange, ChatTurnResponse, ContextCandidateReport, ContextReportRow, LiveTrace, LoadedReport, PageKey, PerformanceReport, ProviderVote, ReportTurn, RuleCandidate, RuleCandidateStatus, RulesArmyPreflight, Tone } from './types/reports';
 
 const nav: Array<{ key: PageKey; label: string; hint: string }> = [
   { key: 'dashboard', label: 'Dashboard', hint: 'System health' },
   { key: 'trace', label: 'Trace Viewer', hint: 'Turn inspection' },
   { key: 'live', label: 'Live Traces', hint: 'Fresh chat turns' },
-  { key: 'lab', label: 'Chat Test Lab', hint: 'Send + inspect' },
+  { key: 'lab', label: 'Chatbot Test Room', hint: 'Thread inspector' },
   { key: 'waterfall', label: 'Waterfall', hint: 'Latency timeline' },
   { key: 'intent', label: 'Intent', hint: 'Votes + decision' },
   { key: 'trimatch', label: 'Tri-Match', hint: 'Rules + evidence' },
@@ -159,7 +160,7 @@ export function App() {
         {page === 'dashboard' && <Dashboard performance={performance} context={context} onLoad={addReport} onLiveImport={importLiveReports} apiEnabled={apiConfig.enabled} />}
         {page === 'trace' && <TraceViewer report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} search={search} />}
         {page === 'live' && <LiveTracePage traces={liveTraces} refresh={refreshLiveTraces} apiEnabled={apiConfig.enabled} search={search} filters={liveTraceFilters} setFilters={setLiveTraceFilters} />}
-        {page === 'lab' && <ChatTestLab api={api} apiConfig={apiConfig} setApiConfig={setApiConfig} withApi={withApi} />}
+        {page === 'lab' && <ChatbotTestRoom api={api} apiConfig={apiConfig} setApiConfig={setApiConfig} />}
         {page === 'waterfall' && <Waterfall report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'intent' && <IntentInspector report={performance} selectedTurn={selectedTurn} onSelect={setSelectedTurn} />}
         {page === 'trimatch' && <TriMatchView report={context} selectedRow={selectedRow} onSelect={setSelectedRow} search={search} />}

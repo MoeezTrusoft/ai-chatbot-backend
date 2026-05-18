@@ -1,0 +1,25 @@
+{
+  "name": "bookcraft-sales-test-room",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5174",
+    "session-server": "node server/dev-session-server.mjs",
+    "typecheck": "tsc --noEmit",
+    "check:backend-storage": "python3 -m py_compile ../../src/bookcraft/components/storage/thread_repository.py",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4174"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

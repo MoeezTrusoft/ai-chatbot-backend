@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col, select
 
 from bookcraft.components.storage.events import calculate_event_hash
-from bookcraft.components.storage.models import ThreadEvent, ThreadRecord, utc_now
+from bookcraft.components.storage.models import Customer, ThreadEvent, ThreadRecord, utc_now
 from bookcraft.components.storage.state_sanitizer import sanitize_thread_state_for_persistence
 from bookcraft.domain.state import ThreadState
 
@@ -43,6 +43,14 @@ class ThreadRepository:
             record = await session.get(ThreadRecord, resolved_thread_id)
 
             if record is None:
+                if customer_id is not None and await session.get(Customer, customer_id) is None:
+                    session.add(
+                        Customer(
+                            id=customer_id,
+                            metadata_={"source": "chat_session"},
+                        )
+                    )
+
                 record = ThreadRecord(
                     id=resolved_thread_id,
                     customer_id=customer_id,
