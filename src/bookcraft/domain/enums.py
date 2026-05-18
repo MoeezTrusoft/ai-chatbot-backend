@@ -4,6 +4,7 @@ from enum import StrEnum
 class Source(StrEnum):
     USER_STATED = "user_stated"
     USER_CONFIRMED = "user_confirmed"
+    USER_CORRECTED = "user_corrected"
     AI_EXTRACTED = "ai_extracted"
     CSR_ENTERED = "csr_entered"
     SYSTEM = "system"
@@ -86,4 +87,3 @@ class ToolInvocationStatus(StrEnum):
     FAILED = "failed"
     DEFERRED = "deferred"
     IDEMPOTENT_REPLAY = "idempotent_replay"
-

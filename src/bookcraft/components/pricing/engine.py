@@ -96,7 +96,9 @@ class PricingTimelineEngine:
             all_warnings.extend(item.warnings)
             assumptions.extend(item.assumptions)
             exclusions.extend(cfg.exclusions)
-            midpoint = float((item.final_price_range.low.amount + item.final_price_range.high.amount) / 2)
+            midpoint = float(
+                (item.final_price_range.low.amount + item.final_price_range.high.amount) / 2
+            )
             self.metrics.record_value(service.value, request.quote_mode, midpoint)
             width = (item.final_price_range.high.amount - item.final_price_range.low.amount) / max(
                 Decimal("1"), midpoint and Decimal(str(midpoint)) or Decimal("1")
@@ -112,12 +114,16 @@ class PricingTimelineEngine:
             high=subtotal_range.high - discount_low,
         )
         timeline = build_project_timeline(line_items, self.config.dependency_graph)
-        human_review = any(item.human_review_required for item in line_items) or any(
-            warning.requires_human_review for warning in all_warnings
-        ) or any(discount.requires_human_review for discount in discount_lines)
+        human_review = (
+            any(item.human_review_required for item in line_items)
+            or any(warning.requires_human_review for warning in all_warnings)
+            or any(discount.requires_human_review for discount in discount_lines)
+        )
         for warning in all_warnings:
             if warning.requires_human_review:
-                self.metrics.record_review(str(warning.service or requested_services[0]), warning.code)
+                self.metrics.record_review(
+                    str(warning.service or requested_services[0]), warning.code
+                )
         for discount in discount_lines:
             if discount.requires_human_review:
                 self.metrics.record_review(str(requested_services[0]), discount.code)
@@ -128,7 +134,11 @@ class PricingTimelineEngine:
             if request.quote_mode in {"formal_quote", "agreement_ready"}
             else QuoteStatus.ESTIMATED
         )
-        confidence = self.config.quote_policy.confidence_with_warnings if all_warnings else self.config.quote_policy.confidence_complete
+        confidence = (
+            self.config.quote_policy.confidence_with_warnings
+            if all_warnings
+            else self.config.quote_policy.confidence_complete
+        )
         quote = PricingTimelineQuote(
             config_versions=self.config.versions,
             status=status,
@@ -200,7 +210,11 @@ class PricingTimelineEngine:
         if quote.status not in {QuoteStatus.ESTIMATED, QuoteStatus.FORMAL_QUOTE_READY}:
             raise ValueError(f"Quote cannot be accepted from status {quote.status}")
         quote.status = QuoteStatus.ACCEPTED
-        self.repository.append_event(str(quote.quote_id), "quote.accepted", {"confirmed_by": confirmed_by})  # type: ignore[arg-type]
+        self.repository.append_event(
+            str(quote.quote_id),  # type: ignore[arg-type]
+            "quote.accepted",
+            {"confirmed_by": confirmed_by},
+        )
         return quote
 
     def _missing_inputs(
@@ -261,7 +275,9 @@ class PricingTimelineEngine:
     def _sum_ranges(ranges: list[MoneyRange], currency: str) -> MoneyRange:
         low = sum((r.low.amount for r in ranges), Decimal("0"))
         high = sum((r.high.amount for r in ranges), Decimal("0"))
-        return MoneyRange(low=Money(amount=low, currency=currency), high=Money(amount=high, currency=currency))
+        return MoneyRange(
+            low=Money(amount=low, currency=currency), high=Money(amount=high, currency=currency)
+        )
 
     @staticmethod
     def _discount_totals(discounts: list[DiscountLine], currency: str) -> tuple[Money, Money]:
@@ -279,7 +295,9 @@ class PricingTimelineEngine:
                     {
                         "label": part["label"],
                         "percent": str(pct),
-                        "estimated_amount": str((midpoint * pct / Decimal("100")).quantize(Decimal("0.01"))),
+                        "estimated_amount": str(
+                            (midpoint * pct / Decimal("100")).quantize(Decimal("0.01"))
+                        ),
                         "trigger": part.get("trigger"),
                     }
                 )
@@ -297,4 +315,6 @@ class PricingTimelineEngine:
 def build_empty_timeline() -> ProjectTimeline:
     from .models import ProjectTimeline
 
-    return ProjectTimeline(total_timeline=DurationRange(low=0, high=0, unit="business_days"), schedule=[])
+    return ProjectTimeline(
+        total_timeline=DurationRange(low=0, high=0, unit="business_days"), schedule=[]
+    )

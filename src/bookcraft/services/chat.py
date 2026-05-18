@@ -21,6 +21,7 @@ from bookcraft.components.actions import (
     action_trace_payload,
 )
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
@@ -42,6 +43,7 @@ from bookcraft.components.storage.thread_repository import (
     ThreadRepository,
 )
 from bookcraft.components.trg import TemporalRelationGraphEngine
+from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
@@ -83,6 +85,7 @@ class ChatService:
     trace_store: LiveTraceStore | None = None
     action_planner: SalesActionPlanner = field(default_factory=SalesActionPlanner)
     action_dispatcher: SalesActionDispatcher = field(default_factory=SalesActionDispatcher)
+    context_pack_builder: ContextPackBuilder = field(default_factory=ContextPackBuilder)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -427,11 +430,19 @@ class ChatService:
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
-            trg_response_hint = await self._build_trg_response_hint(
-                thread_id=thread_id,
+            trg_context = await self._build_trg_context(thread_id)
+            trg_response_hint = _trg_response_hint_from_context(
                 state=state,
                 intent=intent,
+                trg_context=trg_context,
             )
+            context_pack = self.context_pack_builder.build(
+                state=state,
+                intent=intent,
+                runtime_atoms=processed.deterministic_atoms,
+                trg_context=trg_context,
+            )
+            response_hint = context_pack.response_hint or trg_response_hint
             document_status_message = self._sales_action_status_message(
                 action_plan, action_result
             ) or _document_status_message(intent)
@@ -447,7 +458,8 @@ class ChatService:
                 portfolio_response=portfolio_response,
                 document_status_message=document_status_message,
                 runtime_atoms=processed.deterministic_atoms,
-                response_hint=trg_response_hint,
+                response_hint=response_hint,
+                context_pack=context_pack,
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
@@ -532,6 +544,7 @@ class ChatService:
                     if trimatch_shadow_result is not None
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
+                    "context_pack": context_pack.model_dump(mode="json"),
                     "action_plan": action_trace_payload(action_plan, action_result),
                     "trg_response_hint": trg_response_hint,
                     "components": {
@@ -901,43 +914,22 @@ class ChatService:
         state: ThreadState,
         intent: IntentVote,
     ) -> str | None:
-        state_hint = _state_context_response_hint(state, intent)
+        trg_context = await self._build_trg_context(thread_id)
+        return _trg_response_hint_from_context(
+            state=state,
+            intent=intent,
+            trg_context=trg_context,
+        )
 
+    async def _build_trg_context(self, thread_id: UUID) -> TRGContext | None:
         if self.trg_engine is None:
-            return state_hint
+            return None
 
         graph = await self.trg_engine.repository.load(thread_id)
         if graph is None:
-            return state_hint
-
-        trg_context = self.trg_engine.build_context(graph)
-        parts: list[str] = []
-
-        if state_hint:
-            parts.append(state_hint)
-
-        if trg_context.outstanding_questions:
-            parts.append(
-                "Previous assistant questions already asked: "
-                + " | ".join(trg_context.outstanding_questions[-3:])
-            )
-
-        if trg_context.repeated_user_messages:
-            parts.append(
-                "The user appears to be repeating themselves. Do not ask the same "
-                "question again; acknowledge the repeated information and move forward."
-            )
-
-        if trg_context.contradiction_count:
-            parts.append(
-                "There may be contradictory project details. Ask one focused "
-                "clarifying question instead of assuming."
-            )
-
-        if not parts:
             return None
 
-        return " ".join(parts)
+        return self.trg_engine.build_context(graph)
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
         if self.trace_store is None:
@@ -2366,3 +2358,39 @@ def _state_context_response_hint(state: ThreadState, intent: IntentVote) -> str 
         hint += f" Current service focus: {intent.service_primary.value}."
 
     return hint
+
+
+def _trg_response_hint_from_context(
+    *,
+    state: ThreadState,
+    intent: IntentVote,
+    trg_context: TRGContext | None,
+) -> str | None:
+    state_hint = _state_context_response_hint(state, intent)
+    parts: list[str] = []
+
+    if state_hint:
+        parts.append(state_hint)
+
+    if trg_context is not None and trg_context.outstanding_questions:
+        parts.append(
+            "Previous assistant questions already asked: "
+            + " | ".join(trg_context.outstanding_questions[-3:])
+        )
+
+    if trg_context is not None and trg_context.repeated_user_messages:
+        parts.append(
+            "The user appears to be repeating themselves. Do not ask the same "
+            "question again; acknowledge the repeated information and move forward."
+        )
+
+    if trg_context is not None and trg_context.contradiction_count:
+        parts.append(
+            "There may be contradictory project details. Ask one focused "
+            "clarifying question instead of assuming."
+        )
+
+    if not parts:
+        return None
+
+    return " ".join(parts)
