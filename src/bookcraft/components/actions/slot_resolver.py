@@ -12,18 +12,15 @@ from bookcraft.domain.state import ThreadState
 YES_CONFIRMATIONS = {
     "yes",
     "yes please",
-    "yeah",
-    "yep",
-    "sure",
-    "ok",
-    "okay",
     "confirm",
     "confirmed",
+    "confirm booking",
+    "confirm the booking",
     "book it",
-    "go ahead",
-    "that works",
-    "sounds good",
-    "please do",
+    "yes book it",
+    "yes schedule the consultation",
+    "go ahead and schedule it",
+    "yes send it",
 }
 
 
@@ -39,37 +36,30 @@ TIME_HINT_RE = re.compile(
 def is_confirmation_text(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", text.strip().casefold())
     normalized = normalized.strip(".! ")
+    normalized = normalized.replace(",", " ")
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    non_confirmation_patterns = (
+        r"\bsend\s+me\s+(?:pricing|price|samples?|portfolio|nda|agreement|more)\b",
+        r"\byes\s+send\s+more\s+info\b",
+        r"\bi\s+want\s+to\s+know\s+more\s+before\s+booking\b",
+        r"\bcan\s+you\s+send\s+(?:the\s+)?(?:samples?|nda|agreement)\b",
+    )
+    if any(re.search(pattern, normalized) for pattern in non_confirmation_patterns):
+        return False
 
     if normalized in YES_CONFIRMATIONS:
         return True
 
-    affirmative_starts = (
-        "yes ",
-        "yes,",
-        "yes please",
-        "yeah ",
-        "yeah,",
-        "yep ",
-        "yep,",
-        "sure ",
-        "sure,",
-        "ok ",
-        "okay ",
-    )
-    confirmation_actions = (
-        "send it",
-        "send",
-        "book it",
-        "book",
-        "confirm",
-        "go ahead",
-        "please do",
-        "do it",
+    confirmation_patterns = (
+        r"\byes\s+(?:please\s+)?book\s+it\b",
+        r"\byes\s+(?:please\s+)?(?:schedule|confirm)\s+(?:it|the consultation|booking)\b",
+        r"\bschedule\s+it\b",
+        r"\bconfirm\s+(?:it|the booking|booking|the consultation)\b",
+        r"\bgo\s+ahead\s+and\s+schedule\s+(?:it|the consultation)\b",
     )
 
-    return normalized.startswith(affirmative_starts) and any(
-        action in normalized for action in confirmation_actions
-    )
+    return any(re.search(pattern, normalized) for pattern in confirmation_patterns)
 
 
 def field_value(value: object) -> object | None:
@@ -99,7 +89,7 @@ def contact_slots(
     name = (
         extraction.contact.full_name
         or field_value(state.personal.name)
-        or _name_from_text(processed.raw or "")
+        or _extract_contact_name(processed.raw or "")
     )
     email = (
         extraction.contact.email
@@ -122,12 +112,13 @@ def contact_slots(
     return slots
 
 
-def _name_from_text(text: str) -> str | None:
+def _extract_contact_name(text: str) -> str | None:
     patterns = [
         r"\bmy name is\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})\b",
-        r"\bi am\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
+        r"\bi am\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})"
+        r"(?=,\s*(?:my\s+)?(?:email|phone|number)\b)",
         r"\bthis is\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
-        r"\buse\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
+        r"\b([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})\s+here\b",
     ]
 
     for pattern in patterns:
@@ -136,10 +127,14 @@ def _name_from_text(text: str) -> str | None:
             continue
 
         candidate = _clean_name_candidate(match.group(1))
-        if candidate:
+        if candidate and _looks_like_person_name(candidate):
             return candidate
 
     return None
+
+
+def _name_from_text(text: str) -> str | None:
+    return _extract_contact_name(text)
 
 
 def _clean_name_candidate(value: str) -> str | None:
@@ -164,6 +159,28 @@ def _clean_name_candidate(value: str) -> str | None:
     candidate = re.split(r"\+?\d[\d\s().-]{4,}", candidate)[0]
     candidate = candidate.strip(" ,.;:-")
 
+    if _is_rejected_name_phrase(candidate):
+        return None
+
+    words = candidate.split()
+    if not 1 <= len(words) <= 5:
+        return None
+
+    if not all(re.match(r"^[A-Za-z][A-Za-z'.-]*$", word) for word in words):
+        return None
+
+    return " ".join(word[:1].upper() + word[1:] for word in words)
+
+
+def _looks_like_person_name(value: str) -> bool:
+    words = value.split()
+    if not 1 <= len(words) <= 4:
+        return False
+    return all(re.match(r"^[A-Z][A-Za-z'.-]*$", word) for word in words)
+
+
+def _is_rejected_name_phrase(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", value.strip().casefold())
     blocked = {
         "me",
         "my email",
@@ -177,19 +194,32 @@ def _clean_name_candidate(value: str) -> str | None:
         "houston",
         "texas",
         "tx",
+        "writing",
+        "working",
+        "looking",
+        "self-publishing",
+        "self publishing",
+        "a memoir",
+        "a professional editor",
+        "pricing",
     }
 
-    if candidate.casefold() in blocked:
-        return None
-
-    words = candidate.split()
-    if not 1 <= len(words) <= 5:
-        return None
-
-    if not all(re.match(r"^[A-Za-z][A-Za-z'.-]*$", word) for word in words):
-        return None
-
-    return " ".join(word[:1].upper() + word[1:] for word in words)
+    if normalized in blocked:
+        return True
+    if re.match(r"^(?:a|an|the|my)\s+\w+", normalized):
+        return True
+    return any(
+        phrase in normalized
+        for phrase in (
+            "writing a",
+            "working on",
+            "looking for",
+            "self-publishing",
+            "self publishing",
+            "happy to proceed",
+            "professional editor",
+        )
+    )
 
 
 def project_slots(
@@ -404,8 +434,15 @@ def _manuscript_status_from_text(text: str) -> str | None:
 
 
 def _deadline_from_text(text: str) -> str | None:
+    return _extract_firm_deadline(text)
+
+
+def _extract_firm_deadline(text: str) -> str | None:
     patterns = [
         r"\bdeadline\s+(?:is|:)?\s+(.+?)(?=,|\.|\band\b|$)",
+        r"\bby\s+((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|"
+        r"dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?)\b",
         r"\bready\s+in\s+(?:about\s+)?(\d+\s+(?:day|days|week|weeks|month|months))\b",
         r"\bin\s+(?:about\s+)?(\d+\s+(?:day|days|week|weeks|month|months))\b",
         r"\bwithin\s+(\d+\s+(?:day|days|week|weeks|month|months))\b",
@@ -414,6 +451,23 @@ def _deadline_from_text(text: str) -> str | None:
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
-            return match.group(1).strip(" ,.;:-")
+            candidate = match.group(1).strip(" ,.;:-")
+            if _is_vague_deadline(candidate):
+                continue
+            return candidate
 
     return None
+
+
+def _is_vague_deadline(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", value.strip().casefold())
+    vague_phrases = {
+        "whenever",
+        "soon",
+        "when ready",
+        "later",
+        "not sure",
+        "no rush",
+        "flexible",
+    }
+    return any(phrase in normalized for phrase in vague_phrases)

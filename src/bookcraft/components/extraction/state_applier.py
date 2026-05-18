@@ -4,6 +4,7 @@ from typing import Any
 from prometheus_client import Counter
 
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
+from bookcraft.domain.enums import Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
 
@@ -28,12 +29,7 @@ class StateApplier:
 
     def _apply_delta(self, state: ThreadState, delta: StateDelta) -> None:
         current = self._get_field(state, delta.path)
-        current_wins = (
-            current.value is not None
-            and current.is_high_confidence()
-            and current.confidence > delta.confidence
-        )
-        if current_wins:
+        if not should_apply_delta(current, delta):
             NO_OVERWRITE_SKIPS.labels(field=delta.path).inc()
             if current.value != delta.value:
                 EXTRACTION_CONFLICTS.labels(field=delta.path).inc()
@@ -63,3 +59,17 @@ class StateApplier:
         owner_name, field_name = path.split(".", 1)
         owner = getattr(state, owner_name)
         setattr(owner, field_name, value)
+
+
+def should_apply_delta(existing: FieldMeta[Any] | None, incoming: StateDelta) -> bool:
+    if existing is None or existing.value is None:
+        return True
+
+    # Explicit user corrections are allowed to replace durable facts even
+    # when their extraction confidence is lower than the existing field.
+    if incoming.source == Source.USER_CORRECTED:
+        return True
+
+    # Otherwise, existing state wins ties. A derived or repeated fact must be
+    # strictly more confident before it can replace what the thread remembers.
+    return incoming.confidence > existing.confidence
