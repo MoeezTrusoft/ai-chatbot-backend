@@ -90,7 +90,7 @@ def _restore_executable_pending_confirmation_payload(
     pending_type = raw_pending.get("type") if isinstance(raw_pending, dict) else None
     raw_payload = raw_pending.get("payload") if isinstance(raw_pending, dict) else None
 
-    if pending_type not in {"generate_nda"}:
+    if pending_type not in {"generate_nda", "generate_agreement"}:
         return
     if not isinstance(raw_payload, dict):
         return

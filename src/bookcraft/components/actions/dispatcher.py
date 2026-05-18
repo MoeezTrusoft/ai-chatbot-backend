@@ -8,7 +8,12 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
-from bookcraft.components.document_actions import NDAActionRequest, NDAActionService
+from bookcraft.components.document_actions import (
+    AgreementActionRequest,
+    AgreementActionService,
+    NDAActionRequest,
+    NDAActionService,
+)
 from bookcraft.components.leads import CreateOrUpdateLeadRequest, LeadService
 from bookcraft.components.portfolio_actions import (
     PortfolioActionRequest,
@@ -23,6 +28,7 @@ class SalesActionDispatcher:
     pricing_action_service: PricingActionService | None = None
     portfolio_action_service: PortfolioActionService | None = None
     nda_action_service: NDAActionService | None = None
+    agreement_action_service: AgreementActionService | None = None
 
     async def dispatch(
         self,
@@ -62,6 +68,14 @@ class SalesActionDispatcher:
 
         if plan.action_type == ActionType.GENERATE_NDA:
             return await self._generate_nda(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+
+        if plan.action_type == ActionType.GENERATE_AGREEMENT:
+            return await self._generate_agreement(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
@@ -161,6 +175,72 @@ class SalesActionDispatcher:
                 "updated_fields": result.updated_fields,
                 "recommended_follow_up_slots": plan.recommended_follow_up_slots,
             },
+            duration_ms=_elapsed_ms(started),
+        )
+
+    async def _generate_agreement(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+    ) -> ActionResult:
+        if self.agreement_action_service is None:
+            return ActionResult(
+                action_type=ActionType.GENERATE_AGREEMENT,
+                success=False,
+                customer_safe_summary=(
+                    "I can collect the agreement details, but agreement generation "
+                    "is not connected yet."
+                ),
+                internal_summary="AgreementActionService is not configured.",
+                error_code="agreement_action_service_unavailable",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        slots = plan.collected_slots
+        try:
+            result = await self.agreement_action_service.generate_and_maybe_send(
+                AgreementActionRequest(
+                    customer_id=customer_id,
+                    thread_id=thread_id,
+                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    quote_id=_uuid_or_none(slots.get("quote_id")),
+                    client_full_name=_string_or_none(slots.get("name")) or "",
+                    client_phone=_string_or_none(slots.get("phone")) or "",
+                    client_email=_string_or_none(slots.get("email")) or "",
+                    client_location=_string_or_none(slots.get("client_location")) or "",
+                    effective_date=_string_or_none(slots.get("effective_date")) or "",
+                    signature=_string_or_none(slots.get("signature"))
+                    or _string_or_none(slots.get("name")),
+                    send_email=bool(slots.get("send_email")),
+                    metadata={"action_plan_reason": plan.reason},
+                )
+            )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.GENERATE_AGREEMENT,
+                success=False,
+                customer_safe_summary=(
+                    "I have the agreement request, but I could not prepare it just now."
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="agreement_generation_failed",
+                payload={
+                    "exception_class": exc.__class__.__name__,
+                    "exception_detail": _exception_summary(exc),
+                },
+                duration_ms=_elapsed_ms(started),
+            )
+
+        return ActionResult(
+            action_type=ActionType.GENERATE_AGREEMENT,
+            success=True,
+            result_id=result.document_id,
+            customer_safe_summary=result.customer_safe_summary,
+            internal_summary=f"Agreement action processed: {result.document_id}",
+            payload=result.model_dump(mode="json"),
             duration_ms=_elapsed_ms(started),
         )
 

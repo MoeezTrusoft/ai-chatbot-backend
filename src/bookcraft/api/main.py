@@ -22,6 +22,7 @@ from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.document_actions import (
+    AgreementActionService,
     DocumentRequestRepository,
     NDAActionService,
 )
@@ -339,12 +340,26 @@ def build_chat_service(
             repository=PortfolioViewRepository(session_factory=session_factory),
         )
     )
-    nda_action_service = (
+    document_request_repository = (
         None
         if session_factory is None
+        else DocumentRequestRepository(session_factory=session_factory)
+    )
+    nda_action_service = (
+        None
+        if document_request_repository is None
         else NDAActionService(
             document_engine=document_engine,
-            repository=DocumentRequestRepository(session_factory=session_factory),
+            repository=document_request_repository,
+            email_client=email_client,
+        )
+    )
+    agreement_action_service = (
+        None
+        if document_request_repository is None
+        else AgreementActionService(
+            document_engine=document_engine,
+            repository=document_request_repository,
             email_client=email_client,
         )
     )
@@ -375,6 +390,7 @@ def build_chat_service(
             pricing_action_service=pricing_action_service,
             portfolio_action_service=portfolio_action_service,
             nda_action_service=nda_action_service,
+            agreement_action_service=agreement_action_service,
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,

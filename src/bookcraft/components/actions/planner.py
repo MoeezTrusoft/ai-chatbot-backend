@@ -66,7 +66,7 @@ class SalesActionPlanner:
             return self._nda_plan(contact=contact, state=state, processed=processed)
 
         if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
-            return self._agreement_plan(contact=contact, state=state)
+            return self._agreement_plan(contact=contact, state=state, processed=processed)
 
         if self._is_lead_candidate(intent, contact):
             return self._lead_plan(contact=contact, services=services)
@@ -91,7 +91,7 @@ class SalesActionPlanner:
             )
 
         collected_payload = payload or {}
-        if action_type == ActionType.GENERATE_NDA:
+        if action_type in {ActionType.GENERATE_NDA, ActionType.GENERATE_AGREEMENT}:
             collected_payload = {**collected_payload, "send_email": True}
 
         return ActionPlan(
@@ -345,8 +345,18 @@ class SalesActionPlanner:
         )
 
     @staticmethod
-    def _agreement_plan(*, contact: dict[str, str], state: ThreadState) -> ActionPlan:
-        quote_id = state.sales_actions.pricing.quote_id or state.commercial.latest_quote_id.value
+    def _agreement_plan(
+        *,
+        contact: dict[str, str],
+        state: ThreadState,
+        processed: ProcessedMessage,
+    ) -> ActionPlan:
+        collected_contact = dict(contact)
+        inferred_name = _nda_name_from_text(processed.raw)
+        if inferred_name and "name" not in collected_contact:
+            collected_contact["name"] = inferred_name
+
+        quote_id = state.sales_actions.pricing.quote_id
         if not quote_id:
             return ActionPlan(
                 action_type=ActionType.GENERATE_AGREEMENT,
@@ -355,27 +365,38 @@ class SalesActionPlanner:
                 reason="Agreement requires an existing pricing quote first.",
             )
 
+        client_location = _agreement_location_from_text(processed.raw)
+
         missing: list[str] = []
-        if "name" not in contact:
+        if "name" not in collected_contact:
             missing.append("name")
-        if "email" not in contact:
+        if "email" not in collected_contact:
             missing.append("email")
-        if "phone" not in contact:
+        if "phone" not in collected_contact:
             missing.append("phone")
+        if not client_location:
+            missing.append("client_location")
+
+        collected_slots = {
+            **collected_contact,
+            "quote_id": quote_id,
+            "effective_date": date.today().isoformat(),
+            **({"client_location": client_location} if client_location else {}),
+        }
 
         if missing:
             return ActionPlan(
                 action_type=ActionType.GENERATE_AGREEMENT,
                 status=ActionStatus.MISSING_INFO,
                 missing_slots=missing,
-                collected_slots={**contact, "quote_id": quote_id},
-                reason="Agreement request is missing customer details.",
+                collected_slots=collected_slots,
+                reason="Agreement request is missing required agreement details.",
             )
 
         return ActionPlan(
             action_type=ActionType.GENERATE_AGREEMENT,
             status=ActionStatus.NEEDS_CONFIRMATION,
-            collected_slots={**contact, "quote_id": quote_id},
+            collected_slots={**collected_slots, "send_email": False},
             confirmation_required=True,
             pending_confirmation_key=ActionType.GENERATE_AGREEMENT.value,
             reason="Agreement has quote and customer details and needs send confirmation.",
@@ -458,5 +479,23 @@ def _nda_effective_date_from_text(text: str) -> str | None:
     )
     if match:
         return match.group(1)
+
+    return None
+
+
+def _agreement_location_from_text(text: str) -> str | None:
+    patterns = [
+        r"\blocation\s+is\s+(.+?)(?=,|\.|\s+and\s+|$)",
+        r"\bi\s+am\s+in\s+(.+?)(?=,|\.|\s+and\s+|$)",
+        r"\bi'm\s+in\s+(.+?)(?=,|\.|\s+and\s+|$)",
+        r"\bbased\s+in\s+(.+?)(?=,|\.|\s+and\s+|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip(" ,.;:-")
+            if 2 <= len(candidate) <= 120:
+                return candidate
 
     return None

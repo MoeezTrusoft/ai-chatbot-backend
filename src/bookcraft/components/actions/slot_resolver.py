@@ -152,6 +152,17 @@ def project_slots(
     if page_count is None and isinstance(runtime_page_counts, list) and runtime_page_counts:
         page_count = runtime_page_counts[0]
 
+    if word_count is None:
+        word_count = _word_count_from_text(processed.raw)
+    if page_count is None:
+        page_count = _page_count_from_text(processed.raw)
+    if genre is None:
+        genre = _genre_from_text(processed.raw)
+    if manuscript_status is None:
+        manuscript_status = _manuscript_status_from_text(processed.raw)
+    if deadline is None:
+        deadline = _deadline_from_text(processed.raw)
+
     if word_count is not None:
         slots["word_count"] = word_count
     if page_count is not None:
@@ -207,3 +218,135 @@ def lead_follow_up_slots(contact: dict[str, str]) -> list[str]:
 
 def has_email_or_phone(contact: dict[str, str]) -> bool:
     return bool(contact.get("email") or contact.get("phone"))
+
+
+def _word_count_from_text(text: str) -> int | None:
+    patterns = [
+        r"\bword\s+count\s+(?:is|:)?\s*(\d{1,3}(?:,\d{3})+|\d{4,7})\b",
+        r"\b(\d{1,3}(?:,\d{3})+|\d{4,7})\s*[- ]?word\b",
+        r"\b(\d{1,3}(?:,\d{3})+|\d{4,7})\s+words\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1).replace(",", ""))
+
+    return None
+
+
+def _page_count_from_text(text: str) -> int | None:
+    patterns = [
+        r"\bpage\s+count\s+(?:is|:)?\s*(\d{1,4})\b",
+        r"\b(\d{1,4})\s*[- ]?page\b",
+        r"\b(\d{1,4})\s+pages\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+
+    return None
+
+
+def _genre_from_text(text: str) -> str | None:
+    compact_match = re.search(
+        r"\b\d{1,3}(?:,\d{3})*\s*[- ]?word\s+"
+        r"([A-Za-z][A-Za-z /&-]{1,40})\s+(?:draft|manuscript)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if compact_match:
+        candidate = _clean_genre_candidate(compact_match.group(1))
+        if candidate is not None:
+            return candidate
+
+    patterns = [
+        r"\bgenre\s+(?:is|:)?\s+([A-Za-z][A-Za-z /&-]{1,60})(?=,|\.|\band\b|$)",
+        r"\b([A-Za-z][A-Za-z /&-]{1,40})\s+genre\b",
+        r"\b(\w+(?:\s+\w+)?)\s+(?:draft|manuscript)\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+
+        candidate = _clean_genre_candidate(match.group(1))
+        if candidate is None:
+            continue
+        return candidate
+
+    return None
+
+
+def _clean_genre_candidate(value: str) -> str | None:
+    candidate = value.strip(" ,.;:-")
+    candidate = re.sub(r"^word\s+", "", candidate, flags=re.IGNORECASE).strip()
+    candidate = re.sub(r"^page\s+", "", candidate, flags=re.IGNORECASE).strip()
+
+    blocked = {
+        "complete",
+        "partial",
+        "rough",
+        "final",
+        "full",
+        "draft",
+        "manuscript",
+        "word",
+        "page",
+    }
+    if candidate.casefold() in blocked:
+        return None
+
+    if not 2 <= len(candidate) <= 60:
+        return None
+
+    return candidate
+
+
+def _manuscript_status_from_text(text: str) -> str | None:
+    lowered = text.casefold()
+
+    status_phrases = [
+        ("complete draft", "complete draft"),
+        ("completed draft", "complete draft"),
+        ("complete manuscript", "complete manuscript"),
+        ("full draft", "complete draft"),
+        ("rough draft", "rough draft"),
+        ("first draft", "first draft"),
+        ("partial draft", "partial draft"),
+        ("outline", "outline"),
+        ("idea stage", "idea stage"),
+    ]
+
+    for phrase, value in status_phrases:
+        if phrase in lowered:
+            return value
+
+    match = re.search(
+        r"\bmanuscript\s+status\s+(?:is|:)?\s+(.+?)(?=,|\.|\band\b|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).strip(" ,.;:-")
+
+    return None
+
+
+def _deadline_from_text(text: str) -> str | None:
+    patterns = [
+        r"\bdeadline\s+(?:is|:)?\s+(.+?)(?=,|\.|\band\b|$)",
+        r"\bready\s+in\s+(?:about\s+)?(\d+\s+(?:day|days|week|weeks|month|months))\b",
+        r"\bin\s+(?:about\s+)?(\d+\s+(?:day|days|week|weeks|month|months))\b",
+        r"\bwithin\s+(\d+\s+(?:day|days|week|weeks|month|months))\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" ,.;:-")
+
+    return None
