@@ -173,3 +173,25 @@ async def test_preprocessor_detects_finished_my_manuscript_and_children_fiction(
 
     assert result.deterministic_atoms["manuscript_status"] == "completed_draft"
     assert result.deterministic_atoms["genre"] == "children's fiction"
+
+
+@pytest.mark.asyncio
+async def test_preprocessor_query_cues_are_boundary_safe_and_negation_aware(
+    preprocessor: SharedPreprocessor,
+) -> None:
+    agenda = await preprocessor.process("Add this to the agenda for Linda.")
+    no_nda = await preprocessor.process("I don't need an NDA.")
+    no_price = await preprocessor.process("I don't care about price.")
+    real_quote = await preprocessor.process("Can you give me a quote for ghostwriting?")
+    real_agreement = await preprocessor.process("Generate service agreement today.")
+    negated_agreement = await preprocessor.process("I am not ready for agreement.")
+
+    assert "nda_request" not in agenda.deterministic_atoms.get("query_cues", [])
+    assert "nda_request" not in no_nda.deterministic_atoms.get("query_cues", [])
+    assert "pricing_question" not in no_price.deterministic_atoms.get("query_cues", [])
+    assert "pricing_question" in real_quote.deterministic_atoms["query_cues"]
+    assert "agreement_request" in real_agreement.deterministic_atoms["query_cues"]
+    assert "agreement_request" not in negated_agreement.deterministic_atoms.get(
+        "query_cues",
+        [],
+    )
