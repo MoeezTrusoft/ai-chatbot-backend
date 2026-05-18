@@ -5,6 +5,7 @@ from typing import Any, cast
 import structlog
 from prometheus_client import Histogram
 
+from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
@@ -45,6 +46,7 @@ class SonnetResponseGenerator:
         document_status_message: str | None = None,
         runtime_atoms: dict[str, Any] | None = None,
         response_hint: str | None = None,
+        context_pack: ContextPack | None = None,
     ) -> ResponseDraft:
         with RESPONSE_SECONDS.time():
             route = self.router.route(intent)
@@ -115,6 +117,7 @@ class SonnetResponseGenerator:
                 rag_chunks=rag_chunks,
                 route_name=route.name,
                 response_hint=response_hint,
+                context_pack=context_pack,
             )
 
             if self.adapter is None:
@@ -129,6 +132,7 @@ class SonnetResponseGenerator:
                 route_name=route.name,
                 runtime_atoms=runtime_atoms,
                 response_hint=response_hint,
+                context_pack=context_pack,
                 attempt="full",
             )
             if text is not None:
@@ -143,6 +147,7 @@ class SonnetResponseGenerator:
                 route_name=route.name,
                 runtime_atoms=runtime_atoms,
                 response_hint=response_hint,
+                context_pack=context_pack,
                 attempt="reduced",
             )
             if text is not None:
@@ -164,6 +169,7 @@ class SonnetResponseGenerator:
         route_name: str,
         runtime_atoms: dict[str, Any],
         response_hint: str | None,
+        context_pack: ContextPack | None,
         attempt: str,
     ) -> str | None:
         assert self.adapter is not None
@@ -184,6 +190,7 @@ class SonnetResponseGenerator:
                         route_name=route_name,
                         runtime_atoms=runtime_atoms,
                         response_hint=response_hint,
+                        context_pack=context_pack,
                     ),
                     output_model=GeneratedResponseText,
                     purpose=f"response_{attempt}",
@@ -268,12 +275,13 @@ def _humanized_template_response(
     rag_chunks: list[RetrievedChunk],
     route_name: str,
     response_hint: str | None = None,
+    context_pack: ContextPack | None = None,
 ) -> str:
     del message, rag_chunks, route_name
 
     services = _ordered_human_services(intent, runtime_atoms)
     service_phrase = _service_phrase(services)
-    cta = _cta_for_intent(intent, runtime_atoms, state)
+    cta = _cta_for_intent(intent, runtime_atoms, state, context_pack=context_pack)
 
     forbid_markers = runtime_atoms.get("forbid_markers", [])
     has_guarantee_pressure = isinstance(forbid_markers, list) and "guarantee" in {
@@ -411,7 +419,18 @@ def _cta_for_intent(
     intent: IntentVote,
     runtime_atoms: dict[str, Any],
     state: ThreadState,
+    *,
+    context_pack: ContextPack | None = None,
 ) -> str:
+    if context_pack is not None:
+        for missing_fact in context_pack.allowed_next_questions:
+            question = _question_for_missing_fact(
+                missing_fact,
+                context_pack=context_pack,
+            )
+            if question is not None:
+                return question
+
     has_word_count = (
         bool(runtime_atoms.get("word_counts")) or state.project.word_count.value is not None
     )
@@ -483,6 +502,28 @@ def _cta_for_intent(
         "Since the basics are clear, would you like to move toward a cover-design "
         "scope, a quote, or a consultation?"
     )
+
+
+def _question_for_missing_fact(
+    missing_fact: str,
+    *,
+    context_pack: ContextPack,
+) -> str | None:
+    questions = {
+        "cover_style": "What cover style or visual direction should I use for the design scope?",
+        "word_or_page_count": "What rough word count or page count should I use?",
+        "deadline": "What deadline or launch window should I use?",
+        "genre": "What genre or book category should I use?",
+        "manuscript_stage": "What manuscript stage should I use?",
+    }
+    question = questions.get(missing_fact)
+    if question is None:
+        return None
+
+    lowered = question.casefold()
+    if any(marker.casefold() in lowered for marker in context_pack.disallowed_next_questions):
+        return None
+    return question
 
 
 def _contains_doc_artifacts(text: str) -> bool:
@@ -572,6 +613,7 @@ def _response_user_prompt(
     route_name: str,
     runtime_atoms: dict[str, Any],
     response_hint: str | None = None,
+    context_pack: ContextPack | None = None,
 ) -> str:
     del extraction, route_name
 
@@ -627,6 +669,7 @@ def _response_user_prompt(
         if response_hint
         else ""
     )
+    context_pack_str = _context_pack_prompt_section(context_pack)
 
     return (
         f'The author just wrote:\n"{message.normalized}"\n\n'
@@ -637,8 +680,34 @@ def _response_user_prompt(
         f"- What we still need: {missing_str}"
         f"{negated_str}"
         f"{hint_str}"
+        f"{context_pack_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
+    )
+
+
+def _context_pack_prompt_section(context_pack: ContextPack | None) -> str:
+    if context_pack is None:
+        return ""
+
+    known = (
+        "; ".join(f"{fact.path}: {fact.value}" for fact in context_pack.known_facts)
+        if context_pack.known_facts
+        else "none"
+    )
+    missing = ", ".join(context_pack.missing_facts) or "none"
+    forbidden = ", ".join(context_pack.forbidden_reasks) or "none"
+    allowed = ", ".join(context_pack.allowed_next_questions) or "none"
+    active_service = context_pack.active_service or "none"
+
+    return (
+        "\nStructured ContextPack for this turn:\n"
+        f"- Known facts: {known}\n"
+        f"- Missing facts: {missing}\n"
+        f"- Forbidden re-asks: {forbidden}\n"
+        f"- Active service: {active_service}\n"
+        f"- Allowed next questions: {allowed}\n"
+        "Use this pack as the source of truth for what to ask next."
     )
 
 

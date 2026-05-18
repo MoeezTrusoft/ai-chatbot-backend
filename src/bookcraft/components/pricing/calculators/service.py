@@ -34,8 +34,8 @@ def calculate_service_line_item(
     service_inputs: dict[str, Any],
 ) -> QuoteLineItem:
     global_inputs = request.global_inputs.model_dump()
-    base_price, unit_type, unit_quantity, package_label, base_duration_days, trace = _calculate_base(
-        service_config, service_inputs, global_inputs
+    base_price, unit_type, unit_quantity, package_label, base_duration_days, trace = (
+        _calculate_base(service_config, service_inputs, global_inputs)
     )
     complexity_factor, complexity_breakdown, group_points = compute_complexity(
         service_config, service_inputs
@@ -50,10 +50,15 @@ def calculate_service_line_item(
         )
     complexity_price = base_price * complexity_factor
     complexity_duration_days = q2((base_duration_days * complexity_factor) + addon_days)
-    schedule_multiplier, final_duration_days, schedule_class, review_for_timeline, schedule_warnings, schedule_trace = (
-        compute_schedule_multiplier(
-            service_config, complexity_duration_days, service_inputs, request.requested_timeline
-        )
+    (
+        schedule_multiplier,
+        final_duration_days,
+        schedule_class,
+        review_for_timeline,
+        schedule_warnings,
+        schedule_trace,
+    ) = compute_schedule_multiplier(
+        service_config, complexity_duration_days, service_inputs, request.requested_timeline
     )
     rush_surcharge = complexity_price * (schedule_multiplier - Decimal("1"))
     final_price_before_range = complexity_price + rush_surcharge + addon_total
@@ -83,11 +88,17 @@ def calculate_service_line_item(
     )
     assumptions = list(service_config.assumptions)
     if schedule_class == "rush":
-        assumptions.append("Timeline uses rush-compression pricing because the requested delivery is faster than standard duration.")
+        assumptions.append(
+            "Timeline uses rush-compression pricing because the requested delivery is faster than standard duration."
+        )
     if service_config.service.value == "author_website":
-        assumptions.append("Recurring monthly hosting/maintenance is returned separately from one-time setup where configured.")
+        assumptions.append(
+            "Recurring monthly hosting/maintenance is returned separately from one-time setup where configured."
+        )
     if service_config.service.value == "marketing_promotion":
-        assumptions.append("Ad spend is excluded from BookCraft service fees unless explicitly selected and approved.")
+        assumptions.append(
+            "Ad spend is excluded from BookCraft service fees unless explicitly selected and approved."
+        )
 
     return QuoteLineItem(
         service=service_config.service,
@@ -129,17 +140,33 @@ def _calculate_base(
         base_amount = max(word_count * rate, minimum)
         base_duration = _pace_duration(service_config, service_type, word_count)
         trace.update({"word_count": str(word_count), "rate": str(rate), "minimum": str(minimum)})
-        return money(base_amount, service_config.currency), UnitType.WORDS.value, word_count, service_type, base_duration, trace
+        return (
+            money(base_amount, service_config.currency),
+            UnitType.WORDS.value,
+            word_count,
+            service_type,
+            base_duration,
+            trace,
+        )
     if model == "page_rate":
         page_count = d(service_inputs.get("page_count") or global_inputs.get("page_count"))
-        output_format = str(service_inputs.get("output_format") or service_inputs.get("service_type"))
+        output_format = str(
+            service_inputs.get("output_format") or service_inputs.get("service_type")
+        )
         category = str(service_inputs.get("category") or global_inputs.get("genre") or "fiction")
         rate = d(nested_lookup(service_config.rate_grid.rates, [category, output_format]))  # type: ignore[union-attr]
         minimum = service_config.rate_grid.minimum_fee if service_config.rate_grid else Decimal("0")
         base_amount = max(page_count * rate, minimum)
         base_duration = _pace_duration(service_config, output_format, page_count, category=category)
         trace.update({"page_count": str(page_count), "rate": str(rate), "minimum": str(minimum)})
-        return money(base_amount, service_config.currency), UnitType.PAGES.value, page_count, output_format, base_duration, trace
+        return (
+            money(base_amount, service_config.currency),
+            UnitType.PAGES.value,
+            page_count,
+            output_format,
+            base_duration,
+            trace,
+        )
     if model == "per_finished_hour":
         hours = _finished_hours(service_inputs, global_inputs)
         tier = str(service_inputs.get("tier"))
@@ -147,33 +174,69 @@ def _calculate_base(
         base_amount = hours * rate
         base_duration = _duration_from_config(service_config, [tier])
         trace.update({"finished_hours": str(hours), "rate": str(rate)})
-        return money(base_amount, service_config.currency), UnitType.FINISHED_HOURS.value, hours, tier, base_duration, trace
+        return (
+            money(base_amount, service_config.currency),
+            UnitType.FINISHED_HOURS.value,
+            hours,
+            tier,
+            base_duration,
+            trace,
+        )
     if model == "package_grid":
         tier = str(service_inputs.get("tier"))
-        dimension = str(service_inputs.get("package_dimension") or service_inputs.get("format") or service_inputs.get("website_type"))
+        dimension = str(
+            service_inputs.get("package_dimension")
+            or service_inputs.get("format")
+            or service_inputs.get("website_type")
+        )
         amount = d(nested_lookup(service_config.package_grid.rates, [tier, dimension]))  # type: ignore[union-attr]
         printing_cost = _printing_cost(service_config, service_inputs, trace)
         amount += printing_cost
         base_duration = _duration_from_config(service_config, [tier, dimension])
-        return money(amount, service_config.currency), UnitType.PROJECT.value, Decimal("1"), f"{tier}/{dimension}", base_duration, trace
+        return (
+            money(amount, service_config.currency),
+            UnitType.PROJECT.value,
+            Decimal("1"),
+            f"{tier}/{dimension}",
+            base_duration,
+            trace,
+        )
     if model == "package_plus_recurring":
         tier = str(service_inputs.get("tier"))
         amount = d(nested_lookup(service_config.package_grid.rates, [tier, "setup"]))  # type: ignore[union-attr]
-        included_pages = d(nested_lookup(service_config.package_grid.rates, [tier, "pages_included"]))  # type: ignore[union-attr]
+        included_pages = d(
+            nested_lookup(service_config.package_grid.rates, [tier, "pages_included"])  # type: ignore[union-attr]
+        )
         requested_pages = d(service_inputs.get("page_count") or included_pages)
         extra_pages = max(Decimal("0"), requested_pages - included_pages)
-        extra_page_rate = d(nested_lookup(service_config.package_grid.rates, [tier, "additional_page"]))  # type: ignore[union-attr]
+        extra_page_rate = d(
+            nested_lookup(service_config.package_grid.rates, [tier, "additional_page"])  # type: ignore[union-attr]
+        )
         amount += extra_pages * extra_page_rate
         recurring = d(nested_lookup(service_config.package_grid.rates, [tier, "monthly_recurring"]))  # type: ignore[union-attr]
         base_duration = _duration_from_config(service_config, [tier])
         trace.update({"monthly_recurring_usd": str(recurring), "extra_pages": str(extra_pages)})
-        return money(amount, service_config.currency), UnitType.PROJECT.value, Decimal("1"), tier, base_duration, trace
+        return (
+            money(amount, service_config.currency),
+            UnitType.PROJECT.value,
+            Decimal("1"),
+            tier,
+            base_duration,
+            trace,
+        )
     if model == "video_length_grid":
         tier = str(service_inputs.get("tier"))
         length = str(service_inputs.get("video_length_seconds"))
         amount = d(nested_lookup(service_config.package_grid.rates, [tier, length]))  # type: ignore[union-attr]
         base_duration = _duration_from_config(service_config, [tier])
-        return money(amount, service_config.currency), UnitType.VIDEO_SECONDS.value, d(length), tier, base_duration, trace
+        return (
+            money(amount, service_config.currency),
+            UnitType.VIDEO_SECONDS.value,
+            d(length),
+            tier,
+            base_duration,
+            trace,
+        )
     if model == "campaign_package":
         tier = str(service_inputs.get("tier"))
         duration = str(service_inputs.get("campaign_duration"))
@@ -193,7 +256,14 @@ def _calculate_base(
         setup_days = _duration_from_config(service_config, [tier])
         active_days = _campaign_duration_days(duration)
         trace.update({"campaign_active_calendar_days": str(active_days)})
-        return money(amount, service_config.currency), UnitType.CALENDAR_DAYS.value, active_days, f"{tier}/{duration}", setup_days, trace
+        return (
+            money(amount, service_config.currency),
+            UnitType.CALENDAR_DAYS.value,
+            active_days,
+            f"{tier}/{duration}",
+            setup_days,
+            trace,
+        )
     if model == "cover_illustration":
         return _cover_base(service_config, service_inputs, trace)
     raise ValueError(f"Unsupported calculation_model: {model}")
@@ -298,19 +368,33 @@ def _cover_base(
     if service_inputs.get("cover_type"):
         cover_type = str(service_inputs["cover_type"])
         complexity_level = str(service_inputs.get("complexity_level", "standard"))
-        cover_amount += d(nested_lookup(service_config.package_grid.rates, ["covers", cover_type, complexity_level]))  # type: ignore[union-attr]
-        duration += d(nested_lookup(service_config.base_duration_days, ["covers", cover_type, complexity_level]))
+        cover_amount += d(
+            nested_lookup(
+                service_config.package_grid.rates,  # type: ignore[union-attr]
+                ["covers", cover_type, complexity_level],
+            )
+        )
+        duration += d(
+            nested_lookup(
+                service_config.base_duration_days, ["covers", cover_type, complexity_level]
+            )
+        )
         package_label_parts.append(f"{cover_type}/{complexity_level}")
     illustration_count = d(service_inputs.get("illustration_count") or 0)
     if illustration_count:
         color_mode = str(service_inputs.get("color_mode", "color"))
         illustration_type = str(service_inputs.get("illustration_type", "full_page"))
         illustration_rate = d(
-            nested_lookup(service_config.package_grid.rates, ["illustrations", color_mode, illustration_type])  # type: ignore[union-attr]
+            nested_lookup(
+                service_config.package_grid.rates,  # type: ignore[union-attr]
+                ["illustrations", color_mode, illustration_type],
+            )
         )
         cover_amount += illustration_count * illustration_rate
         duration += illustration_count * Decimal("1.5")
-        package_label_parts.append(f"{illustration_count} {color_mode} {illustration_type} illustrations")
+        package_label_parts.append(
+            f"{illustration_count} {color_mode} {illustration_type} illustrations"
+        )
     if not package_label_parts:
         raise KeyError("cover_type or illustration_count is required")
     trace["cover_illustration_amount"] = str(cover_amount)
@@ -324,11 +408,17 @@ def _cover_base(
     )
 
 
-def _custom_value_warnings(service_config: ServiceConfig, service_inputs: dict[str, Any]) -> list[QuoteWarning]:
+def _custom_value_warnings(
+    service_config: ServiceConfig, service_inputs: dict[str, Any]
+) -> list[QuoteWarning]:
     warnings: list[QuoteWarning] = []
     if service_config.human_review.custom_values_trigger_review:
         for key, value in service_inputs.items():
-            if isinstance(value, str) and value.strip().lower() in {"custom", "quote_only", "enterprise"}:
+            if isinstance(value, str) and value.strip().lower() in {
+                "custom",
+                "quote_only",
+                "enterprise",
+            }:
                 warnings.append(
                     QuoteWarning(
                         code="CUSTOM_VALUE_REQUIRES_REVIEW",
@@ -349,7 +439,10 @@ def _custom_value_warnings(service_config: ServiceConfig, service_inputs: dict[s
                 )
             )
         ad_budget = service_inputs.get("ad_budget")
-        if ad_budget is not None and d(ad_budget) >= service_config.human_review.marketing_ad_budget_threshold:
+        if (
+            ad_budget is not None
+            and d(ad_budget) >= service_config.human_review.marketing_ad_budget_threshold
+        ):
             warnings.append(
                 QuoteWarning(
                     code="AD_BUDGET_REQUIRES_REVIEW",
@@ -362,7 +455,9 @@ def _custom_value_warnings(service_config: ServiceConfig, service_inputs: dict[s
         trim_size = service_inputs.get("trim_size")
         print_type = service_inputs.get("print_type")
         if trim_size is not None and print_type is not None:
-            grid_value = nested_lookup(service_config.printing_cost_grid, [str(trim_size), str(print_type)])
+            grid_value = nested_lookup(
+                service_config.printing_cost_grid, [str(trim_size), str(print_type)]
+            )
             if isinstance(grid_value, str) and grid_value.strip().lower() == "quote_only":
                 warnings.append(
                     QuoteWarning(

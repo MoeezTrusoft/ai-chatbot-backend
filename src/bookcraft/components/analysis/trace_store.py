@@ -16,14 +16,21 @@ class LiveTraceStore:
     def append(self, row: dict[str, Any]) -> None:
         payload = dict(row)
         recorded_at = str(payload.pop("recorded_at", datetime.now(UTC).isoformat()))
+        # Preserve routing keys before redaction — UUIDs can false-positive as phone numbers.
+        thread_id = str(payload.pop("thread_id", "")) or None
+        customer_id = str(payload.pop("customer_id", "")) or None
 
         redacted = redact_value(payload)
         if not isinstance(redacted, dict):
             redacted = {"payload": redacted}
 
         # Keep trace metadata machine-readable. Redact user/component payloads,
-        # but do not run phone-like regexes over ISO timestamps.
+        # but do not run phone-like regexes over ISO timestamps or routing UUIDs.
         redacted["recorded_at"] = recorded_at
+        if thread_id:
+            redacted["thread_id"] = thread_id
+        if customer_id:
+            redacted["customer_id"] = customer_id
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:

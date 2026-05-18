@@ -134,7 +134,18 @@ def _should_upgrade_query(
 
 def _query_from_message(message: ProcessedMessage) -> QueryIntentType | None:
     text = message.normalized.casefold()
-    if _mentions_any(text, ["human consultant", "consultant review", "ready for a human"]):
+    if _mentions_any(
+        text,
+        [
+            "human consultant",
+            "consultant review",
+            "ready for a human",
+            "consultation",
+            "book a call",
+            "schedule a call",
+            "schedule a meeting",
+        ],
+    ):
         return QueryIntentType.CONSULTATION_REQUEST
 
     if _mentions_any(text, ["sample", "samples", "portfolio", "examples", "sample links"]):

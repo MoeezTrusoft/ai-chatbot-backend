@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class KnownFact(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    label: str
+    value: str | int | float | bool
+    confidence: float
+    source: str
+    raw_excerpt: str | None = None
+
+
+class ContextPack(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    known_facts: list[KnownFact] = Field(default_factory=list)
+    missing_facts: list[str] = Field(default_factory=list)
+    forbidden_reasks: list[str] = Field(default_factory=list)
+    active_service: str | None = None
+    active_genre: str | None = None
+    manuscript_status: str | None = None
+    sales_stage: str | None = None
+    outstanding_questions: list[str] = Field(default_factory=list)
+    repeated_user_info: list[str] = Field(default_factory=list)
+    contradiction_warnings: list[str] = Field(default_factory=list)
+    allowed_next_questions: list[str] = Field(default_factory=list)
+    disallowed_next_questions: list[str] = Field(default_factory=list)
+    response_hint: str | None = None

@@ -22,6 +22,7 @@ class FieldMeta(BaseModel, Generic[T]):  # noqa: UP046 - Pydantic generic model 
         trusted_source = self.source in {
             Source.USER_STATED,
             Source.USER_CONFIRMED,
+            Source.USER_CORRECTED,
             Source.CSR_ENTERED,
         }
         return self.value is not None and (trusted_source or self.confidence >= threshold)
