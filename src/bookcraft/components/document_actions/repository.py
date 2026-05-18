@@ -5,8 +5,13 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col, select
 
-from bookcraft.components.storage.models import SalesDocumentRequestRecord, utc_now
+from bookcraft.components.storage.models import (
+    SalesDocumentRequestRecord,
+    SalesPricingQuoteRecord,
+    utc_now,
+)
 
 
 @dataclass(slots=True)
@@ -59,10 +64,32 @@ class DocumentRequestRepository:
             await session.refresh(record)
             return record
 
+    async def latest_quote_for_agreement(
+        self,
+        *,
+        customer_id: UUID | None,
+        thread_id: UUID,
+        quote_id: UUID | None = None,
+    ) -> SalesPricingQuoteRecord | None:
+        async with self.session_factory() as session:
+            statement = select(SalesPricingQuoteRecord)
+
+            if quote_id is not None:
+                statement = statement.where(SalesPricingQuoteRecord.quote_id == quote_id)
+            else:
+                statement = statement.where(SalesPricingQuoteRecord.thread_id == thread_id)
+                if customer_id is not None:
+                    statement = statement.where(SalesPricingQuoteRecord.customer_id == customer_id)
+
+            statement = statement.order_by(col(SalesPricingQuoteRecord.created_at).desc())
+            result = await session.execute(statement)
+            return result.scalars().first()
+
 
 class InMemoryDocumentRequestRepository:
     def __init__(self) -> None:
         self.records: list[SalesDocumentRequestRecord] = []
+        self.quote_records: list[SalesPricingQuoteRecord] = []
 
     async def create_request(
         self,
@@ -105,3 +132,23 @@ class InMemoryDocumentRequestRepository:
         )
         self.records.append(record)
         return record
+
+    async def latest_quote_for_agreement(
+        self,
+        *,
+        customer_id: UUID | None,
+        thread_id: UUID,
+        quote_id: UUID | None = None,
+    ) -> SalesPricingQuoteRecord | None:
+        candidates = self.quote_records
+        if quote_id is not None:
+            candidates = [record for record in candidates if record.quote_id == quote_id]
+        else:
+            candidates = [record for record in candidates if record.thread_id == thread_id]
+            if customer_id is not None:
+                candidates = [record for record in candidates if record.customer_id == customer_id]
+
+        if not candidates:
+            return None
+
+        return sorted(candidates, key=lambda record: record.created_at, reverse=True)[0]

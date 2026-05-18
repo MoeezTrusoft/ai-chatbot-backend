@@ -280,3 +280,143 @@ def test_nda_details_message_collects_name_contact_and_effective_today() -> None
     assert plan.collected_slots["phone"] == "+1 555 123 4567"
     assert plan.collected_slots["effective_date"]
     assert plan.collected_slots["send_email"] is False
+
+
+def test_agreement_request_blocks_without_quote() -> None:
+    planner = SalesActionPlanner()
+
+    plan = planner.plan(
+        processed=_message("Please send the agreement."),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.AGREEMENT_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_AGREEMENT
+    assert plan.status == ActionStatus.BLOCKED
+    assert plan.missing_slots == ["quote_id"]
+
+
+def test_agreement_request_needs_client_location_with_quote() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pricing.quote_id = "11111111-1111-1111-1111-111111111111"
+
+    plan = planner.plan(
+        processed=_message(
+            "Use Maya Author, maya@example.com and +1 555 123 4567 for the agreement.",
+            atoms={
+                "emails": ["maya@example.com"],
+                "phones": ["+1 555 123 4567"],
+            },
+        ),
+        state=state,
+        intent=_intent(QueryIntentType.AGREEMENT_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_AGREEMENT
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert "client_location" in plan.missing_slots
+
+
+def test_agreement_request_with_quote_and_location_needs_confirmation() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pricing.quote_id = "11111111-1111-1111-1111-111111111111"
+
+    plan = planner.plan(
+        processed=_message(
+            "Use Maya Author, maya@example.com, +1 555 123 4567, and I am in Houston, TX.",
+            atoms={
+                "emails": ["maya@example.com"],
+                "phones": ["+1 555 123 4567"],
+            },
+        ),
+        state=state,
+        intent=_intent(QueryIntentType.AGREEMENT_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_AGREEMENT
+    assert plan.status == ActionStatus.NEEDS_CONFIRMATION
+    assert plan.confirmation_required is True
+    assert plan.collected_slots["client_location"] == "Houston"
+    assert plan.collected_slots["send_email"] is False
+
+
+def test_pricing_quote_parses_plain_text_project_details() -> None:
+    planner = SalesActionPlanner()
+
+    plan = planner.plan(
+        processed=_message(
+            "Use these exact quote details: services are editing proofreading and "
+            "interior formatting. Word count is 58000. Genre is memoir. "
+            "Manuscript status is complete draft. Deadline is 8 weeks. "
+            "Please generate the quote now."
+        ),
+        state=ThreadState(),
+        intent=_intent(
+            QueryIntentType.PRICING_QUESTION,
+            service=ServiceCategory.EDITING_PROOFREADING,
+            secondary=[ServiceCategory.INTERIOR_FORMATTING],
+        ),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PRICE_QUOTE
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["word_count"] == 58000
+    assert plan.collected_slots["genre"].casefold() == "memoir"
+    assert plan.collected_slots["manuscript_status"] == "complete draft"
+    assert plan.collected_slots["deadline"] == "8 weeks"
+
+
+def test_pricing_quote_parses_compact_memoir_draft_phrase() -> None:
+    planner = SalesActionPlanner()
+
+    plan = planner.plan(
+        processed=_message(
+            "I have a 58,000-word memoir draft. I need editing and interior "
+            "formatting. It is a complete manuscript and I need it ready in "
+            "about 8 weeks. Can you give me a quote?"
+        ),
+        state=ThreadState(),
+        intent=_intent(
+            QueryIntentType.PRICING_QUESTION,
+            service=ServiceCategory.EDITING_PROOFREADING,
+            secondary=[ServiceCategory.INTERIOR_FORMATTING],
+        ),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.PRICE_QUOTE
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["word_count"] == 58000
+    assert plan.collected_slots["genre"].casefold() == "memoir"
+    assert plan.collected_slots["manuscript_status"] == "complete manuscript"
+    assert plan.collected_slots["deadline"] == "8 weeks"
+
+
+def test_agreement_ignores_legacy_commercial_quote_id_without_ready_pricing_quote() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.commercial.latest_quote_id.value = "11111111-1111-1111-1111-111111111111"
+
+    plan = planner.plan(
+        processed=_message(
+            "Please prepare the agreement. Use Maya Author, maya@example.com, "
+            "+1 555 123 4567, and I am in Houston, TX.",
+            atoms={
+                "emails": ["maya@example.com"],
+                "phones": ["+1 555 123 4567"],
+            },
+        ),
+        state=state,
+        intent=_intent(QueryIntentType.AGREEMENT_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_AGREEMENT
+    assert plan.status == ActionStatus.BLOCKED
+    assert plan.missing_slots == ["quote_id"]

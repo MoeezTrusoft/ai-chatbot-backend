@@ -554,14 +554,60 @@ class ChatService:
             if effective_date is not None:
                 state.sales_actions.documents.nda.effective_date = str(effective_date)
 
+        if action_plan.action_type == ActionType.GENERATE_AGREEMENT:
+            state.sales_actions.documents.agreement.requested = True
+            state.sales_actions.documents.agreement.missing_fields = action_plan.missing_slots
+            quote_id = action_plan.collected_slots.get("quote_id")
+            if quote_id is not None:
+                state.sales_actions.documents.agreement.required_quote_id = str(quote_id)
+
     @staticmethod
     def _sales_action_status_message(
         action_plan: ActionPlan,
         action_result: ActionResult | None,
     ) -> str | None:
         if action_result is not None:
-            if action_result.action_type == ActionType.GENERATE_NDA:
+            if action_result.action_type in {
+                ActionType.GENERATE_NDA,
+                ActionType.GENERATE_AGREEMENT,
+            }:
                 return action_result.customer_safe_summary
+            return None
+
+        if action_plan.action_type == ActionType.GENERATE_AGREEMENT:
+            if action_plan.status == ActionStatus.BLOCKED:
+                return (
+                    "I can prepare the service agreement, but I need to create "
+                    "a quote first so the fees, services, and terms are accurate."
+                )
+            if action_plan.status == ActionStatus.MISSING_INFO:
+                missing = set(action_plan.missing_slots)
+                agreement_parts: list[str] = []
+
+                if "name" in missing:
+                    agreement_parts.append("your full name")
+                if "email" in missing:
+                    agreement_parts.append("your email")
+                if "phone" in missing:
+                    agreement_parts.append("your phone number")
+                if "client_location" in missing:
+                    agreement_parts.append("your city/state or billing location")
+
+                if len(agreement_parts) > 1:
+                    details = ", ".join(agreement_parts[:-1]) + f", and {agreement_parts[-1]}"
+                elif agreement_parts:
+                    details = agreement_parts[0]
+                else:
+                    details = "the missing agreement details"
+
+                return f"I can prepare the service agreement next. I just need {details}."
+            if action_plan.status == ActionStatus.NEEDS_CONFIRMATION:
+                name = action_plan.collected_slots.get("name") or "the client"
+                email = action_plan.collected_slots.get("email") or "your email"
+                return (
+                    f"I have the agreement details ready for {name} at {email}. "
+                    "Should I send it there?"
+                )
             return None
 
         if action_plan.action_type != ActionType.GENERATE_NDA:
@@ -661,7 +707,8 @@ class ChatService:
 
         if action_result.action_type == ActionType.PRICE_QUOTE:
             state.sales_actions.pricing.requested = True
-            state.sales_actions.pricing.quote_id = action_result.result_id
+            if _pricing_result_is_agreement_ready(action_result.payload):
+                state.sales_actions.pricing.quote_id = action_result.result_id
             state.sales_actions.pricing.last_quote_summary = action_result.customer_safe_summary
             missing_fields = action_result.payload.get("missing_fields")
             state.sales_actions.pricing.missing_fields = (
@@ -1976,3 +2023,63 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _pricing_result_is_agreement_ready(payload: dict[str, Any]) -> bool:
+    status = str(payload.get("status") or "")
+    if status not in {"estimated", "formal_quote_ready", "accepted"}:
+        return False
+
+    missing_fields = payload.get("missing_fields")
+    if isinstance(missing_fields, list) and missing_fields:
+        return False
+
+    quote_output = payload.get("quote_output")
+    if not isinstance(quote_output, dict):
+        return False
+
+    return _quote_output_has_nonzero_total(quote_output)
+
+
+def _quote_output_has_nonzero_total(quote_output: dict[str, Any]) -> bool:
+    range_value = quote_output.get("total_price_range") or quote_output.get("subtotal_range")
+    if isinstance(range_value, dict):
+        return bool(
+            _money_like_amount(range_value.get("low"))
+            or _money_like_amount(range_value.get("high"))
+        )
+
+    for key in (
+        "final_fee",
+        "total_fee",
+        "estimated_total",
+        "total",
+        "price",
+        "amount",
+    ):
+        if _money_like_amount(quote_output.get(key)):
+            return True
+
+    for value in quote_output.values():
+        if isinstance(value, dict) and _quote_output_has_nonzero_total(value):
+            return True
+
+    return False
+
+
+def _money_like_amount(value: object) -> float | None:
+    if isinstance(value, dict):
+        return _money_like_amount(value.get("amount"))
+
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+
+    if isinstance(value, str):
+        cleaned = value.replace("$", "").replace(",", "").strip()
+        try:
+            amount = float(cleaned)
+        except ValueError:
+            return None
+        return amount if amount > 0 else None
+
+    return None
