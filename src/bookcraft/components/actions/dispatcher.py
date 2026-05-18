@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
+from bookcraft.components.document_actions import NDAActionRequest, NDAActionService
 from bookcraft.components.leads import CreateOrUpdateLeadRequest, LeadService
 from bookcraft.components.portfolio_actions import (
     PortfolioActionRequest,
@@ -18,6 +22,7 @@ class SalesActionDispatcher:
     lead_service: LeadService | None = None
     pricing_action_service: PricingActionService | None = None
     portfolio_action_service: PortfolioActionService | None = None
+    nda_action_service: NDAActionService | None = None
 
     async def dispatch(
         self,
@@ -26,10 +31,7 @@ class SalesActionDispatcher:
         thread_id: UUID,
         customer_id: UUID | None,
     ) -> ActionResult | None:
-        if plan.action_type is None or plan.status not in {
-            ActionStatus.READY,
-            ActionStatus.NEEDS_CONFIRMATION,
-        }:
+        if plan.action_type is None or plan.status != ActionStatus.READY:
             return None
 
         started = time.perf_counter()
@@ -52,6 +54,14 @@ class SalesActionDispatcher:
 
         if plan.action_type == ActionType.PORTFOLIO_LOOKUP:
             return await self._portfolio_lookup(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+
+        if plan.action_type == ActionType.GENERATE_NDA:
+            return await self._generate_nda(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
@@ -151,6 +161,70 @@ class SalesActionDispatcher:
                 "updated_fields": result.updated_fields,
                 "recommended_follow_up_slots": plan.recommended_follow_up_slots,
             },
+            duration_ms=_elapsed_ms(started),
+        )
+
+    async def _generate_nda(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+    ) -> ActionResult:
+        if self.nda_action_service is None:
+            return ActionResult(
+                action_type=ActionType.GENERATE_NDA,
+                success=False,
+                customer_safe_summary=(
+                    "I can collect the NDA details, but NDA generation is not connected yet."
+                ),
+                internal_summary="NDAActionService is not configured.",
+                error_code="nda_action_service_unavailable",
+                duration_ms=_elapsed_ms(started),
+            )
+
+        slots = plan.collected_slots
+        try:
+            result = await self.nda_action_service.generate_and_maybe_send(
+                NDAActionRequest(
+                    customer_id=customer_id,
+                    thread_id=thread_id,
+                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    author_title=_string_or_none(slots.get("author_title")) or "Author",
+                    author_full_name=_string_or_none(slots.get("name")) or "",
+                    author_phone=_string_or_none(slots.get("phone")) or "",
+                    author_email=_string_or_none(slots.get("email")) or "",
+                    effective_date=_string_or_none(slots.get("effective_date")) or "",
+                    signature=_string_or_none(slots.get("signature"))
+                    or _string_or_none(slots.get("name")),
+                    send_email=bool(slots.get("send_email")),
+                    metadata={"action_plan_reason": plan.reason},
+                )
+            )
+        except Exception as exc:
+            return ActionResult(
+                action_type=ActionType.GENERATE_NDA,
+                success=False,
+                customer_safe_summary=(
+                    "I have the NDA request, but I could not prepare it just now."
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="nda_generation_failed",
+                payload={
+                    "exception_class": exc.__class__.__name__,
+                    "exception_detail": _exception_summary(exc),
+                },
+                duration_ms=_elapsed_ms(started),
+            )
+
+        return ActionResult(
+            action_type=ActionType.GENERATE_NDA,
+            success=True,
+            result_id=result.document_id,
+            customer_safe_summary=result.customer_safe_summary,
+            internal_summary=f"NDA action processed: {result.document_id}",
+            payload=result.model_dump(mode="json"),
             duration_ms=_elapsed_ms(started),
         )
 
@@ -315,3 +389,14 @@ def _uuid_or_none(value: object) -> UUID | None:
         return UUID(str(value))
     except ValueError:
         return None
+
+
+def _exception_summary(exc: Exception) -> str:
+    if isinstance(exc, ValidationError):
+        return json.dumps(exc.errors(include_url=False), default=str)[:3000]
+
+    detail = str(exc).strip()
+    if detail:
+        return f"{exc.__class__.__name__}: {detail}"[:3000]
+
+    return exc.__class__.__name__

@@ -21,6 +21,7 @@ def sanitize_thread_state_for_persistence(state: ThreadState) -> dict[str, Any]:
 
     raw = state.model_dump(mode="json")
     redacted = redact_mapping(raw) or {}
+    _restore_executable_pending_confirmation_payload(raw, redacted)
     _sanitize_personal_info(redacted)
     _sanitize_raw_excerpts(redacted)
     _sanitize_rolling_summary(redacted)
@@ -67,3 +68,39 @@ def _sanitize_rolling_summary(snapshot: dict[str, Any]) -> None:
     summary = snapshot.get("rolling_summary")
     if isinstance(summary, str):
         snapshot["rolling_summary"] = redact_text(summary)
+
+
+def _restore_executable_pending_confirmation_payload(
+    raw: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> None:
+    """Keep short-lived action-confirmation payloads executable.
+
+    Most thread state should be redacted before persistence. Pending action payloads
+    are different: they are cleared after confirmation and are needed to execute
+    the exact customer-approved action on the next turn. Without this, the bot
+    reloads [REDACTED_EMAIL]/[REDACTED_PHONE] and document generation fails.
+    """
+
+    raw_pending = (
+        raw.get("sales_actions", {}).get("pending_confirmation", {})
+        if isinstance(raw.get("sales_actions"), dict)
+        else {}
+    )
+    pending_type = raw_pending.get("type") if isinstance(raw_pending, dict) else None
+    raw_payload = raw_pending.get("payload") if isinstance(raw_pending, dict) else None
+
+    if pending_type not in {"generate_nda"}:
+        return
+    if not isinstance(raw_payload, dict):
+        return
+
+    sales_actions = snapshot.get("sales_actions")
+    if not isinstance(sales_actions, dict):
+        return
+
+    pending = sales_actions.get("pending_confirmation")
+    if not isinstance(pending, dict):
+        return
+
+    pending["payload"] = raw_payload

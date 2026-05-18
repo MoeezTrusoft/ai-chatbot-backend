@@ -107,6 +107,32 @@ class PortfolioSampleViewRecord(SQLModel, table=True):
     shown_at: datetime = Field(default_factory=utc_now)
 
 
+class SalesDocumentRequestRecord(SQLModel, table=True):
+    __tablename__ = "sales_document_requests"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
+    lead_id: UUID | None = Field(default=None, foreign_key="sales_leads.id", index=True)
+    thread_id: UUID | None = Field(default=None, index=True)
+    document_type: str = Field(index=True, max_length=32)
+    quote_id: UUID | None = Field(default=None, index=True)
+    required_params: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    status: str = Field(default="pending", max_length=64, index=True)
+    document_id: str | None = Field(default=None, index=True, max_length=255)
+    recipient_email: str | None = Field(default=None, index=True, max_length=255)
+    delivery_status: str | None = Field(default=None, max_length=64)
+    provider_message_id: str | None = Field(default=None, max_length=255)
+    html_path: str | None = None
+    pdf_path: str | None = None
+    error_code: str | None = Field(default=None, max_length=128)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    sent_at: datetime | None = None
+
+
 class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 

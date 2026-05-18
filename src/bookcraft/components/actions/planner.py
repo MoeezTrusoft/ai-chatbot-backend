@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import date
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionStatus, ActionType
 from bookcraft.components.actions.slot_resolver import (
@@ -34,7 +36,9 @@ class SalesActionPlanner:
     ) -> ActionPlan:
         pending = state.sales_actions.pending_confirmation
         if pending.type and is_confirmation_text(processed.normalized):
-            return self._pending_confirmation_plan(pending_type=pending.type)
+            return self._pending_confirmation_plan(
+                pending_type=pending.type, payload=pending.payload
+            )
 
         contact = contact_slots(state=state, extraction=extraction, processed=processed)
         project = project_slots(state=state, extraction=extraction, processed=processed)
@@ -59,7 +63,7 @@ class SalesActionPlanner:
             )
 
         if intent.query_primary == QueryIntentType.NDA_REQUEST:
-            return self._nda_plan(contact=contact, state=state)
+            return self._nda_plan(contact=contact, state=state, processed=processed)
 
         if intent.query_primary == QueryIntentType.AGREEMENT_REQUEST:
             return self._agreement_plan(contact=contact, state=state)
@@ -72,7 +76,12 @@ class SalesActionPlanner:
             reason="No sales action required for this turn.",
         )
 
-    def _pending_confirmation_plan(self, *, pending_type: str) -> ActionPlan:
+    def _pending_confirmation_plan(
+        self,
+        *,
+        pending_type: str,
+        payload: dict[str, object] | None,
+    ) -> ActionPlan:
         try:
             action_type = ActionType(pending_type)
         except ValueError:
@@ -81,10 +90,14 @@ class SalesActionPlanner:
                 reason=f"Unknown pending confirmation type: {pending_type}",
             )
 
+        collected_payload = payload or {}
+        if action_type == ActionType.GENERATE_NDA:
+            collected_payload = {**collected_payload, "send_email": True}
+
         return ActionPlan(
             action_type=action_type,
             status=ActionStatus.READY,
-            collected_slots={"confirmed": True},
+            collected_slots={**collected_payload, "confirmed": True},
             pending_confirmation_key=pending_type,
             reason="User confirmed the pending sales action.",
         )
@@ -278,14 +291,32 @@ class SalesActionPlanner:
         )
 
     @staticmethod
-    def _nda_plan(*, contact: dict[str, str], state: ThreadState) -> ActionPlan:
+    def _nda_plan(
+        *,
+        contact: dict[str, str],
+        state: ThreadState,
+        processed: ProcessedMessage,
+    ) -> ActionPlan:
+        collected_contact = dict(contact)
+
+        inferred_name = _nda_name_from_text(processed.raw)
+        if inferred_name and "name" not in collected_contact:
+            collected_contact["name"] = inferred_name
+
+        effective_date = (
+            state.sales_actions.documents.nda.effective_date
+            or _nda_effective_date_from_text(processed.raw)
+        )
+
         missing: list[str] = []
 
-        if "name" not in contact:
+        if "name" not in collected_contact:
             missing.append("name")
-        if "email" not in contact:
+        if "email" not in collected_contact:
             missing.append("email")
-        if not state.sales_actions.documents.nda.effective_date:
+        if "phone" not in collected_contact:
+            missing.append("phone")
+        if not effective_date:
             missing.append("effective_date")
 
         if missing:
@@ -293,7 +324,10 @@ class SalesActionPlanner:
                 action_type=ActionType.GENERATE_NDA,
                 status=ActionStatus.MISSING_INFO,
                 missing_slots=missing,
-                collected_slots=contact,
+                collected_slots={
+                    **collected_contact,
+                    **({"effective_date": effective_date} if effective_date else {}),
+                },
                 reason="NDA request is missing required document parameters.",
             )
 
@@ -301,8 +335,9 @@ class SalesActionPlanner:
             action_type=ActionType.GENERATE_NDA,
             status=ActionStatus.NEEDS_CONFIRMATION,
             collected_slots={
-                **contact,
-                "effective_date": state.sales_actions.documents.nda.effective_date,
+                **collected_contact,
+                "effective_date": effective_date,
+                "send_email": False,
             },
             confirmation_required=True,
             pending_confirmation_key=ActionType.GENERATE_NDA.value,
@@ -345,3 +380,83 @@ class SalesActionPlanner:
             pending_confirmation_key=ActionType.GENERATE_AGREEMENT.value,
             reason="Agreement has quote and customer details and needs send confirmation.",
         )
+
+
+def _nda_name_from_text(text: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", text).strip()
+
+    # Handles: "Use Maya Author, maya@example.com..."
+    use_match = re.search(
+        r"\buse\s+(.+?)(?=,|\s+and\s+make\b|\s+and\s+the\b|$)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if use_match:
+        candidate = _clean_nda_name_candidate(use_match.group(1))
+        if candidate:
+            return candidate
+
+    patterns = [
+        r"\bmy\s+name\s+is\s+(.+?)(?=,|\s+and\s+|$)",
+        r"\bname\s+is\s+(.+?)(?=,|\s+and\s+|$)",
+        r"\bauthor\s+name\s+is\s+(.+?)(?=,|\s+and\s+|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            candidate = _clean_nda_name_candidate(match.group(1))
+            if candidate:
+                return candidate
+
+    return None
+
+
+def _clean_nda_name_candidate(value: str) -> str | None:
+    candidate = value.strip(" ,.;:-")
+
+    # Stop accidental capture if contact details leaked into the name phrase.
+    candidate = re.split(r"\b[\w.+-]+@[\w.-]+\b", candidate)[0]
+    candidate = re.split(r"\+?\d[\d\s().-]{4,}", candidate)[0]
+    candidate = candidate.strip(" ,.;:-")
+
+    if not candidate:
+        return None
+
+    blocked = {
+        "me",
+        "this",
+        "the nda",
+        "nda",
+        "today",
+        "my email",
+        "email",
+        "phone",
+    }
+    if candidate.casefold() in blocked:
+        return None
+
+    words = candidate.split()
+    if len(words) > 5:
+        return None
+
+    if not all(re.match(r"^[A-Za-z][A-Za-z'.-]*$", word) for word in words):
+        return None
+
+    return " ".join(word[:1].upper() + word[1:] for word in words)
+
+
+def _nda_effective_date_from_text(text: str) -> str | None:
+    lowered = text.casefold()
+
+    if "effective today" in lowered or "effective date today" in lowered:
+        return date.today().isoformat()
+
+    match = re.search(
+        r"\beffective\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})\b",
+        lowered,
+    )
+    if match:
+        return match.group(1)
+
+    return None

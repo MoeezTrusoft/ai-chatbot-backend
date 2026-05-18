@@ -164,3 +164,50 @@ async def test_dispatcher_handles_portfolio_lookup() -> None:
         "unavailable_pending",
         "unavailable_confidential",
     }
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_handles_nda_generation_without_email() -> None:
+    from pathlib import Path
+
+    from bookcraft.components.document_actions import NDAActionService
+    from bookcraft.components.document_actions.repository import (
+        InMemoryDocumentRequestRepository,
+    )
+    from bookcraft.components.documents.engine import DocumentEngine
+    from bookcraft.components.documents.registry import DocumentTemplateRegistry
+
+    dispatcher = SalesActionDispatcher(
+        nda_action_service=NDAActionService(
+            document_engine=DocumentEngine(
+                registry=DocumentTemplateRegistry("data/templates"),
+                output_dir=Path("reports/test_documents"),
+                pdf_rendering_enabled=False,
+            ),
+            repository=InMemoryDocumentRequestRepository(),
+            email_client=None,
+        )
+    )
+
+    result = await dispatcher.dispatch(
+        ActionPlan(
+            action_type=ActionType.GENERATE_NDA,
+            status=ActionStatus.READY,
+            collected_slots={
+                "name": "Maya Author",
+                "phone": "+1 555 123 4567",
+                "email": "maya@example.com",
+                "effective_date": "2026-05-18",
+                "send_email": False,
+            },
+            reason="test",
+        ),
+        thread_id=uuid4(),
+        customer_id=uuid4(),
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert result.action_type == ActionType.GENERATE_NDA
+    assert result.result_id is not None
+    assert result.payload["recipient_email"] == "maya@example.com"

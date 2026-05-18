@@ -70,6 +70,14 @@ class Settings(BaseSettings):
     sendgrid_api_key: str | None = None
     email_from_address: str = "hello@bookcraft.ai"
     email_from_name: str = "BookCraft AI"
+    smtp_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "BookCraft Publishers"
+    smtp_use_tls: bool = True
 
     trimatch_mode: Literal["shadow", "vote_only", "shortcut_enabled"] = "shadow"
     trimatch_shortcut_layers: str = ""

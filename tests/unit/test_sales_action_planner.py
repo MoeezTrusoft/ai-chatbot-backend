@@ -178,7 +178,7 @@ def test_nda_request_missing_required_params() -> None:
 
     assert plan.action_type == ActionType.GENERATE_NDA
     assert plan.status == ActionStatus.MISSING_INFO
-    assert plan.missing_slots == ["name", "email", "effective_date"]
+    assert plan.missing_slots == ["name", "email", "phone", "effective_date"]
 
 
 def test_agreement_without_quote_is_blocked() -> None:
@@ -226,3 +226,57 @@ def test_portfolio_followup_reuses_previous_service_context() -> None:
         "Formatting:default:1",
         "Formatting:default:2",
     ]
+
+
+def test_nda_pending_confirmation_yes_carries_payload_and_send_email() -> None:
+    planner = SalesActionPlanner()
+    state = ThreadState()
+    state.sales_actions.pending_confirmation.type = ActionType.GENERATE_NDA.value
+    state.sales_actions.pending_confirmation.payload = {
+        "name": "Maya Author",
+        "email": "maya@example.com",
+        "phone": "+1 555 123 4567",
+        "effective_date": "2026-05-18",
+        "send_email": False,
+    }
+
+    plan = planner.plan(
+        processed=_message("yes, send it"),
+        state=state,
+        intent=_intent(QueryIntentType.UNCLEAR),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_NDA
+    assert plan.status == ActionStatus.READY
+    assert plan.collected_slots["name"] == "Maya Author"
+    assert plan.collected_slots["email"] == "maya@example.com"
+    assert plan.collected_slots["phone"] == "+1 555 123 4567"
+    assert plan.collected_slots["effective_date"] == "2026-05-18"
+    assert plan.collected_slots["send_email"] is True
+
+
+def test_nda_details_message_collects_name_contact_and_effective_today() -> None:
+    planner = SalesActionPlanner()
+
+    plan = planner.plan(
+        processed=_message(
+            "Use Maya Author, maya@example.com, +1 555 123 4567, and make the NDA effective today.",
+            atoms={
+                "emails": ["maya@example.com"],
+                "phones": ["+1 555 123 4567"],
+            },
+        ),
+        state=ThreadState(),
+        intent=_intent(QueryIntentType.NDA_REQUEST),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.GENERATE_NDA
+    assert plan.status == ActionStatus.NEEDS_CONFIRMATION
+    assert plan.confirmation_required is True
+    assert plan.collected_slots["name"] == "Maya Author"
+    assert plan.collected_slots["email"] == "maya@example.com"
+    assert plan.collected_slots["phone"] == "+1 555 123 4567"
+    assert plan.collected_slots["effective_date"]
+    assert plan.collected_slots["send_email"] is False

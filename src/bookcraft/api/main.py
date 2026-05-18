@@ -21,6 +21,10 @@ from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.document_actions import (
+    DocumentRequestRepository,
+    NDAActionService,
+)
 from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
@@ -64,6 +68,7 @@ from bookcraft.components.trimatch import (
 )
 from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_client
 from bookcraft.infra.config import Settings, get_settings
+from bookcraft.infra.email import SMTPEmailClient
 from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter, RedisRateLimitStore
@@ -311,12 +316,36 @@ def build_chat_service(
             repository=PricingQuoteRepository(session_factory=session_factory),
         )
     )
+    document_engine = DocumentEngine(
+        registry=DocumentTemplateRegistry(settings.document_template_dir),
+        output_dir=settings.document_output_dir,
+        pdf_rendering_enabled=settings.document_pdf_rendering_enabled,
+    )
+    email_client = SMTPEmailClient(
+        host=settings.smtp_host,
+        port=settings.smtp_port,
+        username=settings.smtp_username,
+        password=settings.smtp_password,
+        from_email=settings.smtp_from_email or settings.email_from_address,
+        from_name=settings.smtp_from_name or settings.email_from_name,
+        use_tls=settings.smtp_use_tls,
+        enabled=settings.smtp_enabled,
+    )
     portfolio_action_service = (
         None
         if session_factory is None
         else PortfolioActionService(
             portfolio_engine=portfolio_engine,
             repository=PortfolioViewRepository(session_factory=session_factory),
+        )
+    )
+    nda_action_service = (
+        None
+        if session_factory is None
+        else NDAActionService(
+            document_engine=document_engine,
+            repository=DocumentRequestRepository(session_factory=session_factory),
+            email_client=email_client,
         )
     )
     return ChatService(
@@ -345,6 +374,7 @@ def build_chat_service(
             lead_service=lead_service,
             pricing_action_service=pricing_action_service,
             portfolio_action_service=portfolio_action_service,
+            nda_action_service=nda_action_service,
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,
