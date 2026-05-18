@@ -93,6 +93,8 @@ class SalesActionPlanner:
         collected_payload = payload or {}
         if action_type in {ActionType.GENERATE_NDA, ActionType.GENERATE_AGREEMENT}:
             collected_payload = {**collected_payload, "send_email": True}
+        if action_type == ActionType.SCHEDULE_CONSULTATION:
+            collected_payload = {**collected_payload, "confirmed": True}
 
         return ActionPlan(
             action_type=action_type,

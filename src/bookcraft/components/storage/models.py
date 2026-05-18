@@ -133,6 +133,46 @@ class SalesDocumentRequestRecord(SQLModel, table=True):
     sent_at: datetime | None = None
 
 
+class SalesConsultationRecord(SQLModel, table=True):
+    __tablename__ = "sales_consultations"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
+    lead_id: UUID | None = Field(default=None, foreign_key="sales_leads.id", index=True)
+    thread_id: UUID | None = Field(default=None, index=True)
+
+    customer_name: str = Field(max_length=255)
+    customer_email: str | None = Field(default=None, index=True, max_length=255)
+    customer_phone: str | None = Field(default=None, index=True, max_length=50)
+    services: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+
+    csr_id: str = Field(index=True, max_length=128)
+    csr_name: str = Field(index=True, max_length=255)
+    priority_rank: int = Field(default=0, index=True)
+
+    requested_time_text: str | None = None
+    customer_timezone: str | None = Field(default=None, max_length=64)
+    business_timezone: str = Field(default="America/Chicago", max_length=64)
+    starts_at_utc: datetime = Field(index=True)
+    ends_at_utc: datetime = Field(index=True)
+    houston_display_time: str = Field(max_length=255)
+    customer_display_time: str | None = Field(default=None, max_length=255)
+    duration_minutes: int = 30
+
+    status: str = Field(default="scheduled", max_length=64, index=True)
+    source: str = Field(default="chatbot", max_length=64)
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column("metadata", JSON, nullable=False),
+    )
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    cancelled_at: datetime | None = Field(default=None, index=True)
+
+
 class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 

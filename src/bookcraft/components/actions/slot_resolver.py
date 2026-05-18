@@ -103,7 +103,11 @@ def contact_slots(
     atoms = processed.deterministic_atoms
     slots: dict[str, str] = {}
 
-    name = extraction.contact.full_name or field_value(state.personal.name)
+    name = (
+        extraction.contact.full_name
+        or field_value(state.personal.name)
+        or _name_from_text(processed.raw or "")
+    )
     email = (
         extraction.contact.email
         or first_runtime_value(atoms, "emails")
@@ -123,6 +127,61 @@ def contact_slots(
         slots["phone"] = phone.strip()
 
     return slots
+
+
+def _name_from_text(text: str) -> str | None:
+    patterns = [
+        r"\bmy name is\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})\b",
+        r"\bi am\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
+        r"\bthis is\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
+        r"\buse\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,4})(?=,|\.|\band\b|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+
+        candidate = _clean_name_candidate(match.group(1))
+        if candidate:
+            return candidate
+
+    return None
+
+
+def _clean_name_candidate(value: str) -> str | None:
+    candidate = value.strip(" ,.;:-")
+
+    candidate = re.split(r"\b[\w.+-]+@[\w.-]+\b", candidate)[0]
+    candidate = re.split(r"\+?\d[\d\s().-]{4,}", candidate)[0]
+    candidate = candidate.strip(" ,.;:-")
+
+    blocked = {
+        "me",
+        "my email",
+        "email",
+        "phone",
+        "tomorrow",
+        "today",
+        "consultation",
+        "service agreement",
+        "nda",
+        "houston",
+        "texas",
+        "tx",
+    }
+
+    if candidate.casefold() in blocked:
+        return None
+
+    words = candidate.split()
+    if not 1 <= len(words) <= 5:
+        return None
+
+    if not all(re.match(r"^[A-Za-z][A-Za-z'.-]*$", word) for word in words):
+        return None
+
+    return " ".join(word[:1].upper() + word[1:] for word in words)
 
 
 def project_slots(

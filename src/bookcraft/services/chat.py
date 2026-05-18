@@ -547,6 +547,23 @@ class ChatService:
             state.sales_actions.pending_confirmation.payload = action_plan.collected_slots
             state.sales_actions.pending_confirmation.created_at = datetime.now(UTC)
 
+        if action_plan.action_type == ActionType.SCHEDULE_CONSULTATION:
+            state.sales_actions.consultation.requested = True
+            state.sales_actions.consultation.duration_minutes = int(
+                action_plan.collected_slots.get("duration_minutes") or 30
+            )
+            state.sales_actions.consultation.customer_timezone = _optional_string(
+                action_plan.collected_slots.get("customer_timezone")
+            )
+            state.sales_actions.consultation.preferred_time_window = _optional_string(
+                action_plan.collected_slots.get("requested_time_text")
+            )
+            state.sales_actions.consultation.pending_confirmation = (
+                action_plan.status == ActionStatus.NEEDS_CONFIRMATION
+            )
+            if action_plan.confirmation_required:
+                state.sales_actions.consultation.pending_slot = action_plan.collected_slots
+
         if action_plan.action_type == ActionType.GENERATE_NDA:
             state.sales_actions.documents.nda.requested = True
             state.sales_actions.documents.nda.missing_fields = action_plan.missing_slots
@@ -570,8 +587,42 @@ class ChatService:
             if action_result.action_type in {
                 ActionType.GENERATE_NDA,
                 ActionType.GENERATE_AGREEMENT,
+                ActionType.SCHEDULE_CONSULTATION,
             }:
                 return action_result.customer_safe_summary
+            return None
+
+        if action_plan.action_type == ActionType.SCHEDULE_CONSULTATION:
+            if action_plan.status == ActionStatus.MISSING_INFO:
+                missing = set(action_plan.missing_slots)
+                consultation_parts: list[str] = []
+                if "name" in missing:
+                    consultation_parts.append("your full name")
+                if "email_or_phone" in missing:
+                    consultation_parts.append("your email or phone number")
+                if "preferred_date_or_time_window" in missing:
+                    consultation_parts.append("the day and time that works for you")
+
+                if len(consultation_parts) > 1:
+                    details = ", ".join(consultation_parts[:-1]) + f", and {consultation_parts[-1]}"
+                elif consultation_parts:
+                    details = consultation_parts[0]
+                else:
+                    details = "the missing consultation details"
+
+                return f"I can help schedule a 30-minute consultation. I just need {details}."
+
+            if action_plan.status == ActionStatus.NEEDS_CONFIRMATION:
+                name = action_plan.collected_slots.get("name") or "you"
+                requested = (
+                    action_plan.collected_slots.get("requested_time_text") or "the requested time"
+                )
+                return (
+                    f"I can book a 30-minute consultation for {name}. "
+                    f"I’ll check the team in priority order — Jerry Miller, Robert Williams, "
+                    f"then Alex Vartan — for {requested}. Should I book it?"
+                )
+
             return None
 
         if action_plan.action_type == ActionType.GENERATE_AGREEMENT:
@@ -739,6 +790,26 @@ class ChatService:
                 state.sales_actions.portfolio.seen_sample_ids = list(
                     dict.fromkeys([*state.sales_actions.portfolio.seen_sample_ids, *new_ids])
                 )
+            return
+
+        if action_result.action_type == ActionType.SCHEDULE_CONSULTATION:
+            state.sales_actions.consultation.requested = True
+            state.sales_actions.consultation.pending_confirmation = False
+            state.sales_actions.consultation.pending_slot = None
+            state.sales_actions.consultation.confirmed_appointment_id = action_result.result_id
+            state.sales_actions.consultation.csr_id = _optional_string(
+                action_result.payload.get("csr_id")
+            )
+            state.sales_actions.consultation.csr_name = _optional_string(
+                action_result.payload.get("csr_name")
+            )
+            state.sales_actions.consultation.customer_timezone = _optional_string(
+                action_result.payload.get("customer_timezone")
+            )
+            state.sales_actions.pending_confirmation.type = None
+            state.sales_actions.pending_confirmation.payload = None
+            state.sales_actions.pending_confirmation.created_at = None
+            state.sales_actions.pending_confirmation.expires_at = None
             return
 
         if action_result.action_type == ActionType.GENERATE_NDA:
