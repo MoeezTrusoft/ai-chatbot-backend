@@ -5,6 +5,7 @@ from typing import Any
 
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.preprocessor.detectors.date_hint_detector import DATE_HINT_RE
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.domain.state import ThreadState
 
@@ -31,14 +32,6 @@ TIME_HINT_RE = re.compile(
     r"today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"\d{1,2}\s*(?:am|pm)|morning|afternoon|evening|next week|this week"
     r")\b",
-    flags=re.IGNORECASE,
-)
-
-DATE_HINT_RE = re.compile(
-    r"\b("
-    r"\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|"
-    r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
-    r")",
     flags=re.IGNORECASE,
 )
 

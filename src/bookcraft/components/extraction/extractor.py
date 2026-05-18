@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
+from bookcraft.components.preprocessor.detectors.document_request_detector import (
+    has_agreement_request,
+    has_nda_request,
+)
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.domain.enums import Source
 from bookcraft.domain.state import ThreadState
@@ -116,10 +120,17 @@ class CombinedExtractor:
                 extraction.service_interest.services = service_list
                 extraction.commercial.selected_services = service_list
                 EXTRACTION_FIELDS.labels(category="service_interest").inc(len(service_list))
-            if "nda" in message.normalized.lower():
+            if has_nda_request(
+                message.normalized,
+                negation_spans=message.negation_spans,
+                counterfactual_spans=message.counterfactual_spans,
+            ):
                 extraction.document_request.requested_type = "nda"
-            document_text = message.normalized.lower()
-            if "agreement" in document_text or "contract" in document_text:
+            if has_agreement_request(
+                message.normalized,
+                negation_spans=message.negation_spans,
+                counterfactual_spans=message.counterfactual_spans,
+            ):
                 extraction.document_request.requested_type = "agreement"
             if "?" in message.normalized:
                 extraction.user_questions = [message.normalized]

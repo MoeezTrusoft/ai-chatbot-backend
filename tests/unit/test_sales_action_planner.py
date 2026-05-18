@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from bookcraft.components.actions import ActionStatus, ActionType, SalesActionPlanner
+from bookcraft.components.actions.slot_resolver import has_time_hint
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
@@ -467,3 +468,8 @@ def test_consultation_pending_confirmation_yes_carries_payload() -> None:
     assert plan.status == ActionStatus.READY
     assert plan.collected_slots["confirmed"] is True
     assert plan.collected_slots["name"] == "Maya Author"
+
+
+def test_time_hint_month_abbreviation_is_boundary_safe() -> None:
+    assert has_time_hint("Can we talk Nov 20?")
+    assert not has_time_hint("This is a novel manuscript.")

@@ -4,6 +4,11 @@ from prometheus_client import Histogram
 
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
+from bookcraft.components.preprocessor.detectors.document_request_detector import (
+    has_agreement_request,
+    has_nda_request,
+)
+from bookcraft.components.preprocessor.detectors.pricing_detector import has_pricing_intent
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 from bookcraft.domain.state import ThreadState
@@ -29,7 +34,11 @@ def mock_intent_vote(message: ProcessedMessage, *, provider_name: str) -> Intent
     if text in {"hi", "hello", "hey"}:
         query = QueryIntentType.GREETING
         stage = SalesStage.NEW
-    elif "price" in text or "cost" in text or "quote" in text:
+    elif has_pricing_intent(
+        message.normalized,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         query = QueryIntentType.PRICING_QUESTION
         stage = SalesStage.QUOTE_REQUESTED
     elif "timeline" in text or "how long" in text or "when" in text:
@@ -37,10 +46,18 @@ def mock_intent_vote(message: ProcessedMessage, *, provider_name: str) -> Intent
         stage = SalesStage.QUOTE_REQUESTED
     elif "portfolio" in text or "sample" in text:
         query = QueryIntentType.PORTFOLIO_REQUEST
-    elif "nda" in text:
+    elif has_nda_request(
+        message.normalized,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         query = QueryIntentType.NDA_REQUEST
         stage = SalesStage.NDA_REQUESTED
-    elif "agreement" in text or "contract" in text:
+    elif has_agreement_request(
+        message.normalized,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         query = QueryIntentType.AGREEMENT_REQUEST
         stage = SalesStage.AGREEMENT_REQUESTED
     elif "@" in text or "email" in text or "phone" in text:

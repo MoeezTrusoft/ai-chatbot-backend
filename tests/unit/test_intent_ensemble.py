@@ -644,3 +644,5 @@ def test_pricing_intent_helper_keeps_real_price_quote_as_pricing() -> None:
     assert not _has_pricing_intent(
         "I can't quote a fixed one but approximately it will be 500 pages."
     )
+    assert not _has_pricing_intent("I don't care about price.")
+    assert not _has_pricing_intent("Don't send a quote yet.")

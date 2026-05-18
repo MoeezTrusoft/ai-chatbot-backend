@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.preprocessor.detectors.document_request_detector import (
+    has_agreement_request,
+    has_nda_request,
+)
+from bookcraft.components.preprocessor.detectors.pricing_detector import has_pricing_intent
+from bookcraft.components.preprocessor.schemas import ProcessedMessage, Span
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 
 
@@ -51,7 +56,7 @@ def harden_intent_from_message(
             f"deterministic_service_override_negated_ghostwriting:{detected_service.value}"
         )
 
-    detected_query = _query_from_text(text)
+    detected_query = _query_from_message(message)
 
     if detected_query is not None and _should_upgrade_query(query, detected_query, text):
         query = detected_query
@@ -127,20 +132,33 @@ def _should_upgrade_query(
     return False
 
 
-def _query_from_text(text: str) -> QueryIntentType | None:
+def _query_from_message(message: ProcessedMessage) -> QueryIntentType | None:
+    text = message.normalized.casefold()
     if _mentions_any(text, ["human consultant", "consultant review", "ready for a human"]):
         return QueryIntentType.CONSULTATION_REQUEST
 
     if _mentions_any(text, ["sample", "samples", "portfolio", "examples", "sample links"]):
         return QueryIntentType.PORTFOLIO_REQUEST
 
-    if "nda" in text or "confidentiality" in text:
+    if has_nda_request(
+        message.normalized,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         return QueryIntentType.NDA_REQUEST
 
-    if "agreement" in text or "service agreement" in text:
+    if has_agreement_request(
+        message.normalized,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         return QueryIntentType.AGREEMENT_REQUEST
 
-    if _asks_for_estimate_or_timing(text):
+    if _asks_for_estimate_or_timing(
+        text,
+        negation_spans=message.negation_spans,
+        counterfactual_spans=message.counterfactual_spans,
+    ):
         return QueryIntentType.PRICING_QUESTION
 
     if _mentions_any(
@@ -323,17 +341,20 @@ def _ghostwriting_is_negated(text: str) -> bool:
     )
 
 
-def _asks_for_estimate_or_timing(text: str) -> bool:
-    return _mentions_any(
+def _asks_for_estimate_or_timing(
+    text: str,
+    *,
+    negation_spans: list[Span] | None = None,
+    counterfactual_spans: list[Span] | None = None,
+) -> bool:
+    return has_pricing_intent(
+        text,
+        negation_spans=negation_spans,
+        counterfactual_spans=counterfactual_spans,
+    ) or _mentions_any(
         text,
         [
-            "price",
-            "pricing",
-            "cost",
-            "quote",
             "estimate",
-            "discount",
-            "payment plan",
             "timeline",
             "delivery",
             "deliver",
