@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from bookcraft.components.consultations.repository import ConsultationRepositoryProtocol
@@ -143,16 +143,19 @@ def _parse_requested_start(
     now = datetime.now(customer_tz)
     lowered = text.casefold()
 
-    target_date = now.date()
-    if "tomorrow" in lowered:
-        target_date = target_date + timedelta(days=1)
-    else:
-        weekday = _weekday_from_text(lowered)
-        if weekday is not None:
-            days_ahead = (weekday - target_date.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            target_date = target_date + timedelta(days=days_ahead)
+    target_date = _date_from_text(text, now=now)
+
+    if target_date is None:
+        target_date = now.date()
+        if "tomorrow" in lowered:
+            target_date = target_date + timedelta(days=1)
+        else:
+            weekday = _weekday_from_text(lowered)
+            if weekday is not None:
+                days_ahead = (weekday - target_date.weekday()) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                target_date = target_date + timedelta(days=days_ahead)
 
     requested_time = _time_from_text(lowered) or time(hour=business_start_hour)
     candidate = datetime.combine(target_date, requested_time, tzinfo=customer_tz)
@@ -165,6 +168,92 @@ def _parse_requested_start(
         business_start_hour=business_start_hour,
         business_end_hour=business_end_hour,
     )
+
+
+def _date_from_text(text: str, *, now: datetime) -> date | None:
+    lowered = text.casefold()
+
+    iso_match = re.search(r"\b(20\d{2})-(\d{1,2})-(\d{1,2})\b", lowered)
+    if iso_match:
+        year = int(iso_match.group(1))
+        month = int(iso_match.group(2))
+        day = int(iso_match.group(3))
+        return _safe_date(year, month, day)
+
+    month_names = {
+        "jan": 1,
+        "january": 1,
+        "feb": 2,
+        "february": 2,
+        "mar": 3,
+        "march": 3,
+        "apr": 4,
+        "april": 4,
+        "may": 5,
+        "jun": 6,
+        "june": 6,
+        "jul": 7,
+        "july": 7,
+        "aug": 8,
+        "august": 8,
+        "sep": 9,
+        "sept": 9,
+        "september": 9,
+        "oct": 10,
+        "october": 10,
+        "nov": 11,
+        "november": 11,
+        "dec": 12,
+        "december": 12,
+    }
+
+    month_pattern = "|".join(sorted(month_names, key=len, reverse=True))
+    month_match = re.search(
+        rf"\b({month_pattern})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(20\d{{2}}))?\b",
+        lowered,
+    )
+    if month_match:
+        month = month_names[month_match.group(1).rstrip(".")]
+        day = int(month_match.group(2))
+        year = int(month_match.group(3) or now.year)
+        parsed = _safe_date(year, month, day)
+
+        if parsed is not None and month_match.group(3) is None and parsed < now.date():
+            parsed = _safe_date(year + 1, month, day)
+
+        return parsed
+
+    numeric_match = re.search(
+        r"\b(\d{1,2})/(\d{1,2})(?:/(20\d{2}|\d{2}))?\b",
+        lowered,
+    )
+    if numeric_match:
+        month = int(numeric_match.group(1))
+        day = int(numeric_match.group(2))
+        raw_year = numeric_match.group(3)
+
+        if raw_year is None:
+            year = now.year
+        elif len(raw_year) == 2:
+            year = 2000 + int(raw_year)
+        else:
+            year = int(raw_year)
+
+        parsed = _safe_date(year, month, day)
+
+        if parsed is not None and raw_year is None and parsed < now.date():
+            parsed = _safe_date(year + 1, month, day)
+
+        return parsed
+
+    return None
+
+
+def _safe_date(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def _weekday_from_text(text: str) -> int | None:

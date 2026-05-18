@@ -81,3 +81,25 @@ async def test_consultation_requires_contact() -> None:
                 requested_time_text="tomorrow at 4pm",
             )
         )
+
+
+def test_consultation_parser_respects_absolute_houston_date() -> None:
+    from zoneinfo import ZoneInfo
+
+    from bookcraft.components.consultations.service import _parse_requested_start
+
+    business_tz = ZoneInfo("America/Chicago")
+
+    parsed = _parse_requested_start(
+        text="Please schedule a consultation on May 20, 2026 at 11:00 AM Houston time.",
+        customer_tz=business_tz,
+        business_tz=business_tz,
+        business_start_hour=10,
+        business_end_hour=19,
+    )
+
+    assert parsed.year == 2026
+    assert parsed.month == 5
+    assert parsed.day == 20
+    assert parsed.hour == 11
+    assert parsed.minute == 0
