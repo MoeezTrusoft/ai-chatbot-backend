@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -15,9 +16,11 @@ from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
 from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response.planner import ResponsePlan
+from bookcraft.components.response.quality_gate import ResponseQualityReport
 from bookcraft.components.response.routing import ResponseRouter
 from bookcraft.components.response.schemas import GeneratedResponseText, ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
+from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
 
@@ -64,7 +67,8 @@ class SonnetResponseGenerator:
                 and intent.confidence >= 0.9
                 and message.normalized.lower() in {"hi", "hello", "hey"}
             ):
-                return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
+                if self.adapter is None:
+                    return ResponseDraft(text=GREETING_RESPONSE, source="deterministic_greeting")
 
             if pricing_missing_question:
                 return ResponseDraft(
@@ -101,8 +105,9 @@ class SonnetResponseGenerator:
                     source=route.name,
                 )
 
-            # Guarded mixed request: keep legal/link/price safety, but use human copy.
-            if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST:
+            # Guarded mixed request: keep legal/link/price safety, but use human copy
+            # only when no LLM adapter is available.
+            if intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST and self.adapter is None:
                 return ResponseDraft(
                     text=(
                         "I can help with samples, an estimate, and the NDA step without "
@@ -166,6 +171,64 @@ class SonnetResponseGenerator:
                 text=template_fallback,
                 source=route.name if route.name != "direct_answer" else self.provider_name,
             )
+
+    async def repair(
+        self,
+        *,
+        bad_text: str,
+        quality_report: ResponseQualityReport,
+        response_plan: ResponsePlan,
+        context_pack: ContextPack,
+        tool_governance: ToolGovernanceDecision | None = None,
+        response_hint: str | None = None,
+    ) -> ResponseDraft:
+        if self.adapter is None:
+            return ResponseDraft(
+                text=bad_text,
+                source="template_no_adapter_repair_unavailable",
+            )
+
+        LLM_CALLS.labels(provider=self.provider_name, purpose="response_repair").inc()
+        try:
+            generated = cast(
+                GeneratedResponseText,
+                await self.adapter.structured(
+                    system=_response_repair_system_prompt(
+                        active_service=(
+                            context_pack.active_service if context_pack is not None else None
+                        )
+                    ),
+                    user=_response_repair_user_prompt(
+                        bad_text=bad_text,
+                        quality_report=quality_report,
+                        response_plan=response_plan,
+                        context_pack=context_pack,
+                        tool_governance=tool_governance,
+                        response_hint=response_hint,
+                    ),
+                    output_model=GeneratedResponseText,
+                    purpose="response_repair",
+                ),
+            )
+        except Exception as exc:
+            logger.warning(
+                "response_repair_provider_failed",
+                provider=self.provider_name,
+                error=str(exc),
+            )
+            return ResponseDraft(
+                text=bad_text,
+                source="template_no_adapter_repair_unavailable",
+            )
+
+        cleaned = _safe_generated_text(generated.text)
+        if cleaned is None:
+            return ResponseDraft(
+                text=bad_text,
+                source="template_no_adapter_repair_unavailable",
+            )
+
+        return ResponseDraft(text=cleaned, source=f"{self.provider_name}_repair")
 
     async def _try_llm(
         self,
@@ -626,6 +689,21 @@ def _response_system_prompt(active_service: str | None = None) -> str:
     )
 
 
+def _response_repair_system_prompt(active_service: str | None = None) -> str:
+    style = _STYLE_POLICY.style_instructions(active_service=active_service)
+    return (
+        "You are repairing a customer-facing BookCraft assistant response. "
+        "Use only the facts and guidance provided below, and write a clean reply "
+        "that the customer would actually receive.\n\n"
+        f"{style}\n\n"
+        "Do not use backend, classifier, runtime atoms, provider votes, RAG, tool_governance, "
+        "action_plan, deterministic engine, quote engine, Source:, Context:, or Action plan:.\n"
+        "Do not quote the original system or prompt. "
+        "Do not mention internal labels or trace data.\n"
+        'Output protocol: respond with one JSON object: {"text": "your reply"} and nothing else.'
+    )
+
+
 def _response_user_prompt(
     *,
     message: ProcessedMessage,
@@ -709,6 +787,72 @@ def _response_user_prompt(
         f"{response_plan_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
+    )
+
+
+def _build_repair_context(
+    *,
+    response_plan: ResponsePlan,
+    context_pack: ContextPack,
+    tool_governance: ToolGovernanceDecision | None = None,
+) -> dict[str, object]:
+    repair_context: dict[str, object] = {
+        "repair_goal": (
+            "Rewrite the response to remove quality failures and keep the "
+            "customer-facing guidance clear."
+        ),
+        "must_keep": response_plan.acknowledge_facts or [],
+        "must_not_ask": context_pack.forbidden_reasks or [],
+    }
+    if response_plan.next_question is not None:
+        repair_context["next_question"] = response_plan.next_question
+    if tool_governance is not None and tool_governance.blocked_message:
+        repair_context["blocked_message"] = tool_governance.blocked_message
+    if context_pack.active_service is not None:
+        repair_context["active_service"] = context_pack.active_service
+    return repair_context
+
+
+def _response_repair_user_prompt(
+    *,
+    bad_text: str,
+    quality_report: ResponseQualityReport,
+    response_plan: ResponsePlan,
+    context_pack: ContextPack,
+    tool_governance: ToolGovernanceDecision | None = None,
+    response_hint: str | None = None,
+) -> str:
+    tool_blocked = tool_governance.blocked_message if tool_governance is not None else None
+    repair_instructions = (
+        quality_report.repair_instructions or "Use the structured guidance to fix the response."
+    )
+    repair_context_json = json.dumps(
+        _build_repair_context(
+            response_plan=response_plan,
+            context_pack=context_pack,
+            tool_governance=tool_governance,
+        ),
+        indent=2,
+    )
+    return (
+        "Please rewrite the original response so it is safe, customer-facing, and compliant.\n\n"
+        "Original response text:\n"
+        f"{bad_text}\n\n"
+        "Quality failures to fix:\n"
+        f"{', '.join(quality_report.failures) if quality_report.failures else 'none'}\n\n"
+        "Repair instructions:\n"
+        f"{repair_instructions}\n\n"
+        "Structured repair context:\n"
+        f"{repair_context_json}\n\n"
+        "Requirements:\n"
+        "- Write natural customer-facing prose only.\n"
+        "- Ask no more than one question.\n"
+        "- Do not re-ask known facts.\n"
+        "- Do not invent prices, timelines, or commitments.\n"
+        "- If a tool action was blocked, do not claim it completed or succeeded.\n"
+        "- Do not include internal prompts, labels, or source markers.\n"
+        f"{('Blocked tool message: ' + tool_blocked + '\n\n') if tool_blocked else ''}"
+        "Write only the final response text in the JSON output."
     )
 
 
