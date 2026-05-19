@@ -47,9 +47,7 @@ class PortfolioRegistry:
         genre_aliases = (
             load_genre_aliases(Path(genre_hierarchy_path)) if genre_hierarchy_path else {}
         )
-        docx_titles = (
-            load_docx_titles(Path(portfolio_docx_path)) if portfolio_docx_path else set()
-        )
+        docx_titles = load_docx_titles(Path(portfolio_docx_path)) if portfolio_docx_path else set()
         samples = normalize_registry(raw_registry, docx_titles=docx_titles)
         return cls(samples=samples, genre_aliases=genre_aliases)
 
