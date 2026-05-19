@@ -1,0 +1,45 @@
+id: new_project_shift
+description: >
+  User starts with cover design for a fantasy novel, then introduces a second
+  book that needs editing. The bot must recognise the new project, switch scope,
+  and not carry over cover-style questions from the first project.
+
+turns:
+  - role: user
+    message: "I need help with cover design for my fantasy novel."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      trace:
+        project_context:
+          event: same_project
+
+  - role: user
+    message: "I have another book that needs ghostwriting — it's a children's story."
+    expect:
+      intent:
+        service_primary: ghostwriting
+      trace:
+        project_context:
+          event: new_project
+          active_project_id_changed: true
+      response:
+        forbidden_phrases:
+          - "cover style"
+          - "what cover style"
+          - "cover illustration"
+
+  - role: user
+    message: "It's about 20000 words and I have a full outline ready."
+    expect:
+      intent:
+        service_primary: ghostwriting
+      trace:
+        project_context:
+          event: same_project
+
+expectations_summary:
+  - project_context.event is new_project on the second turn
+  - active_project_id changes between turn 1 and turn 2
+  - cover-style scoping phrases must not appear in turn 2 response
+  - ghostwriting service is active from turn 2 onward

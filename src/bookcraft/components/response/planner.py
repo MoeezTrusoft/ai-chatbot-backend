@@ -54,6 +54,9 @@ _GOAL_BY_QUERY: dict[str, str] = {
     "portfolio_request": "portfolio_matching",
 }
 
+# next_question key for project-scope clarification.
+_PROJECT_CLARIFICATION_QUESTION = "same_or_new_project"
+
 
 class ResponsePlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -120,6 +123,14 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
     """Return a list of known project facts to acknowledge in the response."""
     facts: list[str] = []
 
+    # Project-event guidance (structured, not customer-facing text).
+    if context_pack.project_event == "new_project":
+        facts.append("project_scope: new_project")
+    elif context_pack.project_event == "same_project_service_addition":
+        facts.append("project_scope: service_addition")
+    elif context_pack.project_event == "project_switch":
+        facts.append("project_scope: returning_to_previous")
+
     if context_pack.active_service:
         facts.append(f"active_service: {context_pack.active_service}")
 
@@ -158,6 +169,10 @@ def _primary_goal(
             return "clarify_intent"
         return "safe_blocked_action"
 
+    # Project-event overrides (evaluated before service/intent goals).
+    if context_pack.project_event == "ambiguous_project_reference":
+        return "clarify_project_scope"
+
     if context_pack.active_service == "cover_design_illustration":
         return "cover_design_scoping"
 
@@ -175,6 +190,10 @@ def _next_question(
     # Blocked or ambiguous turns: do not auto-issue a follow-up question.
     if primary_goal in {"safe_blocked_action", "clarify_intent"}:
         return None
+
+    # Project-scope clarification: ask Claude to resolve same vs. new project.
+    if primary_goal == "clarify_project_scope":
+        return _PROJECT_CLARIFICATION_QUESTION
 
     # Select the priority list for this scenario.
     if primary_goal == "cover_design_scoping":

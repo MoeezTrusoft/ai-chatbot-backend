@@ -22,6 +22,10 @@ from bookcraft.components.actions import (
 )
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.context import ContextPackBuilder
+from bookcraft.components.context.project_manager import (
+    ProjectContextManager,
+    ProjectContextSnapshot,
+)
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
@@ -101,6 +105,7 @@ class ChatService:
     response_quality_gate: ResponseQualityGate = field(default_factory=ResponseQualityGate)
     response_style_policy: ResponseStylePolicy = field(default_factory=ResponseStylePolicy.default)
     rag_query_builder: RAGQueryBuilder = field(default_factory=RAGQueryBuilder)
+    project_context_manager: ProjectContextManager = field(default_factory=ProjectContextManager)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -434,11 +439,21 @@ class ChatService:
                 intent=intent,
                 trg_context=trg_context,
             )
+            project_snapshot: ProjectContextSnapshot = self.project_context_manager.decide(
+                message=payload.message,
+                state=state,
+                intent=intent,
+            )
+            # Persist multi-project state so it survives across turns.
+            state.conversation_projects = [
+                p.model_dump(mode="json") for p in project_snapshot.projects
+            ]
             context_pack = self.context_pack_builder.build(
                 state=state,
                 intent=intent,
                 runtime_atoms=processed.deterministic_atoms,
                 trg_context=trg_context,
+                project_snapshot=project_snapshot,
             )
             response_hint = context_pack.response_hint or trg_response_hint
             response_plan = self.response_planner.plan(
@@ -702,6 +717,7 @@ class ChatService:
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
                     "context_pack": context_pack.model_dump(mode="json"),
+                    "project_context": project_snapshot.model_dump(mode="json"),
                     "context_arbiter": {
                         "corrections": arbiter_result.corrections,
                         "audit": arbiter_result.audit,

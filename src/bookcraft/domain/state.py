@@ -158,3 +158,5 @@ class ThreadState(BaseModel):
     documents: DocumentsInfo = Field(default_factory=DocumentsInfo)
     sales_actions: SalesActionsState = Field(default_factory=SalesActionsState)
     rolling_summary: str = ""
+    # Multi-project context — serialised ProjectContext dicts, one per book/project.
+    conversation_projects: list[dict[str, Any]] = Field(default_factory=list)

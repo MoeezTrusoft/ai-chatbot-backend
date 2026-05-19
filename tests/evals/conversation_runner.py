@@ -63,6 +63,10 @@ class TurnExpectation(BaseModel):
     response_quality_passed: bool | None = None
     sales_tone_passed: bool | None = None
 
+    # Project-context trace checks.
+    project_context_event: str | None = None
+    project_context_active_id_changed: bool | None = None
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -194,6 +198,11 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["tool_governance_allowed"] = checks["allowed"]
             if "reason_not" in checks:
                 flat["tool_governance_reason_not"] = checks["reason_not"]
+        if section == "project_context":
+            if "event" in checks:
+                flat["project_context_event"] = checks["event"]
+            if "active_project_id_changed" in checks:
+                flat["project_context_active_id_changed"] = checks["active_project_id_changed"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -327,6 +336,7 @@ def run_conversation_case(
         rq = trace.get("response_quality") or {}
         st = trace.get("sales_tone") or {}
         ap = trace.get("action_plan") or {}
+        pc_trace = trace.get("project_context") or {}
 
         ex = turn.expect
 
@@ -489,6 +499,38 @@ def run_conversation_case(
                 failures.append(
                     f"turn {idx} sales_tone.passed: "
                     f"expected {ex.sales_tone_passed}, got {got_passed}"
+                )
+
+        # — project-context checks —
+        if ex.project_context_event is not None:
+            pc_decision = pc_trace.get("decision") or {}
+            got_event = pc_decision.get("event")
+            if got_event == ex.project_context_event:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} project_context.event: "
+                    f"expected '{ex.project_context_event}', got '{got_event}'"
+                )
+            context_expected += 1
+
+        if ex.project_context_active_id_changed is True:
+            pc_decision = pc_trace.get("decision") or {}
+            prev_id = pc_decision.get("previous_project_id")
+            active_id = pc_trace.get("active_project_id")
+            if prev_id is None or prev_id == active_id:
+                failures.append(
+                    f"turn {idx} project_context.active_project_id_changed expected True, "
+                    f"but active={active_id} prev={prev_id}"
+                )
+        elif ex.project_context_active_id_changed is False:
+            # Verify active_project_id did not change (previous_project_id should be None).
+            pc_decision = pc_trace.get("decision") or {}
+            prev_id = pc_decision.get("previous_project_id")
+            if prev_id is not None:
+                failures.append(
+                    f"turn {idx} project_context.active_project_id_changed expected False, "
+                    f"but previous_project_id={prev_id}"
                 )
 
         # — automatic safety audits (always run) —

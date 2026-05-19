@@ -41,6 +41,7 @@ _GOAL_PHRASES: dict[str, str] = {
     "continue_discovery": "service discovery next steps",
     "clarify_intent": "intent clarification",
     "safe_blocked_action": "",
+    "clarify_project_scope": "project scope clarification same or new book",
 }
 
 # Manuscript status → human-readable phrase.
@@ -159,6 +160,16 @@ class RAGQueryBuilder:
                     source_terms.append(clean)
                 parts.append(clean)
                 audit.append(f"rag_query:known_fact:{fact.path}:{clean[:30]}")
+
+        if context_pack is not None:
+            # Active project ID and event — added to filters/audit only (not query text)
+            # so previous project facts never bleed into active retrieval.
+            if context_pack.active_project_id:
+                filters["active_project_id"] = context_pack.active_project_id
+                audit.append(f"rag_query:project_id:{context_pack.active_project_id[:8]}")
+            if context_pack.project_event:
+                filters["project_event"] = context_pack.project_event
+                audit.append(f"rag_query:project_event:{context_pack.project_event}")
 
         if response_plan is not None:
             # Primary goal context phrase.

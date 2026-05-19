@@ -30,3 +30,8 @@ class ContextPack(BaseModel):
     allowed_next_questions: list[str] = Field(default_factory=list)
     disallowed_next_questions: list[str] = Field(default_factory=list)
     response_hint: str | None = None
+    # Project context fields (populated when ProjectContextManager is active).
+    active_project_id: str | None = None
+    project_event: str | None = None
+    previous_project_id: str | None = None
+    project_memory_summary: list[str] = Field(default_factory=list)
