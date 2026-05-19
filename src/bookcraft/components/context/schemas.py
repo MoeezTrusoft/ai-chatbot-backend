@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.components.context.delegation import SlotResolutionStatus
+
 
 class KnownFact(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -35,3 +37,7 @@ class ContextPack(BaseModel):
     project_event: str | None = None
     previous_project_id: str | None = None
     project_memory_summary: list[str] = Field(default_factory=list)
+    # Slot resolution fields (populated by SlotTracker / ContextPackBuilder).
+    declined_slots: list[SlotResolutionStatus] = Field(default_factory=list)
+    delegated_slots: list[SlotResolutionStatus] = Field(default_factory=list)
+    unknown_slots: list[SlotResolutionStatus] = Field(default_factory=list)

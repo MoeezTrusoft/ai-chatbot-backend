@@ -104,7 +104,23 @@ _REASK_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
     "starting from scratch": re.compile(r"\bstarting\s+from\s+scratch\b", re.IGNORECASE),
+    # Slot-resolution re-ask patterns (also used for delegated slot checks).
+    "cover_style": re.compile(
+        r"\b(?:cover\s+style|visual\s+direction|design\s+idea|cover\s+illustration)\b",
+        re.IGNORECASE,
+    ),
+    "word_or_page_count": re.compile(
+        r"\b(?:word\s+count|page\s+count|how\s+many\s+(?:words|pages)|word\s+or\s+page)\b",
+        re.IGNORECASE,
+    ),
+    "deadline": re.compile(
+        r"\b(?:deadline|launch\s+(?:date|window|timeline)|by\s+when|target\s+(?:date|deadline))\b",
+        re.IGNORECASE,
+    ),
 }
+
+# Slot-resolution re-ask patterns for delegated/declined/unknown slots.
+_DELEGATED_SLOT_REASK_PATTERNS = _REASK_PATTERNS  # same dict, reused for clarity
 
 # Success-claim patterns — must not appear when a tool action was blocked.
 _SUCCESS_CLAIM_RE = re.compile(
@@ -252,6 +268,14 @@ class ResponseQualityGate:
             audit.append("quality:blocked_tool_safety:FAIL")
         else:
             audit.append("quality:blocked_tool_safety:ok")
+
+        # Check 11 — Delegated / declined slot re-ask.
+        delegated_reasks = _delegated_slot_reasks(text, context_pack)
+        if delegated_reasks:
+            failures.append(f"delegated_slot_reask:{','.join(delegated_reasks)}")
+            audit.append(f"quality:delegated_slot_reask:FAIL:{delegated_reasks}")
+        else:
+            audit.append("quality:delegated_slot_reask:clean")
 
         sales_tone_report = self.style_policy.evaluate(
             text=text,
@@ -477,6 +501,27 @@ def _blocked_tool_mismatch(
     if tool_governance is None or tool_governance.allowed:
         return False
     return bool(_SUCCESS_CLAIM_RE.search(text))
+
+
+def _delegated_slot_reasks(text: str, context_pack: ContextPack | None) -> list[str]:
+    """Return slot labels whose question forms appear in text after user delegated/declined them."""
+    if context_pack is None:
+        return []
+    all_resolved = (
+        list(context_pack.declined_slots or [])
+        + list(context_pack.delegated_slots or [])
+        + list(context_pack.unknown_slots or [])
+    )
+    if not all_resolved:
+        return []
+    violated: list[str] = []
+    for status in all_resolved:
+        if not status.forbidden_reask:
+            continue
+        pattern = _DELEGATED_SLOT_REASK_PATTERNS.get(status.slot)
+        if pattern is not None and pattern.search(text):
+            violated.append(status.slot)
+    return violated
 
 
 # ---------------------------------------------------------------------------

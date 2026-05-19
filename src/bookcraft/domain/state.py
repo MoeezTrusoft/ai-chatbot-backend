@@ -160,3 +160,5 @@ class ThreadState(BaseModel):
     rolling_summary: str = ""
     # Multi-project context — serialised ProjectContext dicts, one per book/project.
     conversation_projects: list[dict[str, Any]] = Field(default_factory=list)
+    # Slot resolution statuses — serialised SlotResolutionStatus dicts.
+    slot_resolution_statuses: list[dict[str, Any]] = Field(default_factory=list)

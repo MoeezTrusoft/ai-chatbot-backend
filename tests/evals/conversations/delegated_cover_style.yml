@@ -1,0 +1,41 @@
+id: delegated_cover_style
+description: >
+  User starts a cover design flow. When asked about cover style, they say
+  "I don't know, you guys decide." The bot must not ask about cover style
+  again; the slot is delegated and the response should move forward.
+
+turns:
+  - role: user
+    message: "I need cover design for my children's fantasy novel."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+
+  - role: user
+    message: "I have no idea about the cover style — you guys decide."
+    expect:
+      trace:
+        slot_resolution:
+          contains_slot: cover_style
+          contains_status: delegated
+      response:
+        forbidden_phrases:
+          - "cover style"
+          - "visual direction"
+          - "design idea"
+
+  - role: user
+    message: "The manuscript is fully illustrated and ready."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      response:
+        forbidden_phrases:
+          - "cover style"
+          - "visual direction"
+
+expectations_summary:
+  - cover_style is delegated after turn 2
+  - slot_resolution in trace contains cover_style:delegated
+  - bot never asks about cover_style again in turns 2 or 3
+  - service remains cover_design_illustration

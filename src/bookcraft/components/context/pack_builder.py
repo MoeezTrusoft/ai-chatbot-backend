@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.trg.schemas import TRGContext
@@ -147,6 +148,26 @@ class ContextPackBuilder:
                     summary = ", ".join(f"{k}={v}" for k, v in list(proj.known_facts.items())[:3])
                     project_memory_summary.append(f"prev_project:{proj.project_id[:8]}:{summary}")
 
+        # Apply slot resolution statuses from thread state.
+        raw_statuses = getattr(state, "slot_resolution_statuses", None) or []
+        slot_statuses = load_slot_statuses(raw_statuses)
+        declined_list, delegated_list, unknown_list = _split_slot_statuses(slot_statuses)
+
+        # Slots that are resolved non-positively should not be re-asked.
+        resolved_slot_names = {
+            s.slot
+            for s in slot_statuses
+            if s.forbidden_reask
+            and s.status in ("delegated", "declined", "unknown_by_user", "not_applicable")
+        }
+        missing_facts = [f for f in missing_facts if f not in resolved_slot_names]
+        allowed_next_questions = [q for q in allowed_next_questions if q not in resolved_slot_names]
+        for slot in resolved_slot_names:
+            if slot not in forbidden_reasks:
+                forbidden_reasks.append(slot)
+            if slot not in disallowed_next_questions:
+                disallowed_next_questions.append(slot)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -164,6 +185,9 @@ class ContextPackBuilder:
             project_event=project_event,
             previous_project_id=previous_project_id,
             project_memory_summary=project_memory_summary,
+            declined_slots=declined_list,
+            delegated_slots=delegated_list,
+            unknown_slots=unknown_list,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
@@ -323,3 +347,12 @@ def _ordered_unique(values: list[str]) -> list[str]:
         if value not in ordered:
             ordered.append(value)
     return ordered
+
+
+def _split_slot_statuses(
+    statuses: list[SlotResolutionStatus],
+) -> tuple[list[SlotResolutionStatus], list[SlotResolutionStatus], list[SlotResolutionStatus]]:
+    declined = [s for s in statuses if s.status == "declined"]
+    delegated = [s for s in statuses if s.status in ("delegated", "not_applicable")]
+    unknown = [s for s in statuses if s.status == "unknown_by_user"]
+    return declined, delegated, unknown
