@@ -43,6 +43,7 @@ from bookcraft.components.storage.thread_repository import (
     LoadedThread,
     ThreadRepository,
 )
+from bookcraft.components.tools.governance import ToolGovernanceGate
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.components.trimatch import TriMatchEngine
@@ -88,6 +89,7 @@ class ChatService:
     action_dispatcher: SalesActionDispatcher = field(default_factory=SalesActionDispatcher)
     context_pack_builder: ContextPackBuilder = field(default_factory=ContextPackBuilder)
     context_arbiter: ContextArbiter = field(default_factory=ContextArbiter)
+    tool_governance_gate: ToolGovernanceGate = field(default_factory=ToolGovernanceGate)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -337,11 +339,21 @@ class ChatService:
                 extraction=extraction,
             )
             self._apply_sales_action_plan_to_state(state, action_plan)
-            action_result = await self.action_dispatcher.dispatch(
-                action_plan,
+            governance_decision = self.tool_governance_gate.evaluate(
+                action_plan=action_plan,
+                intent=intent,
+                processed=processed,
+                state=state,
                 thread_id=thread_id,
-                customer_id=payload.customer_id,
             )
+            if governance_decision.allowed:
+                action_result = await self.action_dispatcher.dispatch(
+                    action_plan,
+                    thread_id=thread_id,
+                    customer_id=payload.customer_id,
+                )
+            else:
+                action_result = None
             self._apply_sales_action_result_to_state(state, action_result)
             action_payload = action_trace_payload(action_plan, action_result)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
@@ -446,9 +458,13 @@ class ChatService:
                 trg_context=trg_context,
             )
             response_hint = context_pack.response_hint or trg_response_hint
-            document_status_message = self._sales_action_status_message(
-                action_plan, action_result
-            ) or _document_status_message(intent)
+            document_status_message: str | None
+            if not governance_decision.allowed and governance_decision.blocked_message:
+                document_status_message = governance_decision.blocked_message
+            else:
+                document_status_message = self._sales_action_status_message(
+                    action_plan, action_result
+                ) or _document_status_message(intent)
             draft = await self.response_generator.generate(
                 message=processed,
                 state=state,
@@ -555,6 +571,7 @@ class ChatService:
                         "intent_after": intent.model_dump(mode="json"),
                     },
                     "action_plan": action_trace_payload(action_plan, action_result),
+                    "tool_governance": governance_decision.model_dump(mode="json"),
                     "trg_response_hint": trg_response_hint,
                     "components": {
                         "event_count": len(event_ids),
