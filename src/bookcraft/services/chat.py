@@ -508,6 +508,7 @@ class ChatService:
                 final_text = draft.text
                 final_source = draft.source
             bubbles = self.formatter.format(final_text, approved_urls=set(draft.approved_urls))
+            trg_context_for_trace: TRGContext | None = trg_context
             if self.trg_engine is not None:
                 try:
                     trg_result = await self.trg_engine.update_after_turn(
@@ -517,7 +518,11 @@ class ChatService:
                         assistant_text=final_text,
                         previous_state=previous_state,
                         state_deltas=extraction.state_deltas,
+                        arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
                     )
+                    # Rebuild context from the updated graph so trg_semantic reflects
+                    # facts, service shifts, and contradictions recorded this turn.
+                    trg_context_for_trace = self.trg_engine.build_context(trg_result.graph)
                     event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                         thread_id=thread_id,
                         sequence=event_sequence,
@@ -601,6 +606,32 @@ class ChatService:
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
                     "response_quality": quality_report.model_dump(mode="json"),
+                    "trg_semantic": {
+                        "active_facts": [
+                            f.model_dump(mode="json") for f in trg_context_for_trace.active_facts
+                        ]
+                        if trg_context_for_trace is not None
+                        else [],
+                        "answered_questions": [
+                            q.model_dump(mode="json")
+                            for q in trg_context_for_trace.answered_questions
+                        ]
+                        if trg_context_for_trace is not None
+                        else [],
+                        "forbidden_reasks": trg_context_for_trace.forbidden_reasks
+                        if trg_context_for_trace is not None
+                        else [],
+                        "contradictions": [
+                            c.model_dump(mode="json") for c in trg_context_for_trace.contradictions
+                        ]
+                        if trg_context_for_trace is not None
+                        else [],
+                        "service_shifts": [
+                            s.model_dump(mode="json") for s in trg_context_for_trace.service_shifts
+                        ]
+                        if trg_context_for_trace is not None
+                        else [],
+                    },
                     "trg_response_hint": trg_response_hint,
                     "components": {
                         "event_count": len(event_ids),

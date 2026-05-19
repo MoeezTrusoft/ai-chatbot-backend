@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,6 +81,12 @@ class TemporalRelationGraph(BaseModel):
     compliance_score: float = Field(default=1.0, ge=0.0, le=1.0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    # Semantic memory (Phase 8) — stored persistently alongside the graph.
+    semantic_facts: list[TRGFactNode] = Field(default_factory=list)
+    answered_questions: list[AnsweredQuestion] = Field(default_factory=list)
+    contradiction_events: list[ContradictionEvent] = Field(default_factory=list)
+    service_shifts: list[ServiceShiftEvent] = Field(default_factory=list)
+
 
 class GraphUpdateResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -93,6 +99,57 @@ class GraphUpdateResult(BaseModel):
     repetition_signal: RepetitionSignal | None = None
 
 
+# ---------------------------------------------------------------------------
+# Semantic memory models (Phase 8)
+# ---------------------------------------------------------------------------
+
+
+class TRGFactNode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fact_path: str
+    value: str | int | float | bool
+    source_turn_id: str | None = None
+    raw_excerpt: str | None = None
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    active: bool = True
+    superseded_by: str | None = None
+
+
+class AnsweredQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question_text: str
+    answer_text: str
+    fact_path: str | None = None
+    resolved: bool = True
+    source_turn_id: str | None = None
+
+
+class ContradictionEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fact_path: str
+    old_value: str
+    new_value: str
+    source_turn_id: str | None = None
+    resolution_status: str = "unresolved"
+
+
+class ServiceShiftEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    previous_service: str | None = None
+    new_service: str | None = None
+    mode: Literal["switch", "addition", "negation", "inertia"]
+    source_turn_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Existing + extended models
+# ---------------------------------------------------------------------------
+
+
 class TRGContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,3 +158,10 @@ class TRGContext(BaseModel):
     repeated_user_messages: list[str] = Field(default_factory=list)
     recent_node_labels: list[str] = Field(default_factory=list)
     compliance_score: float = Field(default=1.0, ge=0.0, le=1.0)
+
+    # Semantic memory fields (Phase 8).
+    active_facts: list[TRGFactNode] = Field(default_factory=list)
+    answered_questions: list[AnsweredQuestion] = Field(default_factory=list)
+    forbidden_reasks: list[str] = Field(default_factory=list)
+    contradictions: list[ContradictionEvent] = Field(default_factory=list)
+    service_shifts: list[ServiceShiftEvent] = Field(default_factory=list)

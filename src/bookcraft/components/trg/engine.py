@@ -13,14 +13,18 @@ from bookcraft.domain.state import ThreadState
 
 from .repository import GraphRepository, InMemoryGraphRepository
 from .schemas import (
+    AnsweredQuestion,
+    ContradictionEvent,
     GraphEdge,
     GraphNode,
     GraphNodeType,
     GraphUpdateResult,
     RelationType,
     RepetitionSignal,
+    ServiceShiftEvent,
     TemporalRelationGraph,
     TRGContext,
+    TRGFactNode,
     UnresolvedQuestion,
 )
 
@@ -42,8 +46,11 @@ class TemporalRelationGraphEngine:
         assistant_text: str,
         previous_state: ThreadState | None = None,
         state_deltas: Iterable[StateDelta] = (),
+        arbiter_signals: list[str] | None = None,
     ) -> GraphUpdateResult:
         with TRG_UPDATE_LATENCY.time():
+            # Materialize once so helpers can iterate multiple times.
+            delta_list = list(state_deltas)
             graph = await self.repository.load(thread_id)
             if graph is None:
                 graph = TemporalRelationGraph(thread_id=thread_id)
@@ -95,7 +102,7 @@ class TemporalRelationGraphEngine:
                 graph,
                 user_node=user_node,
                 previous_state=previous_state,
-                state_deltas=state_deltas,
+                state_deltas=delta_list,
             )
             added_edges.extend(contradiction_edges)
 
@@ -111,6 +118,18 @@ class TemporalRelationGraphEngine:
                         evidence="normalized user message repeated",
                     )
                 )
+
+            # Phase 8: semantic memory updates.
+            turn_id = str(user_node.id)
+            _update_semantic_facts(graph, delta_list, turn_id=turn_id)
+            _update_answered_questions(
+                graph,
+                graph.unresolved_questions,
+                user_text,
+                turn_id=turn_id,
+                state_deltas=delta_list,
+            )
+            _update_service_shifts(graph, arbiter_signals or [], turn_id=turn_id)
 
             graph.updated_at = datetime.now(UTC)
             self.compact(graph)
@@ -131,18 +150,24 @@ class TemporalRelationGraphEngine:
         outstanding = [
             question.question for question in graph.unresolved_questions if not question.resolved
         ]
-        repeated = [
-            text for text, count in graph.repetition_counters.items() if count > 1
-        ]
+        repeated = [text for text, count in graph.repetition_counters.items() if count > 1]
         contradictions = sum(
             1 for edge in graph.edges if edge.relation_type == RelationType.CONTRADICTS
         )
+        active_facts = [f for f in graph.semantic_facts if f.active]
+        forbidden = _forbidden_reasks_from_facts(active_facts)
         return TRGContext(
             outstanding_questions=outstanding,
             contradiction_count=contradictions,
             repeated_user_messages=repeated,
             recent_node_labels=[node.label for node in graph.nodes[-8:]],
             compliance_score=graph.compliance_score,
+            # Semantic fields.
+            active_facts=active_facts,
+            answered_questions=list(graph.answered_questions),
+            forbidden_reasks=forbidden,
+            contradictions=list(graph.contradiction_events),
+            service_shifts=list(graph.service_shifts),
         )
 
     def compact(self, graph: TemporalRelationGraph) -> None:
@@ -322,6 +347,183 @@ class TemporalRelationGraphEngine:
         graph.edges.append(edge)
         graph.compliance_score = min(graph.compliance_score, compliance_score)
         return edge
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Public semantic-memory helpers
+# ---------------------------------------------------------------------------
+
+
+def semantic_facts_from_deltas(state_deltas: Iterable[StateDelta]) -> list[TRGFactNode]:
+    """Convert state deltas to TRGFactNode objects (pure, no graph mutation)."""
+    facts: list[TRGFactNode] = []
+    for delta in state_deltas:
+        raw_value = delta.value
+        if not isinstance(raw_value, str | int | float | bool):
+            raw_value = str(raw_value)
+        facts.append(
+            TRGFactNode(
+                fact_path=delta.path,
+                value=raw_value,
+                raw_excerpt=delta.raw_excerpt,
+                confidence=delta.confidence,
+                active=True,
+            )
+        )
+    return facts
+
+
+def forbidden_reasks_from_facts(active_facts: list[TRGFactNode]) -> list[str]:
+    """Return labels that must not be asked again given the supplied active facts."""
+    forbidden: list[str] = []
+    for fact in active_facts:
+        if fact.fact_path == "project.genre":
+            forbidden.extend(["genre", "what genre"])
+        elif fact.fact_path == "project.manuscript_status":
+            forbidden.extend(["manuscript_stage", "draft status", "starting from scratch"])
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in forbidden:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def detect_fact_contradictions(
+    existing_facts: list[TRGFactNode],
+    incoming_facts: list[TRGFactNode],
+) -> list[ContradictionEvent]:
+    """Return ContradictionEvents where incoming facts differ from current active facts."""
+    existing_by_path = {f.fact_path: f for f in existing_facts if f.active}
+    events: list[ContradictionEvent] = []
+    for incoming in incoming_facts:
+        existing = existing_by_path.get(incoming.fact_path)
+        if existing is None:
+            continue
+        if str(existing.value).casefold() != str(incoming.value).casefold():
+            events.append(
+                ContradictionEvent(
+                    fact_path=incoming.fact_path,
+                    old_value=str(existing.value),
+                    new_value=str(incoming.value),
+                    resolution_status="unresolved",
+                )
+            )
+    return events
+
+
+def detect_service_shift(
+    previous_service: str | None,
+    new_service: str | None,
+    arbiter_signals: list[str],
+) -> ServiceShiftEvent | None:
+    """Return the first ServiceShiftEvent detectable from the given arbiter signals."""
+    for signal in arbiter_signals:
+        if signal.startswith("state_service_inertia:"):
+            parts = signal[len("state_service_inertia:") :].split("→", 1)
+            prev = (parts[0] or None) if parts else None
+            nxt = (parts[1] or None) if len(parts) > 1 else None
+            return ServiceShiftEvent(
+                previous_service=prev or previous_service,
+                new_service=nxt or new_service,
+                mode="inertia",
+            )
+        if signal == "explicit_service_switch":
+            return ServiceShiftEvent(
+                previous_service=previous_service,
+                new_service=new_service,
+                mode="switch",
+            )
+        if signal.startswith("additive_service:"):
+            raw = signal[len("additive_service:") :].split("→")[0]
+            return ServiceShiftEvent(
+                previous_service=previous_service,
+                new_service=raw or new_service,
+                mode="addition",
+            )
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Private graph-mutation helpers (delegate to public helpers above)
+# ---------------------------------------------------------------------------
+
+
+def _update_semantic_facts(
+    graph: TemporalRelationGraph,
+    state_deltas: Iterable[StateDelta],
+    *,
+    turn_id: str,
+) -> None:
+    incoming = semantic_facts_from_deltas(state_deltas)
+    if not incoming:
+        return
+
+    existing_active = [f for f in graph.semantic_facts if f.active]
+
+    # Record contradictions using the pure public helper.
+    for evt in detect_fact_contradictions(existing_active, incoming):
+        graph.contradiction_events.append(evt.model_copy(update={"source_turn_id": turn_id}))
+
+    # Supersede any existing active fact whose path is covered by an incoming fact.
+    incoming_paths = {f.fact_path for f in incoming}
+    for existing in graph.semantic_facts:
+        if existing.active and existing.fact_path in incoming_paths:
+            existing.active = False
+            existing.superseded_by = turn_id
+
+    # Append new facts, stamping the current turn.
+    for fact in incoming:
+        graph.semantic_facts.append(fact.model_copy(update={"source_turn_id": turn_id}))
+
+
+def _update_answered_questions(
+    graph: TemporalRelationGraph,
+    unresolved_questions: list[UnresolvedQuestion],
+    user_text: str,
+    *,
+    turn_id: str,
+    state_deltas: list[StateDelta] | None = None,
+) -> None:
+    if not user_text.strip():
+        return
+    # Use the first state delta's path as fact_path for the answered question.
+    # This links the user's answer to the fact it updated (e.g. project.manuscript_status).
+    inferred_fact_path: str | None = state_deltas[0].path if state_deltas else None
+    for question in unresolved_questions:
+        if question.resolved and question.resolved_turn_sequence is not None:
+            # Already resolved in this same call; create AnsweredQuestion record.
+            already_recorded = any(
+                aq.question_text == question.question for aq in graph.answered_questions
+            )
+            if not already_recorded:
+                graph.answered_questions.append(
+                    AnsweredQuestion(
+                        question_text=question.question,
+                        answer_text=user_text[:240],
+                        fact_path=inferred_fact_path,
+                        resolved=True,
+                        source_turn_id=turn_id,
+                    )
+                )
+
+
+def _update_service_shifts(
+    graph: TemporalRelationGraph,
+    arbiter_signals: list[str],
+    *,
+    turn_id: str,
+) -> None:
+    """Graph-mutation wrapper: applies detect_service_shift for every signal."""
+    for signal in arbiter_signals:
+        shift = detect_service_shift(None, None, [signal])
+        if shift is not None:
+            graph.service_shifts.append(shift.model_copy(update={"source_turn_id": turn_id}))
+
+
+# Backward-compat alias so existing test imports continue to work.
+_forbidden_reasks_from_facts = forbidden_reasks_from_facts
 
 
 def extract_questions(text: str) -> list[str]:
