@@ -67,6 +67,10 @@ class TurnExpectation(BaseModel):
     project_context_event: str | None = None
     project_context_active_id_changed: bool | None = None
 
+    # Negation-targets trace checks.
+    negation_targets_negated_contains: str | None = None
+    negation_targets_affirmed_contains: str | None = None
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -203,6 +207,11 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["project_context_event"] = checks["event"]
             if "active_project_id_changed" in checks:
                 flat["project_context_active_id_changed"] = checks["active_project_id_changed"]
+        if section == "negation_targets":
+            if "negated_contains" in checks:
+                flat["negation_targets_negated_contains"] = checks["negated_contains"]
+            if "affirmed_contains" in checks:
+                flat["negation_targets_affirmed_contains"] = checks["affirmed_contains"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -337,6 +346,7 @@ def run_conversation_case(
         st = trace.get("sales_tone") or {}
         ap = trace.get("action_plan") or {}
         pc_trace = trace.get("project_context") or {}
+        nt_trace: list[dict[str, Any]] = trace.get("negation_targets") or []
 
         ex = turn.expect
 
@@ -532,6 +542,34 @@ def run_conversation_case(
                     f"turn {idx} project_context.active_project_id_changed expected False, "
                     f"but previous_project_id={prev_id}"
                 )
+
+        # — negation-targets checks —
+        if ex.negation_targets_negated_contains is not None:
+            neg_vals = {t.get("target", "") for t in nt_trace if t.get("polarity") == "negated"}
+            want = ex.negation_targets_negated_contains
+            if want not in neg_vals:
+                failures.append(
+                    f"turn {idx} negation_targets: '{want}' not found in negated targets {neg_vals}"
+                )
+            context_expected += 1
+            if want in neg_vals:
+                context_matched += 1
+
+        if ex.negation_targets_affirmed_contains is not None:
+            aff_vals = {
+                t.get("target", "")
+                for t in nt_trace
+                if t.get("polarity") in ("affirmed", "replacement")
+            }
+            want = ex.negation_targets_affirmed_contains
+            if want not in aff_vals:
+                failures.append(
+                    f"turn {idx} negation_targets: '{want}' not found in affirmed/replacement "
+                    f"targets {aff_vals}"
+                )
+            context_expected += 1
+            if want in aff_vals:
+                context_matched += 1
 
         # — automatic safety audits (always run) —
         # Note: repeated_violations is incremented ONLY from explicit YAML

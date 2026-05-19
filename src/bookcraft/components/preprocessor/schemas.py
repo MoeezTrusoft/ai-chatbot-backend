@@ -1,4 +1,8 @@
-from pydantic import BaseModel, ConfigDict
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from bookcraft.components.preprocessor.negation_targets import NegationTarget
 
 
 class TokenInfo(BaseModel):
@@ -36,4 +40,4 @@ class ProcessedMessage(BaseModel):
     embedding: list[float]
     language: str
     char_count: int
-
+    negation_targets: list[NegationTarget] = Field(default_factory=list)

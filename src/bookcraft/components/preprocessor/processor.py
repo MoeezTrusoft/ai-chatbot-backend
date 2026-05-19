@@ -14,9 +14,12 @@ from bookcraft.components.preprocessor.detectors import (
     has_pricing_intent,
 )
 from bookcraft.components.preprocessor.embedding import EmbeddingClient
+from bookcraft.components.preprocessor.negation_targets import NegationTargetResolver
 from bookcraft.components.preprocessor.schemas import ProcessedMessage, Span, TokenInfo
 from bookcraft.components.preprocessor.sidecars import PreprocessorSidecars
 from bookcraft.domain.enums import ServiceCategory
+
+_NEGATION_RESOLVER = NegationTargetResolver()
 
 PREPROCESSOR_SECONDS = Histogram("preprocessor_seconds", "Preprocessor latency.")
 ATOMS_EXTRACTED = Counter(
@@ -167,6 +170,11 @@ class SharedPreprocessor:
                 counterfactual_spans=counterfactual_spans,
             )
             embedding = await self.embedding_client.embed(normalized, language)
+            negation_resolution = _NEGATION_RESOLVER.resolve(
+                text=normalized,
+                negation_spans=negation_spans,
+                counterfactual_spans=counterfactual_spans,
+            )
             NEGATION_SPANS_TOTAL.inc(len(negation_spans))
             HEDGE_SPANS_TOTAL.inc(len(hedge_spans))
             COUNTERFACTUAL_SPANS_TOTAL.inc(len(counterfactual_spans))
@@ -181,6 +189,7 @@ class SharedPreprocessor:
                 embedding=embedding,
                 language=language,
                 char_count=len(raw),
+                negation_targets=negation_resolution.targets,
             )
 
     def _normalize(self, raw: str) -> str:
