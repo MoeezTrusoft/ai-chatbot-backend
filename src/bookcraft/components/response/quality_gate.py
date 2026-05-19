@@ -1,0 +1,507 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.response.planner import ResponsePlan
+from bookcraft.components.tools.governance import ToolGovernanceDecision
+from bookcraft.domain.enums import QueryIntentType
+from bookcraft.domain.state import ThreadState
+
+# ---------------------------------------------------------------------------
+# Compiled patterns — module-level for reuse
+# ---------------------------------------------------------------------------
+
+# Internal implementation terms that must never appear in customer-facing text.
+_ARTIFACT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("backend", re.compile(r"\bbackend\b", re.IGNORECASE)),
+    ("classifier", re.compile(r"\bclassifier\b", re.IGNORECASE)),
+    ("runtime atoms", re.compile(r"\bruntime\s+atoms\b", re.IGNORECASE)),
+    ("provider votes", re.compile(r"\bprovider\s+votes\b", re.IGNORECASE)),
+    ("RAG", re.compile(r"\bRAG\b")),
+    ("tool_governance", re.compile(r"\btool_governance\b", re.IGNORECASE)),
+    ("action_plan", re.compile(r"\baction_plan\b", re.IGNORECASE)),
+    ("deterministic engine", re.compile(r"\bdeterministic\s+engine\b", re.IGNORECASE)),
+    ("quote engine", re.compile(r"\bquote\s+engine\b", re.IGNORECASE)),
+    ("approved engine", re.compile(r"\bapproved\s+engine\b", re.IGNORECASE)),
+    ("tool output", re.compile(r"\btool\s+output\b", re.IGNORECASE)),
+    ("Source:", re.compile(r"\bSource:\s", re.IGNORECASE)),
+    ("Context:", re.compile(r"\bContext:\s", re.IGNORECASE)),
+    ("Action plan:", re.compile(r"\bAction\s+plan:\s", re.IGNORECASE)),
+]
+
+# Price-figure patterns — unapproved price mentions.
+_PRICE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\$\s*\d", re.IGNORECASE),
+    re.compile(r"£\s*\d", re.IGNORECASE),
+    re.compile(r"€\s*\d", re.IGNORECASE),
+    re.compile(r"\bUSD\s*\d", re.IGNORECASE),
+    re.compile(r"\b\d[\d,]*\s*(?:usd|gbp|eur|dollars?|pounds?|euros?)\b", re.IGNORECASE),
+    # Price ranges like 1,500-2,500 when preceded by $ or currency words.
+    re.compile(
+        r"(?:\$|USD\s*)\d[\d,]*\s*[-–]\s*\d",
+        re.IGNORECASE,
+    ),
+]
+
+# Committed timeline promises — exact deliveries without an approved quote.
+_TIMELINE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(
+        r"\b(?:in|within|after|takes?|ready\s+in|delivered?\s+in|completed\s+in|"
+        r"finished\s+in|done\s+in|guaranteed\s+in|by)\s+\d+\s*"
+        r"(?:[-–]\s*\d+\s*|to\s+\d+\s*)?(?:business\s+)?(?:day|days|week|weeks|month|months)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b\d+\s*(?:[-–]\s*\d+\s*|to\s+\d+\s*)?(?:business\s+)?"
+        r"(?:day|days|week|weeks|month|months)\s+"
+        r"(?:turnaround|delivery|lead\s+time|timeline|schedule)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bwill\s+take\s+\d+", re.IGNORECASE),
+    re.compile(r"\bguaranteed\s+(?:in|within)\s+\d+", re.IGNORECASE),
+]
+
+# Markdown / structural formatting artifacts.
+_FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("heading", re.compile(r"^\s*#{1,6}\s", re.MULTILINE)),
+    ("table", re.compile(r"\n\s*\|.*\|")),
+    ("three_plus_bullets", re.compile(r"(?:^\s*[-*]\s+.+\n){3}", re.MULTILINE)),
+    ("code_fence", re.compile(r"^\s*```", re.MULTILINE)),
+]
+
+# Slippy / hedging words — more than _SLIPPY_LIMIT total instances signals a problem.
+_SLIPPY_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bmaybe\b", re.IGNORECASE),
+    re.compile(r"\bpossibly\b", re.IGNORECASE),
+    re.compile(r"\bI\s+think\b", re.IGNORECASE),
+    re.compile(r"\bI\s+guess\b", re.IGNORECASE),
+    re.compile(r"\bkind\s+of\b", re.IGNORECASE),
+    re.compile(r"\bsort\s+of\b", re.IGNORECASE),
+    re.compile(r"\bprobably\b", re.IGNORECASE),
+    re.compile(r"\bshould\s+be\s+able\s+to\b", re.IGNORECASE),
+]
+_SLIPPY_LIMIT = 2  # > this many instances = excessive
+
+# Known-fact re-ask patterns keyed on the forbidden-reask label.
+_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "genre": re.compile(r"\b(?:what|which)\s+genre\b", re.IGNORECASE),
+    "what genre": re.compile(r"\b(?:what|which)\s+genre\b", re.IGNORECASE),
+    "manuscript_stage": re.compile(
+        r"\b(?:what\s+stage|manuscript\s+stage|starting\s+from\s+scratch|have\s+a\s+draft)\b",
+        re.IGNORECASE,
+    ),
+    "draft status": re.compile(
+        r"\b(?:what\s+stage|manuscript\s+stage|starting\s+from\s+scratch|have\s+a\s+draft)\b",
+        re.IGNORECASE,
+    ),
+    "starting from scratch": re.compile(r"\bstarting\s+from\s+scratch\b", re.IGNORECASE),
+}
+
+# Success-claim patterns — must not appear when a tool action was blocked.
+_SUCCESS_CLAIM_RE = re.compile(
+    r"\b(?:scheduled|booked|confirmed|created|sent|generated|produced|"
+    r"completed|done|ready|your\s+appointment|your\s+nda|your\s+agreement)\b",
+    re.IGNORECASE,
+)
+
+# Next-step progression phrases (alternative to a literal `?`).
+_PROGRESSION_RE = re.compile(
+    r"\b(?:let\s+me\s+know|share|tell\s+me|could\s+you|what\s+(?:is|are)|"
+    r"which|would\s+you|are\s+you|do\s+you|have\s+you)\b",
+    re.IGNORECASE,
+)
+
+# Intents for which pricing output is approved.
+_PRICING_INTENTS = {QueryIntentType.PRICING_QUESTION, QueryIntentType.TIMELINE_QUESTION}
+
+# Internal terms to exclude from the safe fallback text.
+_INTERNAL_WORDS = {
+    "backend",
+    "classifier",
+    "runtime atoms",
+    "provider votes",
+    "RAG",
+    "tool_governance",
+    "action_plan",
+    "deterministic engine",
+    "quote engine",
+}
+
+
+class ResponseQualityReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    passed: bool
+    failures: list[str] = Field(default_factory=list)
+    repair_instructions: str | None = None
+    safe_fallback: str | None = None
+    audit: list[str] = Field(default_factory=list)
+
+
+class ResponseQualityGate:
+    """Final response verification layer.
+
+    Evaluates generated text against plan, context, and governance decision
+    before it reaches the customer. Never calls an external model.
+    """
+
+    def evaluate(
+        self,
+        *,
+        text: str,
+        intent: IntentVote,
+        state: ThreadState,
+        context_pack: ContextPack | None = None,
+        response_plan: ResponsePlan | None = None,
+        tool_governance: ToolGovernanceDecision | None = None,
+    ) -> ResponseQualityReport:
+        del state  # reserved for future checks
+        failures: list[str] = []
+        audit: list[str] = []
+
+        # Check 1 — Internal artifact leak.
+        artifacts = _internal_artifacts(text)
+        if artifacts:
+            failures.append(f"internal_artifact_leak:{','.join(artifacts[:3])}")
+            audit.append(f"quality:internal_artifact:{len(artifacts)}")
+        else:
+            audit.append("quality:internal_artifact:clean")
+
+        # Check 2 — Known-fact re-ask.
+        reasks = _known_fact_reasks(text, context_pack)
+        if reasks:
+            failures.append(f"known_fact_reask:{','.join(reasks)}")
+            audit.append(f"quality:known_fact_reask:violated={reasks}")
+        else:
+            audit.append("quality:known_fact_reask:clean")
+
+        # Check 3 — Wrong service mention.
+        wrong = _wrong_service_mentions(text, context_pack, response_plan)
+        if wrong:
+            failures.append(f"wrong_service_mention:{','.join(wrong)}")
+            audit.append(f"quality:wrong_service:detected={wrong}")
+        else:
+            audit.append("quality:wrong_service:clean")
+
+        # Check 4 — Question count.
+        count = _question_count(text)
+        max_q = response_plan.max_questions if response_plan is not None else 1
+        if count > max_q:
+            failures.append(f"too_many_questions:{count}_exceeds_max_{max_q}")
+            audit.append(f"quality:question_count:{count}:FAIL")
+        else:
+            audit.append(f"quality:question_count:{count}:max={max_q}:ok")
+
+        # Check 5 — Unapproved price figures.
+        price_hits = _unapproved_price_mentions(text, intent, response_plan, tool_governance)
+        if price_hits:
+            failures.append("unapproved_price_figure")
+            audit.append(f"quality:unapproved_price:FAIL:{price_hits[0][:20]}")
+        else:
+            audit.append("quality:unapproved_price:clean")
+
+        # Check 6 — Unapproved committed timelines.
+        timeline_hits = _unapproved_timeline_mentions(text, intent, response_plan, tool_governance)
+        if timeline_hits:
+            failures.append("unapproved_committed_timeline")
+            audit.append("quality:unapproved_timeline:FAIL")
+        else:
+            audit.append("quality:unapproved_timeline:clean")
+
+        # Check 7 — Markdown / structural formatting.
+        fmt_hits = _formatting_artifacts(text)
+        if fmt_hits:
+            failures.append("markdown_formatting_detected")
+            audit.append(f"quality:markdown:{len(fmt_hits)}_patterns")
+        else:
+            audit.append("quality:markdown:clean")
+
+        # Check 8 — Excessive slippy language.
+        slippy = _slippy_word_hits(text)
+        if len(slippy) > _SLIPPY_LIMIT:
+            failures.append(f"excessive_weak_language:{len(slippy)}_instances")
+            audit.append(f"quality:weak_language:{len(slippy)}:FAIL")
+        else:
+            audit.append(f"quality:weak_language:{len(slippy)}:ok")
+
+        # Check 9 — Missing next step.
+        if _missing_next_step(text, response_plan):
+            failures.append("missing_next_step_question")
+            nq = response_plan.next_question if response_plan else None
+            audit.append(f"quality:missing_next_step:FAIL:expected={nq}")
+        else:
+            audit.append("quality:missing_next_step:ok")
+
+        # Check 10 — Blocked tool safety.
+        if _blocked_tool_mismatch(text, tool_governance):
+            failures.append("blocked_action_claimed_as_success")
+            audit.append("quality:blocked_tool_safety:FAIL")
+        else:
+            audit.append("quality:blocked_tool_safety:ok")
+
+        passed = len(failures) == 0
+        audit.append(f"quality_gate:passed={passed}:failures={len(failures)}")
+
+        repair_instructions: str | None = None
+        safe_fallback: str | None = None
+
+        if not passed:
+            repair_instructions = _build_repair_instructions(failures)
+            safe_fallback = _build_safe_fallback(
+                failures=failures,
+                context_pack=context_pack,
+                response_plan=response_plan,
+                tool_governance=tool_governance,
+                intent=intent,
+            )
+
+        return ResponseQualityReport(
+            passed=passed,
+            failures=failures,
+            repair_instructions=repair_instructions,
+            safe_fallback=safe_fallback,
+            audit=audit,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Check helpers (pure functions returning list[str] or bool)
+# ---------------------------------------------------------------------------
+
+
+def _internal_artifacts(text: str) -> list[str]:
+    """Return labels for every internal implementation term found in text."""
+    return [label for label, pattern in _ARTIFACT_PATTERNS if pattern.search(text)]
+
+
+def _known_fact_reasks(text: str, context_pack: ContextPack | None) -> list[str]:
+    """Return forbidden-reask labels whose patterns appear in text."""
+    if context_pack is None:
+        return []
+    violated: list[str] = []
+    for label in context_pack.forbidden_reasks:
+        pattern = _REASK_PATTERNS.get(label)
+        if pattern is not None and pattern.search(text):
+            violated.append(label)
+    return violated
+
+
+def _wrong_service_mentions(
+    text: str,
+    context_pack: ContextPack | None,
+    response_plan: ResponsePlan | None,
+) -> list[str]:
+    """Return wrong service names that appear in text given the active service context."""
+    if context_pack is None or context_pack.active_service is None:
+        return []
+
+    # Build set of services explicitly allowed by plan acknowledgements.
+    allowed_extras: set[str] = set()
+    if response_plan is not None:
+        for fact in response_plan.acknowledge_facts:
+            if "service" in fact:
+                allowed_extras.add(fact.split(":")[-1].strip())
+
+    wrong: list[str] = []
+    if context_pack.active_service == "cover_design_illustration":
+        if re.search(r"\bghostwriting\b", text, re.IGNORECASE):
+            if "ghostwriting" not in allowed_extras:
+                wrong.append("ghostwriting_when_cover_design_active")
+
+    return wrong
+
+
+def _question_count(text: str) -> int:
+    """Count real question marks in text (abbreviations do not use '?')."""
+    return text.count("?")
+
+
+def _unapproved_price_mentions(
+    text: str,
+    intent: IntentVote,
+    response_plan: ResponsePlan | None,  # reserved for future goal-based allowances
+    tool_governance: ToolGovernanceDecision | None,
+) -> list[str]:
+    """Return price-pattern matches when the context does not approve them."""
+    del response_plan  # reserved
+    hits = [p.pattern for p in _PRICE_PATTERNS if p.search(text)]
+    if not hits:
+        return []
+
+    # Prices are approved only when the intent is pricing/timeline AND
+    # governance has not blocked the action.
+    if intent.query_primary in _PRICING_INTENTS and (
+        tool_governance is None or tool_governance.allowed
+    ):
+        return []
+
+    return hits
+
+
+def _unapproved_timeline_mentions(
+    text: str,
+    intent: IntentVote,
+    response_plan: ResponsePlan | None,  # reserved for future goal-based allowances
+    tool_governance: ToolGovernanceDecision | None,
+) -> list[str]:
+    """Return timeline-pattern matches when the context does not approve them."""
+    del response_plan  # reserved
+    hits = [p.pattern for p in _TIMELINE_PATTERNS if p.search(text)]
+    if not hits:
+        return []
+
+    if intent.query_primary in _PRICING_INTENTS and (
+        tool_governance is None or tool_governance.allowed
+    ):
+        return []
+
+    return hits
+
+
+def _formatting_artifacts(text: str) -> list[str]:
+    """Return formatting artifact labels found in text."""
+    return [label for label, pattern in _FORMATTING_PATTERNS if pattern.search(text)]
+
+
+def _slippy_word_hits(text: str) -> list[str]:
+    """Return every individual slippy-word match (not just the distinct phrases)."""
+    hits: list[str] = []
+    for pattern in _SLIPPY_PATTERNS:
+        hits.extend(m.group(0) for m in pattern.finditer(text))
+    return hits
+
+
+def _missing_next_step(text: str, response_plan: ResponsePlan | None) -> bool:
+    """Return True when a next question was planned but the response lacks one."""
+    if response_plan is None or response_plan.next_question is None:
+        return False
+    has_question = "?" in text
+    has_progression = bool(_PROGRESSION_RE.search(text))
+    return not has_question and not has_progression
+
+
+def _blocked_tool_mismatch(
+    text: str,
+    tool_governance: ToolGovernanceDecision | None,
+) -> bool:
+    """Return True when the response claims a blocked action succeeded."""
+    if tool_governance is None or tool_governance.allowed:
+        return False
+    return bool(_SUCCESS_CLAIM_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
+# Repair / fallback helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_repair_instructions(failures: list[str]) -> str:
+    parts: list[str] = ["Rewrite to fix:"]
+    for f in failures:
+        if "internal_artifact" in f:
+            parts.append("- Remove all internal implementation terms.")
+        elif "known_fact_reask" in f:
+            parts.append("- Do not ask for facts already shared.")
+        elif "wrong_service" in f:
+            parts.append("- Do not mention unrelated services.")
+        elif "too_many_questions" in f:
+            parts.append("- Ask exactly one question.")
+        elif "unapproved_price" in f:
+            parts.append("- Do not quote prices without an approved estimate.")
+        elif "timeline" in f:
+            parts.append("- Do not promise specific delivery timelines.")
+        elif "markdown" in f:
+            parts.append("- Use plain prose; remove markdown formatting.")
+        elif "weak_language" in f:
+            parts.append("- Remove repeated hedging words.")
+        elif "missing_next_step" in f:
+            parts.append("- End with one clear question or next step.")
+        elif "blocked_action" in f:
+            parts.append("- Do not claim the blocked action completed.")
+    return " ".join(parts)
+
+
+def _build_safe_fallback(
+    *,
+    failures: list[str],
+    context_pack: ContextPack | None,
+    response_plan: ResponsePlan | None,
+    tool_governance: ToolGovernanceDecision | None,
+    intent: IntentVote,
+) -> str:
+    del failures  # failures inform repair_instructions; fallback uses plan/context
+
+    # Prefer governance blocked_message when that is the trigger.
+    if tool_governance is not None and not tool_governance.allowed:
+        if tool_governance.blocked_message:
+            msg = tool_governance.blocked_message
+            if not _contains_internal(msg):
+                return msg
+
+    # Use plan's customer_safe_tool_summary when available.
+    if response_plan is not None and response_plan.customer_safe_tool_summary:
+        base = response_plan.customer_safe_tool_summary
+        if not _contains_internal(base):
+            if response_plan.next_question:
+                return f"{base} {_fact_key_to_question(response_plan.next_question)}"
+            return base
+
+    # Assemble from active service + next question.
+    parts: list[str] = []
+    service = context_pack.active_service if context_pack else None
+    if service:
+        parts.append(f"I can help with {_human_service_name(service)}.")
+    if context_pack and context_pack.forbidden_reasks:
+        parts.append("I have the details you shared.")
+    if response_plan and response_plan.next_question:
+        parts.append(_fact_key_to_question(response_plan.next_question))
+    elif intent.query_primary in _PRICING_INTENTS:
+        parts.append(
+            "What word count or page count, genre, manuscript stage, and deadline should I use?"
+        )
+    else:
+        parts.append("What would you like to focus on next?")
+
+    return " ".join(parts) if parts else "I'd be happy to help — what should we focus on?"
+
+
+def _contains_internal(text: str) -> bool:
+    lowered = text.casefold()
+    return any(term.casefold() in lowered for term in _INTERNAL_WORDS)
+
+
+def _fact_key_to_question(key: str) -> str:
+    questions: dict[str, str] = {
+        "cover_style": "What cover style or visual direction should I use?",
+        "word_or_page_count": "What rough word count or page count should I use?",
+        "genre": "What genre or book category should I use?",
+        "manuscript_stage": "What stage is the manuscript in?",
+        "deadline": "What deadline or launch window should I plan for?",
+        "services": "Which services would you like help with?",
+    }
+    return questions.get(key, f"Could you share more about {key.replace('_', ' ')}?")
+
+
+def _human_service_name(service: str) -> str:
+    names: dict[str, str] = {
+        "ghostwriting": "ghostwriting",
+        "editing_proofreading": "editing and proofreading",
+        "cover_design_illustration": "cover design and illustration",
+        "interior_formatting": "interior formatting",
+        "publishing_distribution": "publishing and distribution",
+        "marketing_promotion": "marketing and promotion",
+        "audiobook_production": "audiobook production",
+        "author_website": "author website design",
+        "video_trailer": "video trailer production",
+    }
+    return names.get(service, service.replace("_", " "))
+
+
+# Suppress unused-import warning — Any is used in the module-level type context.
+_: Any = None
+del _
