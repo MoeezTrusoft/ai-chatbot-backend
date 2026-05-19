@@ -88,6 +88,35 @@ class ContextPackBuilder:
             else []
         )
 
+        # Phase 8: merge semantic TRG context into the ContextPack.
+        if trg_context is not None:
+            # Merge TRG forbidden_reasks (adds facts known from prior turns).
+            for label in trg_context.forbidden_reasks:
+                if label not in forbidden_reasks:
+                    forbidden_reasks.append(label)
+            # Surface TRG active_facts as additional known_facts if not in state.
+            existing_paths = {kf.path for kf in known_facts}
+            for trg_fact in trg_context.active_facts:
+                if trg_fact.fact_path not in existing_paths:
+                    value = trg_fact.value
+                    if not isinstance(value, str | int | float | bool):
+                        value = str(value)
+                    known_facts.append(
+                        KnownFact(
+                            path=trg_fact.fact_path,
+                            label=trg_fact.fact_path.split(".")[-1],
+                            value=value,
+                            confidence=trg_fact.confidence,
+                            source="trg_semantic",
+                            raw_excerpt=trg_fact.raw_excerpt,
+                        )
+                    )
+            # Add contradiction warnings from TRG contradiction events.
+            if trg_context.contradictions:
+                contradiction_warnings.append(
+                    f"trg_semantic_contradiction:{len(trg_context.contradictions)}"
+                )
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
