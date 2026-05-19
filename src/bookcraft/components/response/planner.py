@@ -160,6 +160,16 @@ def _must_not_mention(
     if context_pack.active_service:
         items.append("unrelated_service_drift")
 
+    # Suppress delegated/declined slot question forms.
+    all_resolved = (
+        list(context_pack.declined_slots or [])
+        + list(context_pack.delegated_slots or [])
+        + list(context_pack.unknown_slots or [])
+    )
+    for s in all_resolved:
+        if s.forbidden_reask and s.slot not in items:
+            items.append(s.slot)
+
     # Suppress explicitly negated services/actions from the response.
     if negation_targets:
         for t in negation_targets:
@@ -189,6 +199,14 @@ def _primary_goal(
     if context_pack.project_event == "ambiguous_project_reference":
         return "clarify_project_scope"
 
+    # Delegated creative slot: cover_style handed off to BookCraft.
+    delegated_slot_names = {s.slot for s in (context_pack.delegated_slots or [])}
+    if (
+        "cover_style" in delegated_slot_names
+        and context_pack.active_service == "cover_design_illustration"
+    ):
+        return "process_explanation"
+
     if context_pack.active_service == "cover_design_illustration":
         return "cover_design_scoping"
 
@@ -210,6 +228,10 @@ def _next_question(
     # Project-scope clarification: ask Claude to resolve same vs. new project.
     if primary_goal == "clarify_project_scope":
         return _PROJECT_CLARIFICATION_QUESTION
+
+    # Delegated creative turn: no next question for the delegated slot.
+    if primary_goal == "process_explanation":
+        return None
 
     # Select the priority list for this scenario.
     if primary_goal == "cover_design_scoping":

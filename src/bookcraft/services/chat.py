@@ -26,6 +26,7 @@ from bookcraft.components.context.project_manager import (
     ProjectContextManager,
     ProjectContextSnapshot,
 )
+from bookcraft.components.context.slot_tracker import SlotTracker
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
@@ -106,6 +107,7 @@ class ChatService:
     response_style_policy: ResponseStylePolicy = field(default_factory=ResponseStylePolicy.default)
     rag_query_builder: RAGQueryBuilder = field(default_factory=RAGQueryBuilder)
     project_context_manager: ProjectContextManager = field(default_factory=ProjectContextManager)
+    slot_tracker: SlotTracker = field(default_factory=SlotTracker)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -465,6 +467,35 @@ class ChatService:
                 action_result=action_result,
                 negation_targets=processed.negation_targets or None,
             )
+
+            # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
+            slot_statuses = self.slot_tracker.update(
+                text=payload.message,
+                state=state,
+                response_plan_next_question=response_plan.next_question,
+                context_pack=context_pack,
+                turn_id=str(event_id),
+            )
+            if slot_statuses:
+                state.slot_resolution_statuses = [s.model_dump(mode="json") for s in slot_statuses]
+                context_pack = self.context_pack_builder.build(
+                    state=state,
+                    intent=intent,
+                    runtime_atoms=processed.deterministic_atoms,
+                    trg_context=trg_context,
+                    project_snapshot=project_snapshot,
+                )
+                response_hint = context_pack.response_hint or trg_response_hint
+                response_plan = self.response_planner.plan(
+                    intent=intent,
+                    state=state,
+                    context_pack=context_pack,
+                    tool_governance=governance_decision,
+                    action_plan=action_plan,
+                    action_result=action_result,
+                    negation_targets=processed.negation_targets or None,
+                )
+
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
                 message=payload.message,
@@ -720,6 +751,10 @@ class ChatService:
                     "negation_targets": [
                         t.model_dump(mode="json") for t in processed.negation_targets
                     ],
+                    "slot_resolution": [s.model_dump(mode="json") for s in slot_statuses],
+                    "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
+                    if self.slot_tracker.last_decision is not None
+                    else None,
                     "context_pack": context_pack.model_dump(mode="json"),
                     "project_context": project_snapshot.model_dump(mode="json"),
                     "context_arbiter": {

@@ -71,6 +71,10 @@ class TurnExpectation(BaseModel):
     negation_targets_negated_contains: str | None = None
     negation_targets_affirmed_contains: str | None = None
 
+    # Slot-resolution trace checks.
+    slot_resolution_contains_slot: str | None = None
+    slot_resolution_contains_status: str | None = None
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -212,6 +216,11 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["negation_targets_negated_contains"] = checks["negated_contains"]
             if "affirmed_contains" in checks:
                 flat["negation_targets_affirmed_contains"] = checks["affirmed_contains"]
+        if section == "slot_resolution":
+            if "contains_slot" in checks:
+                flat["slot_resolution_contains_slot"] = checks["contains_slot"]
+            if "contains_status" in checks:
+                flat["slot_resolution_contains_status"] = checks["contains_status"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -347,6 +356,7 @@ def run_conversation_case(
         ap = trace.get("action_plan") or {}
         pc_trace = trace.get("project_context") or {}
         nt_trace: list[dict[str, Any]] = trace.get("negation_targets") or []
+        sr_trace: list[dict[str, Any]] = trace.get("slot_resolution") or []
 
         ex = turn.expect
 
@@ -570,6 +580,33 @@ def run_conversation_case(
             context_expected += 1
             if want in aff_vals:
                 context_matched += 1
+
+        # — slot-resolution checks —
+        if ex.slot_resolution_contains_slot is not None:
+            sr_slots = {s.get("slot", "") for s in sr_trace}
+            want_slot = ex.slot_resolution_contains_slot
+            if want_slot in sr_slots:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} slot_resolution: slot '{want_slot}' not found in {sr_slots}"
+                )
+            context_expected += 1
+
+        if ex.slot_resolution_contains_status is not None:
+            want_status = ex.slot_resolution_contains_status
+            want_slot = ex.slot_resolution_contains_slot
+            found = any(
+                s.get("status") == want_status and (want_slot is None or s.get("slot") == want_slot)
+                for s in sr_trace
+            )
+            if found:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} slot_resolution: status '{want_status}' not found in {sr_trace}"
+                )
+            context_expected += 1
 
         # — automatic safety audits (always run) —
         # Note: repeated_violations is incremented ONLY from explicit YAML
