@@ -1,0 +1,39 @@
+id: same_project_service_bundle
+description: >
+  User asks for interior formatting, then adds KDP publishing for the same book.
+  The bot must keep the same active project and treat this as an additive service
+  bundle, not a new-project shift.
+
+turns:
+  - role: user
+    message: "I need interior formatting for my completed romance novel."
+    expect:
+      intent:
+        service_primary: interior_formatting
+      trace:
+        project_context:
+          event: same_project
+
+  - role: user
+    message: "I also need KDP publishing and distribution for the same book."
+    expect:
+      trace:
+        project_context:
+          event: same_project_service_addition
+          active_project_id_changed: false
+      response:
+        forbidden_phrases:
+          - "new book"
+          - "different project"
+
+  - role: user
+    message: "The manuscript is fully edited and ready to go."
+    expect:
+      trace:
+        project_context:
+          event: same_project
+
+expectations_summary:
+  - project_context.event is same_project_service_addition on turn 2
+  - active_project_id stays the same across all turns
+  - response on turn 2 does not imply a new project was created

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
@@ -8,6 +8,9 @@ from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
+
+if TYPE_CHECKING:
+    from bookcraft.components.context.project_manager import ProjectContextSnapshot
 
 
 class ContextPackBuilder:
@@ -18,42 +21,57 @@ class ContextPackBuilder:
         intent: IntentVote,
         runtime_atoms: dict[str, Any] | None = None,
         trg_context: TRGContext | None = None,
+        project_snapshot: ProjectContextSnapshot | None = None,
     ) -> ContextPack:
         runtime_atoms = runtime_atoms or {}
         known_facts: list[KnownFact] = []
 
-        active_service = _active_service(state, intent, runtime_atoms)
-        active_genre = _string_field_value(state.project.genre)
-        manuscript_status = _string_field_value(state.project.manuscript_status)
+        project_event = project_snapshot.decision.event if project_snapshot else None
+
+        # For a new-project turn use intent-derived service only; old state facts
+        # belong to the previous project and must not bleed into the new scope.
+        if project_event == "new_project":
+            active_service = (
+                intent.service_primary.value if intent.service_primary is not None else None
+            )
+            active_genre = None
+            manuscript_status = None
+        else:
+            active_service = _active_service(state, intent, runtime_atoms)
+            active_genre = _string_field_value(state.project.genre)
+            manuscript_status = _string_field_value(state.project.manuscript_status)
+
         sales_stage = _string_field_value(state.sales_stage)
 
-        _append_field_fact(known_facts, "project.genre", "genre", state.project.genre)
-        _append_field_fact(
-            known_facts,
-            "project.manuscript_status",
-            "manuscript_status",
-            state.project.manuscript_status,
-        )
-        _append_field_fact(
-            known_facts,
-            "project.word_count",
-            "word_count",
-            state.project.word_count,
-        )
-        _append_field_fact(
-            known_facts,
-            "project.page_count",
-            "page_count",
-            state.project.page_count,
-        )
+        if project_event != "new_project":
+            _append_field_fact(known_facts, "project.genre", "genre", state.project.genre)
+            _append_field_fact(
+                known_facts,
+                "project.manuscript_status",
+                "manuscript_status",
+                state.project.manuscript_status,
+            )
+            _append_field_fact(
+                known_facts,
+                "project.word_count",
+                "word_count",
+                state.project.word_count,
+            )
+            _append_field_fact(
+                known_facts,
+                "project.page_count",
+                "page_count",
+                state.project.page_count,
+            )
         if active_service is not None:
+            _is_new_proj = project_event == "new_project"
             known_facts.append(
                 KnownFact(
                     path="service.active",
                     label="active_service",
                     value=active_service,
-                    confidence=_active_service_confidence(state),
-                    source="thread_state",
+                    confidence=0.8 if _is_new_proj else _active_service_confidence(state),
+                    source="intent" if _is_new_proj else "thread_state",
                     raw_excerpt=None,
                 )
             )
@@ -117,6 +135,18 @@ class ContextPackBuilder:
                     f"trg_semantic_contradiction:{len(trg_context.contradictions)}"
                 )
 
+        # Build project memory summary from inactive projects.
+        project_memory_summary: list[str] = []
+        active_project_id: str | None = None
+        previous_project_id: str | None = None
+        if project_snapshot is not None:
+            active_project_id = project_snapshot.active_project_id
+            previous_project_id = project_snapshot.previous_project_id
+            for proj in project_snapshot.projects:
+                if not proj.active and proj.known_facts:
+                    summary = ", ".join(f"{k}={v}" for k, v in list(proj.known_facts.items())[:3])
+                    project_memory_summary.append(f"prev_project:{proj.project_id[:8]}:{summary}")
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -130,6 +160,10 @@ class ContextPackBuilder:
             contradiction_warnings=contradiction_warnings,
             allowed_next_questions=allowed_next_questions,
             disallowed_next_questions=disallowed_next_questions,
+            active_project_id=active_project_id,
+            project_event=project_event,
+            previous_project_id=previous_project_id,
+            project_memory_summary=project_memory_summary,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
