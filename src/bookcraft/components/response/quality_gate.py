@@ -143,6 +143,7 @@ class ResponseQualityReport(BaseModel):
     passed: bool
     failures: list[str] = Field(default_factory=list)
     repair_instructions: str | None = None
+    safe_repair_context: dict[str, object] | None = None
     safe_fallback: str | None = None
     sales_tone: SalesToneReport | None = None
     audit: list[str] = Field(default_factory=list)
@@ -270,10 +271,17 @@ class ResponseQualityGate:
         repair_instructions: str | None = None
         safe_fallback: str | None = None
 
+        safe_repair_context: dict[str, object] | None = None
         if not passed:
             repair_instructions = _build_repair_instructions(
                 failures,
                 sales_tone_report.suggestions,
+            )
+            safe_repair_context = _build_safe_repair_context(
+                failures=failures,
+                context_pack=context_pack,
+                response_plan=response_plan,
+                tool_governance=tool_governance,
             )
             safe_fallback = _build_safe_fallback(
                 failures=failures,
@@ -301,10 +309,48 @@ class ResponseQualityGate:
             passed=passed,
             failures=failures,
             repair_instructions=repair_instructions,
+            safe_repair_context=safe_repair_context,
             safe_fallback=safe_fallback,
             sales_tone=sales_tone_report,
             audit=audit,
         )
+
+
+def _build_safe_repair_context(
+    *,
+    failures: list[str],
+    context_pack: ContextPack | None,
+    response_plan: ResponsePlan | None,
+    tool_governance: ToolGovernanceDecision | None,
+) -> dict[str, object]:
+    context: dict[str, object] = {
+        "repair_goal": (
+            "Rewrite the response to remove quality failures and keep customer-facing "
+            "guidance clear."
+        ),
+        "must_keep": [],
+        "must_not_ask": [],
+    }
+    if response_plan is not None:
+        if response_plan.acknowledge_facts:
+            context["must_keep"] = response_plan.acknowledge_facts
+        if response_plan.next_question is not None:
+            context["next_question"] = response_plan.next_question
+        if response_plan.customer_safe_tool_summary:
+            context["tool_summary"] = response_plan.customer_safe_tool_summary
+    if context_pack is not None:
+        if context_pack.forbidden_reasks:
+            context["must_not_ask"] = context_pack.forbidden_reasks
+        if context_pack.active_service is not None:
+            context["active_service"] = context_pack.active_service
+        if context_pack.active_genre is not None:
+            context["active_genre"] = context_pack.active_genre
+        if context_pack.manuscript_status is not None:
+            context["manuscript_status"] = context_pack.manuscript_status
+    if tool_governance is not None and tool_governance.blocked_message:
+        context["blocked_message"] = tool_governance.blocked_message
+    context["failures"] = failures
+    return context
 
 
 # ---------------------------------------------------------------------------

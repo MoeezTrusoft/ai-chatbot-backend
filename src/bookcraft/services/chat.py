@@ -40,8 +40,10 @@ from bookcraft.components.rag.query_builder import RAGQueryBuilder
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.response.contracts import CustomerResponseContract
 from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
+from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
@@ -519,12 +521,91 @@ class ChatService:
                 response_plan=response_plan,
                 tool_governance=governance_decision,
             )
-            if not quality_report.passed and quality_report.safe_fallback:
-                final_text = quality_report.safe_fallback
-                final_source = f"{draft.source}_quality_fallback"
+            contract = CustomerResponseContract()
+            production_like = self.environment not in {"test", "dev", "development", "local"}
+            repair_attempted = False
+            deterministic_final_text_blocked = False
+            response_repair_quality = None
+            final_draft = draft
+
+            def _dev_fallback() -> ResponseDraft:
+                if quality_report.safe_fallback is not None:
+                    fallback_source = f"{draft.source}_quality_fallback"
+                    if contract.is_allowed_final_source(
+                        fallback_source,
+                        app_env=self.environment,
+                    ):
+                        return ResponseDraft(
+                            text=quality_report.safe_fallback,
+                            source=fallback_source,
+                        )
+                return draft
+
+            fallback_source = f"{draft.source}_quality_fallback"
+            fallback_draft: ResponseDraft | None = None
+            if quality_report.safe_fallback is not None and contract.is_allowed_final_source(
+                fallback_source,
+                app_env=self.environment,
+            ):
+                fallback_draft = ResponseDraft(
+                    text=quality_report.safe_fallback,
+                    source=fallback_source,
+                )
+
+            if (
+                contract.is_allowed_final_source(draft.source, app_env=self.environment)
+                and quality_report.passed
+            ):
+                final_draft = draft
             else:
-                final_text = draft.text
-                final_source = draft.source
+                repair_attempted = True
+                repair_method = getattr(self.response_generator, "repair", None)
+                repair_draft: ResponseDraft | None = None
+                if callable(repair_method):
+                    repair_draft = await repair_method(
+                        bad_text=draft.text,
+                        quality_report=quality_report,
+                        response_plan=response_plan,
+                        context_pack=context_pack,
+                        tool_governance=governance_decision,
+                        response_hint=response_hint,
+                    )
+                    response_repair_quality = self.response_quality_gate.evaluate(
+                        text=repair_draft.text,
+                        intent=intent,
+                        state=state,
+                        context_pack=context_pack,
+                        response_plan=response_plan,
+                        tool_governance=governance_decision,
+                    )
+                if (
+                    repair_draft is not None
+                    and response_repair_quality is not None
+                    and response_repair_quality.passed
+                    and contract.is_allowed_final_source(
+                        repair_draft.source,
+                        app_env=self.environment,
+                    )
+                ):
+                    final_draft = repair_draft
+                elif (
+                    fallback_draft is not None
+                    and draft.source not in contract.allowed_final_sources
+                ):
+                    final_draft = fallback_draft
+                elif not production_like and contract.is_allowed_final_source(
+                    draft.source,
+                    app_env=self.environment,
+                ):
+                    final_draft = draft
+                elif not production_like:
+                    final_draft = _dev_fallback()
+                else:
+                    deterministic_final_text_blocked = True
+                    final_draft = draft
+
+            final_text = final_draft.text
+            final_source = final_draft.source
             sales_tone_report = quality_report.sales_tone
             if sales_tone_report is None or final_text != draft.text:
                 sales_tone_report = self.response_style_policy.evaluate(
@@ -632,6 +713,32 @@ class ChatService:
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
                     "response_quality": quality_report.model_dump(mode="json"),
+                    "response_repair_quality": response_repair_quality.model_dump(mode="json")
+                    if response_repair_quality is not None
+                    else None,
+                    "customer_response_contract": {
+                        "final_responder": contract.final_responder,
+                        "final_source": final_source,
+                        "contract_passed": contract.is_allowed_final_source(
+                            final_source,
+                            app_env=self.environment,
+                        ),
+                        "repair_attempted": repair_attempted,
+                        "deterministic_final_text_blocked": deterministic_final_text_blocked,
+                        "audit": [
+                            f"contract:final_source={final_source}",
+                            f"contract:allowed={
+                                contract.is_allowed_final_source(
+                                    final_source,
+                                    app_env=self.environment,
+                                )
+                            }",
+                            f"contract:repair_attempted={repair_attempted}",
+                            f"contract:production_like={
+                                self.environment not in {'test', 'dev', 'development', 'local'}
+                            }",
+                        ],
+                    },
                     "sales_tone": sales_tone_report.model_dump(mode="json"),
                     "trg_semantic": {
                         "active_facts": [
