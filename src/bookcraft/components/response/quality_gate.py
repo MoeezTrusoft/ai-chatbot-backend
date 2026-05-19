@@ -8,9 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.planner import ResponsePlan
+from bookcraft.components.response.style_policy import ResponseStylePolicy, SalesToneReport
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
+
+# Module-level style-policy instance used to drive slippy-word detection.
+_STYLE_POLICY = ResponseStylePolicy.default()
 
 # ---------------------------------------------------------------------------
 # Compiled patterns — module-level for reuse
@@ -74,16 +78,16 @@ _FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("code_fence", re.compile(r"^\s*```", re.MULTILINE)),
 ]
 
-# Slippy / hedging words — more than _SLIPPY_LIMIT total instances signals a problem.
+# Slippy / hedging words — built from the style policy so there is one source
+# of truth.  More than _SLIPPY_LIMIT total instances signals a problem.
 _SLIPPY_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\b" + re.escape(phrase) + r"\b", re.IGNORECASE)
+    for phrase in _STYLE_POLICY.weak_phrases
+] or [
+    # Fallback in case the policy is somehow empty.
     re.compile(r"\bmaybe\b", re.IGNORECASE),
     re.compile(r"\bpossibly\b", re.IGNORECASE),
-    re.compile(r"\bI\s+think\b", re.IGNORECASE),
-    re.compile(r"\bI\s+guess\b", re.IGNORECASE),
-    re.compile(r"\bkind\s+of\b", re.IGNORECASE),
-    re.compile(r"\bsort\s+of\b", re.IGNORECASE),
     re.compile(r"\bprobably\b", re.IGNORECASE),
-    re.compile(r"\bshould\s+be\s+able\s+to\b", re.IGNORECASE),
 ]
 _SLIPPY_LIMIT = 2  # > this many instances = excessive
 
@@ -140,6 +144,7 @@ class ResponseQualityReport(BaseModel):
     failures: list[str] = Field(default_factory=list)
     repair_instructions: str | None = None
     safe_fallback: str | None = None
+    sales_tone: SalesToneReport | None = None
     audit: list[str] = Field(default_factory=list)
 
 
@@ -149,6 +154,9 @@ class ResponseQualityGate:
     Evaluates generated text against plan, context, and governance decision
     before it reaches the customer. Never calls an external model.
     """
+
+    def __init__(self, *, style_policy: ResponseStylePolicy | None = None) -> None:
+        self.style_policy = style_policy or ResponseStylePolicy.default()
 
     def evaluate(
         self,
@@ -244,6 +252,18 @@ class ResponseQualityGate:
         else:
             audit.append("quality:blocked_tool_safety:ok")
 
+        sales_tone_report = self.style_policy.evaluate(
+            text=text,
+            response_plan=response_plan,
+            context_pack=context_pack,
+        )
+        if not sales_tone_report.passed:
+            failures.append("sales_tone")
+            audit.append(f"quality:sales_tone:FAIL:{','.join(sales_tone_report.failures[:3])}")
+        else:
+            audit.append("quality:sales_tone:ok")
+        audit.extend(f"sales_tone:{entry}" for entry in sales_tone_report.audit)
+
         passed = len(failures) == 0
         audit.append(f"quality_gate:passed={passed}:failures={len(failures)}")
 
@@ -251,7 +271,10 @@ class ResponseQualityGate:
         safe_fallback: str | None = None
 
         if not passed:
-            repair_instructions = _build_repair_instructions(failures)
+            repair_instructions = _build_repair_instructions(
+                failures,
+                sales_tone_report.suggestions,
+            )
             safe_fallback = _build_safe_fallback(
                 failures=failures,
                 context_pack=context_pack,
@@ -259,12 +282,27 @@ class ResponseQualityGate:
                 tool_governance=tool_governance,
                 intent=intent,
             )
+            fallback_tone = self.style_policy.evaluate(
+                text=safe_fallback,
+                response_plan=response_plan,
+                context_pack=context_pack,
+            )
+            if not fallback_tone.passed:
+                safe_fallback = _build_style_safe_fallback(
+                    context_pack=context_pack,
+                    response_plan=response_plan,
+                    intent=intent,
+                )
+                audit.append("quality:safe_fallback:style_rewritten")
+            else:
+                audit.append("quality:safe_fallback:style_ok")
 
         return ResponseQualityReport(
             passed=passed,
             failures=failures,
             repair_instructions=repair_instructions,
             safe_fallback=safe_fallback,
+            sales_tone=sales_tone_report,
             audit=audit,
         )
 
@@ -400,7 +438,7 @@ def _blocked_tool_mismatch(
 # ---------------------------------------------------------------------------
 
 
-def _build_repair_instructions(failures: list[str]) -> str:
+def _build_repair_instructions(failures: list[str], tone_suggestions: list[str]) -> str:
     parts: list[str] = ["Rewrite to fix:"]
     for f in failures:
         if "internal_artifact" in f:
@@ -423,6 +461,14 @@ def _build_repair_instructions(failures: list[str]) -> str:
             parts.append("- End with one clear question or next step.")
         elif "blocked_action" in f:
             parts.append("- Do not claim the blocked action completed.")
+        elif "sales_tone" in f:
+            parts.append(
+                "- Rewrite in warm, specific, consultative tone with one clear next question."
+            )
+    if tone_suggestions:
+        parts.append("Tone guidance:")
+        for suggestion in tone_suggestions[:3]:
+            parts.append(f"- {suggestion}")
     return " ".join(parts)
 
 
@@ -473,6 +519,50 @@ def _build_safe_fallback(
 def _contains_internal(text: str) -> bool:
     lowered = text.casefold()
     return any(term.casefold() in lowered for term in _INTERNAL_WORDS)
+
+
+def _build_style_safe_fallback(
+    *,
+    context_pack: ContextPack | None,
+    response_plan: ResponsePlan | None,
+    intent: IntentVote,
+) -> str:
+    service = context_pack.active_service if context_pack is not None else None
+    genre = context_pack.active_genre if context_pack is not None else None
+    manuscript = context_pack.manuscript_status if context_pack is not None else None
+
+    detail_parts: list[str] = []
+    if genre:
+        detail_parts.append(genre)
+    if manuscript:
+        detail_parts.append(manuscript.replace("_", " "))
+
+    if service:
+        service_text = _human_service_name(service)
+        if detail_parts:
+            opener = f"Based on what you shared about {service_text} and {', '.join(detail_parts)},"
+        else:
+            opener = f"Based on what you shared about {service_text},"
+    else:
+        opener = (
+            f"Based on what you shared about {', '.join(detail_parts)},"
+            if detail_parts
+            else "Based on what you shared,"
+        )
+
+    if response_plan is not None and response_plan.next_question:
+        return (
+            f"{opener} the useful next step is to confirm one detail. "
+            f"{_fact_key_to_question(response_plan.next_question)}"
+        )
+
+    if intent.query_primary in _PRICING_INTENTS:
+        return (
+            f"{opener} we can move this forward once scope is clear. "
+            "What word count or page count should I use?"
+        )
+
+    return f"{opener} we can move this forward with one detail. What should we focus on next?"
 
 
 def _fact_key_to_question(key: str) -> str:
