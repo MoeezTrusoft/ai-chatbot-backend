@@ -245,7 +245,8 @@ class NegationTargetResolver:
                 for tt, tv in neg_classified:
                     targets.append(
                         NegationTarget(
-                            target_type=tt,                            target=tv,
+                            target_type=tt,
+                            target=tv,
                             polarity="negated",
                             span_text=neg_text,
                             confidence=0.92,
@@ -269,7 +270,8 @@ class NegationTargetResolver:
                         )
                         targets.append(
                             NegationTarget(
-                                target_type=tt,                                target=tv,
+                                target_type=tt,
+                                target=tv,
                                 polarity=polarity,
                                 replacement=neg_types.get(tt),
                                 span_text=aff_text,
@@ -332,7 +334,8 @@ class NegationTargetResolver:
                 for tt, tv in classified:
                     targets.append(
                         NegationTarget(
-                            target_type=tt,                            target=tv,
+                            target_type=tt,
+                            target=tv,
                             polarity="negated",
                             span_text=neg_text,
                             confidence=0.75,
