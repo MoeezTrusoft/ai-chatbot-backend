@@ -39,6 +39,7 @@ from bookcraft.components.pricing import (
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.response.planner import ResponsePlanner
+from bookcraft.components.response.quality_gate import ResponseQualityGate
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
@@ -92,6 +93,7 @@ class ChatService:
     context_arbiter: ContextArbiter = field(default_factory=ContextArbiter)
     tool_governance_gate: ToolGovernanceGate = field(default_factory=ToolGovernanceGate)
     response_planner: ResponsePlanner = field(default_factory=ResponsePlanner)
+    response_quality_gate: ResponseQualityGate = field(default_factory=ResponseQualityGate)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -491,14 +493,28 @@ class ChatService:
                 context_pack=context_pack,
                 response_plan=response_plan,
             )
-            bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
+            quality_report = self.response_quality_gate.evaluate(
+                text=draft.text,
+                intent=intent,
+                state=state,
+                context_pack=context_pack,
+                response_plan=response_plan,
+                tool_governance=governance_decision,
+            )
+            if not quality_report.passed and quality_report.safe_fallback:
+                final_text = quality_report.safe_fallback
+                final_source = f"{draft.source}_quality_fallback"
+            else:
+                final_text = draft.text
+                final_source = draft.source
+            bubbles = self.formatter.format(final_text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
                 try:
                     trg_result = await self.trg_engine.update_after_turn(
                         thread_id=thread_id,
                         turn_sequence=event_sequence + 1,
                         user_text=payload.message,
-                        assistant_text=draft.text,
+                        assistant_text=final_text,
                         previous_state=previous_state,
                         state_deltas=extraction.state_deltas,
                     )
@@ -537,7 +553,7 @@ class ChatService:
                 payload={
                     "intent": intent.model_dump(mode="json"),
                     "bubble_count": len(bubbles),
-                    "source": draft.source,
+                    "source": final_source,
                 },
             )
             event_ids.append(event_id)
@@ -561,9 +577,9 @@ class ChatService:
                     "elapsed_ms": round((time.perf_counter() - turn_started) * 1000, 2),
                     "language_status": language.language,
                     "assistant": {
-                        "source": draft.source,
+                        "source": final_source,
                         "bubble_count": len(bubbles),
-                        "preview": redact_text(draft.text)[:500],
+                        "preview": redact_text(final_text)[:500],
                     },
                     "intent": intent.model_dump(mode="json"),
                     "decision": decision.model_dump(mode="json") if decision else None,
@@ -584,6 +600,7 @@ class ChatService:
                     "action_plan": action_trace_payload(action_plan, action_result),
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
+                    "response_quality": quality_report.model_dump(mode="json"),
                     "trg_response_hint": trg_response_hint,
                     "components": {
                         "event_count": len(event_ids),
