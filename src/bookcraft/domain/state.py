@@ -162,3 +162,5 @@ class ThreadState(BaseModel):
     conversation_projects: list[dict[str, Any]] = Field(default_factory=list)
     # Slot resolution statuses — serialised SlotResolutionStatus dicts.
     slot_resolution_statuses: list[dict[str, Any]] = Field(default_factory=list)
+    # Portfolio filter tracking — controls ask-once / fallback behaviour.
+    portfolio_filter_state: dict[str, Any] = Field(default_factory=dict)

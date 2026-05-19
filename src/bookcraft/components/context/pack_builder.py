@@ -168,6 +168,15 @@ class ContextPackBuilder:
             if slot not in disallowed_next_questions:
                 disallowed_next_questions.append(slot)
 
+        # Portfolio fallback: once fallback_allowed, suppress genre/category re-ask.
+        pfs = getattr(state, "portfolio_filter_state", None) or {}
+        if pfs.get("fallback_allowed"):
+            for _slot in ("genre", "portfolio_filter", "category"):
+                if _slot not in forbidden_reasks:
+                    forbidden_reasks.append(_slot)
+                if _slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_slot)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,

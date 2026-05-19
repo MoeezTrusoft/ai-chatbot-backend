@@ -75,6 +75,9 @@ class TurnExpectation(BaseModel):
     slot_resolution_contains_slot: str | None = None
     slot_resolution_contains_status: str | None = None
 
+    # Portfolio-fallback trace checks.
+    portfolio_fallback_strategy_one_of: list[str] = Field(default_factory=list)
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -221,6 +224,9 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["slot_resolution_contains_slot"] = checks["contains_slot"]
             if "contains_status" in checks:
                 flat["slot_resolution_contains_status"] = checks["contains_status"]
+        if section == "portfolio_fallback":
+            if "strategy_one_of" in checks:
+                flat["portfolio_fallback_strategy_one_of"] = checks["strategy_one_of"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -357,6 +363,7 @@ def run_conversation_case(
         pc_trace = trace.get("project_context") or {}
         nt_trace: list[dict[str, Any]] = trace.get("negation_targets") or []
         sr_trace: list[dict[str, Any]] = trace.get("slot_resolution") or []
+        pf_trace: dict[str, Any] = trace.get("portfolio_fallback") or {}
 
         ex = turn.expect
 
@@ -605,6 +612,18 @@ def run_conversation_case(
             else:
                 failures.append(
                     f"turn {idx} slot_resolution: status '{want_status}' not found in {sr_trace}"
+                )
+            context_expected += 1
+
+        # — portfolio-fallback checks —
+        if ex.portfolio_fallback_strategy_one_of:
+            got_strategy = pf_trace.get("strategy")
+            allowed = ex.portfolio_fallback_strategy_one_of
+            if got_strategy in allowed:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} portfolio_fallback.strategy: '{got_strategy}' not in {allowed}"
                 )
             context_expected += 1
 
