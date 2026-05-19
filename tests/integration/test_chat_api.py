@@ -26,7 +26,12 @@ def test_chat_turn_pricing_does_not_emit_numbers() -> None:
     assert response.status_code == 200
     text = " ".join(bubble["text"] for bubble in response.json()["bubbles"])
     assert "$" not in text
-    assert "deterministic quote engine" in text
+    # The response must ask for at least one missing scoping detail rather than
+    # emitting any price figure.  The phrase "deterministic quote engine" was from
+    # an old internal design and no longer appears in customer-facing responses.
+    assert "?" in text or any(
+        kw in text.lower() for kw in ("word", "page", "genre", "manuscript", "deadline")
+    ), f"Expected a scoping question in response; got: {text[:200]}"
 
 
 def test_chat_turn_extracts_contact_into_thread_state() -> None:

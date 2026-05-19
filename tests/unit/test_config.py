@@ -1,7 +1,9 @@
 from bookcraft.infra.config import Settings
 
 
-def test_settings_defaults_are_phase_zero_safe() -> None:
+def test_settings_defaults_are_phase_zero_safe(monkeypatch) -> None:
+    # Clear APP_ENV so we read the true default, not the test-runner env var.
+    monkeypatch.delenv("APP_ENV", raising=False)
     settings = Settings()
 
     assert settings.app_name == "bookcraft-chatbot"

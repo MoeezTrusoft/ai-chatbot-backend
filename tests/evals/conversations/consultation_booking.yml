@@ -1,0 +1,67 @@
+id: consultation_booking
+description: >
+  User requests a consultation and provides all required contact details.
+  System must reach the NEEDS_CONFIRMATION action state, allow governance
+  through, and not fabricate names or contact details.
+
+turns:
+  - role: user
+    message: "I'd like to book a consultation to discuss my book project."
+    expect:
+      intent:
+        query_primary: consultation_request
+      action_plan:
+        action_type: schedule_consultation
+        status_one_of:
+          - missing_info
+          - needs_confirmation
+      trace:
+        tool_governance:
+          allowed: true
+      response:
+        forbidden_phrases:
+          - "your consultation has been scheduled"
+          - "booked for"
+          - "appointment confirmed"
+
+
+  - role: user
+    message: >
+      My name is Maya Author, email maya@example.com,
+      phone 555-1234. I'm free next Monday at 10am.
+    expect:
+      action_plan:
+        action_type: schedule_consultation
+        status_one_of:
+          - needs_confirmation
+          - ready
+        collected_slots_include:
+          - name
+          - email
+      trace:
+        tool_governance:
+          allowed: true
+          requires_confirmation_or_ready: true
+      response:
+        one_question_rule: true
+        must_ask_confirmation_or_next_step: true
+
+  - role: user
+    message: "Yes, confirm the booking."
+    expect:
+      action_plan:
+        action_type: schedule_consultation
+        status: ready
+      trace:
+        tool_governance:
+          allowed: true
+          reason_not: counterfactual_side_effect_blocked
+      response:
+        forbidden_phrases:
+
+expectations_summary:
+  - consultation action path reached
+  - tool_governance allows once slots confirmed
+  - no fabricated contact details appear in response
+  - governance does not fire counterfactual block
+  - response_quality passes

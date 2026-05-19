@@ -1,0 +1,55 @@
+id: pricing_quote_disambiguation
+description: >
+  First turn uses "quote" in a non-pricing sense (literary quote / can't quote a fixed price).
+  Second turn explicitly requests a pricing quote for ghostwriting.
+  System must not trigger pricing on turn 1 and must trigger it on turn 2
+  without emitting a price figure while scoping info is still missing.
+
+turns:
+  - role: user
+    message: >
+      I can't quote a fixed price myself, but the book will be around 500 pages
+      and it's a business memoir.
+    expect:
+      intent:
+        query_primary_not: pricing_question
+      trace:
+        context_arbiter:
+          pricing_not_vetoed: true
+      response:
+        forbidden_phrases:
+          - "$"
+          - "USD"
+          - "estimate is"
+          - "quote engine"
+
+  - role: user
+    message: "Can you give me a quote for ghostwriting?"
+    expect:
+      intent:
+        query_primary: pricing_question
+        service_primary: ghostwriting
+      response:
+        forbidden_phrases:
+          - "$"
+          - "USD"
+          - "£"
+          - "1,000"
+          - "2,000"
+        must_ask_for_missing_slot: true
+        # System must ask for word count / manuscript stage / deadline
+        # because they are still missing despite turn 1 info
+      trace:
+        response_quality:
+          failures_must_not_contain: unapproved_price_figure
+        context_pack:
+          missing_facts_include_one_of:
+            - deadline
+            - manuscript_stage
+            - word_or_page_count
+
+expectations_summary:
+  - turn 1 must NOT be classified as pricing_question
+  - turn 2 IS pricing_question for ghostwriting
+  - no dollar figures emitted in either turn
+  - missing scoping slot is surfaced on turn 2

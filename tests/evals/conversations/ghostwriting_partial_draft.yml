@@ -1,0 +1,60 @@
+id: ghostwriting_partial_draft
+description: >
+  User has a story idea but no time; three chapters already written.
+  System must identify ghostwriting, capture partial_draft status,
+  and ask the next useful scoping question without drifting to cover design.
+
+turns:
+  - role: user
+    message: "I have a great story idea but I don't have time to write it myself."
+    expect:
+      intent:
+      response:
+        forbidden_phrases:
+          - cover design
+          - formatting
+        must_contain_one_of:
+          - genre
+          - voice
+          - story
+          - length
+
+  - role: user
+    message: "I've already written three chapters — maybe 8,000 words."
+    expect:
+      intent:
+      context_pack:
+        manuscript_status_is_one_of:
+          - partial_draft
+          - unknown
+      trace:
+        trg_semantic:
+          active_facts_path_exists: project.manuscript_status
+      response:
+        forbidden_phrases:
+          - cover design
+          - illustration
+
+  - role: user
+    message: "Can BookCraft take over and finish it for me?"
+    expect:
+      intent:
+        response:
+        forbidden_phrases:
+          - cover design
+          - cover illustration
+          - "what genre" # if genre was not yet established
+        one_question_rule: true
+      trace:
+        sales_tone:
+          passed: true
+        context_pack:
+          active_service: ghostwriting
+          allowed_next_questions_not_empty: true
+
+expectations_summary:
+  - service is ghostwriting throughout
+  - no drift to cover design or other unrelated services
+  - manuscript status captured as partial_draft or close equivalent
+  - system asks one useful scoping question per turn
+  - response_quality and sales_tone both pass
