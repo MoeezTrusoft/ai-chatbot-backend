@@ -25,6 +25,7 @@ from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
+from bookcraft.components.intent.context_arbiter import ContextArbiter
 from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
@@ -86,6 +87,7 @@ class ChatService:
     action_planner: SalesActionPlanner = field(default_factory=SalesActionPlanner)
     action_dispatcher: SalesActionDispatcher = field(default_factory=SalesActionDispatcher)
     context_pack_builder: ContextPackBuilder = field(default_factory=ContextPackBuilder)
+    context_arbiter: ContextArbiter = field(default_factory=ContextArbiter)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -209,11 +211,12 @@ class ChatService:
             )
             ensemble_intent = intent
             intent = harden_intent_from_message(intent, processed)
-            intent = self._stabilize_service_context(
+            arbiter_result = self.context_arbiter.arbitrate(
                 intent=intent,
                 processed=processed,
                 state=state,
             )
+            intent = arbiter_result.intent
             decision = self.intent_classifier.last_decision
 
             if self.trimatch_extra_mode == "advisory" and trimatch_shadow_result is not None:
@@ -545,6 +548,12 @@ class ChatService:
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
                     "context_pack": context_pack.model_dump(mode="json"),
+                    "context_arbiter": {
+                        "corrections": arbiter_result.corrections,
+                        "audit": arbiter_result.audit,
+                        "intent_before": ensemble_intent.model_dump(mode="json"),
+                        "intent_after": intent.model_dump(mode="json"),
+                    },
                     "action_plan": action_trace_payload(action_plan, action_result),
                     "trg_response_hint": trg_response_hint,
                     "components": {
@@ -862,31 +871,11 @@ class ChatService:
         processed: object,
         state: ThreadState,
     ) -> IntentVote:
-        explicit_services = _explicit_services_from_processed(processed)
-        if explicit_services:
+        from bookcraft.components.preprocessor.schemas import ProcessedMessage
+
+        if not isinstance(processed, ProcessedMessage):
             return intent
-
-        active_service = _active_service_from_state(state)
-        if active_service is None:
-            return intent
-
-        if intent.service_primary == active_service:
-            return intent
-
-        evidence = list(intent.evidence)
-        if "state_service_inertia" not in evidence:
-            evidence.append("state_service_inertia")
-
-        return intent.model_copy(
-            update={
-                "service_primary": active_service,
-                # When the current turn has no explicit service, any conflicting
-                # service guess is weak inference. Do not keep it as secondary.
-                "service_secondary": [],
-                "rationale": (f"{intent.rationale} Service focus retained from thread state."),
-                "evidence": evidence,
-            }
-        )
+        return ContextArbiter().arbitrate(intent=intent, processed=processed, state=state).intent
 
     def _apply_service_focus_to_state(
         self,

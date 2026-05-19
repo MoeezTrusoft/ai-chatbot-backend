@@ -1,6 +1,7 @@
 """Intent classification baseline."""
 
 from bookcraft.components.intent.classifier import HaikuIntentClassifier
+from bookcraft.components.intent.context_arbiter import ContextArbiter, ContextArbiterResult
 from bookcraft.components.intent.ensemble import (
     DecisionLayer,
     EnsembleIntentClassifier,
@@ -17,6 +18,8 @@ from bookcraft.components.intent.schemas import (
 )
 
 __all__ = [
+    "ContextArbiter",
+    "ContextArbiterResult",
     "DecisionLayer",
     "DecisionLayerResult",
     "EnsembleIntentClassifier",
