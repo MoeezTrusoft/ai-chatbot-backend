@@ -36,7 +36,9 @@ from bookcraft.components.pricing import (
     PricingTimelineEngine,
     PricingTimelineQuote,
 )
+from bookcraft.components.rag.query_builder import RAGQueryBuilder
 from bookcraft.components.rag.retriever import RagRetriever
+from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
@@ -94,6 +96,7 @@ class ChatService:
     tool_governance_gate: ToolGovernanceGate = field(default_factory=ToolGovernanceGate)
     response_planner: ResponsePlanner = field(default_factory=ResponsePlanner)
     response_quality_gate: ResponseQualityGate = field(default_factory=ResponseQualityGate)
+    rag_query_builder: RAGQueryBuilder = field(default_factory=RAGQueryBuilder)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -372,34 +375,6 @@ class ChatService:
                 payload=action_payload or {},
             )
             event_ids.append(event_id)
-            rag_chunks = []
-            if self.rag_retriever is not None and _allow_rag_for_intent(intent):
-                try:
-                    rag_chunks = await self.rag_retriever.retrieve(processed, intent)
-                except Exception as exc:
-                    structlog.get_logger(__name__).warning(
-                        "rag_retrieval_failed",
-                        thread_id=str(thread_id),
-                        query_intent=intent.query_primary.value,
-                        service_intent=intent.service_primary.value
-                        if intent.service_primary
-                        else None,
-                        exception_class=exc.__class__.__name__,
-                    )
-                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                        thread_id=thread_id,
-                        sequence=event_sequence,
-                        previous_hash=previous_event_hash,
-                        event_type="rag.failed",
-                        payload={
-                            "query_intent": intent.query_primary.value,
-                            "service_intent": intent.service_primary.value
-                            if intent.service_primary
-                            else None,
-                            "exception_class": exc.__class__.__name__,
-                        },
-                    )
-                    event_ids.append(event_id)
             pricing_quote: PricingTimelineQuote | None = None
             timeline_estimate: PricingTimelineQuote | None = None
             pricing_missing_question: str | None = None
@@ -470,6 +445,47 @@ class ChatService:
                 action_plan=action_plan,
                 action_result=action_result,
             )
+            # Phase 9: context-aware RAG retrieval using enriched query.
+            rag_query = self.rag_query_builder.build(
+                message=payload.message,
+                intent=intent,
+                context_pack=context_pack,
+                response_plan=response_plan,
+            )
+            rag_chunks: list[RetrievedChunk] = []
+            if self.rag_retriever is not None and _allow_rag_for_intent(intent):
+                # Enrich the processed message with the context-aware query text so
+                # BM25 retrieval benefits from known service/genre/status context
+                # while vector retrieval keeps the original embedding.
+                processed_for_rag = processed.model_copy(
+                    update={"normalized": rag_query.query_text}
+                )
+                try:
+                    rag_chunks = await self.rag_retriever.retrieve(processed_for_rag, intent)
+                except Exception as exc:
+                    structlog.get_logger(__name__).warning(
+                        "rag_retrieval_failed",
+                        thread_id=str(thread_id),
+                        query_intent=intent.query_primary.value,
+                        service_intent=intent.service_primary.value
+                        if intent.service_primary
+                        else None,
+                        exception_class=exc.__class__.__name__,
+                    )
+                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                        thread_id=thread_id,
+                        sequence=event_sequence,
+                        previous_hash=previous_event_hash,
+                        event_type="rag.failed",
+                        payload={
+                            "query_intent": intent.query_primary.value,
+                            "service_intent": intent.service_primary.value
+                            if intent.service_primary
+                            else None,
+                            "exception_class": exc.__class__.__name__,
+                        },
+                    )
+                    event_ids.append(event_id)
             document_status_message: str | None
             if not governance_decision.allowed and governance_decision.blocked_message:
                 document_status_message = governance_decision.blocked_message
@@ -603,6 +619,7 @@ class ChatService:
                         "intent_after": intent.model_dump(mode="json"),
                     },
                     "action_plan": action_trace_payload(action_plan, action_result),
+                    "rag_query": rag_query.model_dump(mode="json"),
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
                     "response_quality": quality_report.model_dump(mode="json"),
