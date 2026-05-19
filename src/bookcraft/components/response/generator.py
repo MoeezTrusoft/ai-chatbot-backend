@@ -14,6 +14,7 @@ from bookcraft.components.portfolio.schemas import PortfolioResponse, PortfolioS
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
 from bookcraft.components.rag.schemas import RetrievedChunk
+from bookcraft.components.response.planner import ResponsePlan
 from bookcraft.components.response.routing import ResponseRouter
 from bookcraft.components.response.schemas import GeneratedResponseText, ResponseDraft
 from bookcraft.domain.enums import QueryIntentType
@@ -47,6 +48,7 @@ class SonnetResponseGenerator:
         runtime_atoms: dict[str, Any] | None = None,
         response_hint: str | None = None,
         context_pack: ContextPack | None = None,
+        response_plan: ResponsePlan | None = None,
     ) -> ResponseDraft:
         with RESPONSE_SECONDS.time():
             route = self.router.route(intent)
@@ -118,6 +120,7 @@ class SonnetResponseGenerator:
                 route_name=route.name,
                 response_hint=response_hint,
                 context_pack=context_pack,
+                response_plan=response_plan,
             )
 
             if self.adapter is None:
@@ -133,6 +136,7 @@ class SonnetResponseGenerator:
                 runtime_atoms=runtime_atoms,
                 response_hint=response_hint,
                 context_pack=context_pack,
+                response_plan=response_plan,
                 attempt="full",
             )
             if text is not None:
@@ -148,6 +152,7 @@ class SonnetResponseGenerator:
                 runtime_atoms=runtime_atoms,
                 response_hint=response_hint,
                 context_pack=context_pack,
+                response_plan=response_plan,
                 attempt="reduced",
             )
             if text is not None:
@@ -170,6 +175,7 @@ class SonnetResponseGenerator:
         runtime_atoms: dict[str, Any],
         response_hint: str | None,
         context_pack: ContextPack | None,
+        response_plan: ResponsePlan | None,
         attempt: str,
     ) -> str | None:
         assert self.adapter is not None
@@ -191,6 +197,7 @@ class SonnetResponseGenerator:
                         runtime_atoms=runtime_atoms,
                         response_hint=response_hint,
                         context_pack=context_pack,
+                        response_plan=response_plan,
                     ),
                     output_model=GeneratedResponseText,
                     purpose=f"response_{attempt}",
@@ -276,12 +283,15 @@ def _humanized_template_response(
     route_name: str,
     response_hint: str | None = None,
     context_pack: ContextPack | None = None,
+    response_plan: ResponsePlan | None = None,
 ) -> str:
     del message, rag_chunks, route_name
 
     services = _ordered_human_services(intent, runtime_atoms)
     service_phrase = _service_phrase(services)
-    cta = _cta_for_intent(intent, runtime_atoms, state, context_pack=context_pack)
+    cta = _cta_for_intent(
+        intent, runtime_atoms, state, context_pack=context_pack, response_plan=response_plan
+    )
 
     forbid_markers = runtime_atoms.get("forbid_markers", [])
     has_guarantee_pressure = isinstance(forbid_markers, list) and "guarantee" in {
@@ -421,7 +431,17 @@ def _cta_for_intent(
     state: ThreadState,
     *,
     context_pack: ContextPack | None = None,
+    response_plan: ResponsePlan | None = None,
 ) -> str:
+    # ResponsePlan.next_question overrides all other CTA logic when set.
+    if response_plan is not None and response_plan.next_question is not None:
+        nq = response_plan.next_question
+        if context_pack is not None:
+            mapped = _question_for_missing_fact(nq, context_pack=context_pack)
+            if mapped is not None:
+                return mapped
+        return nq
+
     if context_pack is not None:
         for missing_fact in context_pack.allowed_next_questions:
             question = _question_for_missing_fact(
@@ -614,6 +634,7 @@ def _response_user_prompt(
     runtime_atoms: dict[str, Any],
     response_hint: str | None = None,
     context_pack: ContextPack | None = None,
+    response_plan: ResponsePlan | None = None,
 ) -> str:
     del extraction, route_name
 
@@ -670,6 +691,7 @@ def _response_user_prompt(
         else ""
     )
     context_pack_str = _context_pack_prompt_section(context_pack)
+    response_plan_str = _response_plan_prompt_section(response_plan)
 
     return (
         f'The author just wrote:\n"{message.normalized}"\n\n'
@@ -681,6 +703,7 @@ def _response_user_prompt(
         f"{negated_str}"
         f"{hint_str}"
         f"{context_pack_str}"
+        f"{response_plan_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
     )
@@ -709,6 +732,47 @@ def _context_pack_prompt_section(context_pack: ContextPack | None) -> str:
         f"- Allowed next questions: {allowed}\n"
         "Use this pack as the source of truth for what to ask next."
     )
+
+
+def _response_plan_prompt_section(response_plan: ResponsePlan | None) -> str:
+    if response_plan is None:
+        return ""
+
+    parts: list[str] = []
+
+    if response_plan.acknowledge_facts:
+        parts.append(
+            "- Acknowledge these known facts: " + ", ".join(response_plan.acknowledge_facts)
+        )
+
+    if response_plan.next_question:
+        parts.append(f"- The one question to ask next: {response_plan.next_question}")
+
+    # Filter to content-relevant suppressions (skip pure internal implementation terms).
+    _INTERNAL_FILTER = {
+        "backend",
+        "classifier",
+        "runtime atoms",
+        "provider votes",
+        "RAG",
+        "tool_governance",
+        "action_plan",
+        "deterministic engine",
+        "quote engine",
+    }
+    content_suppressions = [m for m in response_plan.must_not_mention if m not in _INTERNAL_FILTER]
+    if content_suppressions:
+        parts.append("- Do NOT ask about: " + ", ".join(content_suppressions[:8]))
+
+    parts.append("- Ask at most 1 question in your reply.")
+
+    if response_plan.customer_safe_tool_summary:
+        parts.append(f"- Status note: {response_plan.customer_safe_tool_summary}")
+
+    if not parts:
+        return ""
+
+    return "\nResponse plan:\n" + "\n".join(parts)
 
 
 def _safe_generated_text(text: str) -> str | None:

@@ -38,6 +38,7 @@ from bookcraft.components.pricing import (
 )
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
@@ -90,6 +91,7 @@ class ChatService:
     context_pack_builder: ContextPackBuilder = field(default_factory=ContextPackBuilder)
     context_arbiter: ContextArbiter = field(default_factory=ContextArbiter)
     tool_governance_gate: ToolGovernanceGate = field(default_factory=ToolGovernanceGate)
+    response_planner: ResponsePlanner = field(default_factory=ResponsePlanner)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -458,6 +460,14 @@ class ChatService:
                 trg_context=trg_context,
             )
             response_hint = context_pack.response_hint or trg_response_hint
+            response_plan = self.response_planner.plan(
+                intent=intent,
+                state=state,
+                context_pack=context_pack,
+                tool_governance=governance_decision,
+                action_plan=action_plan,
+                action_result=action_result,
+            )
             document_status_message: str | None
             if not governance_decision.allowed and governance_decision.blocked_message:
                 document_status_message = governance_decision.blocked_message
@@ -479,6 +489,7 @@ class ChatService:
                 runtime_atoms=processed.deterministic_atoms,
                 response_hint=response_hint,
                 context_pack=context_pack,
+                response_plan=response_plan,
             )
             bubbles = self.formatter.format(draft.text, approved_urls=set(draft.approved_urls))
             if self.trg_engine is not None:
@@ -572,6 +583,7 @@ class ChatService:
                     },
                     "action_plan": action_trace_payload(action_plan, action_result),
                     "tool_governance": governance_decision.model_dump(mode="json"),
+                    "response_plan": response_plan.model_dump(mode="json"),
                     "trg_response_hint": trg_response_hint,
                     "components": {
                         "event_count": len(event_ids),
