@@ -1,0 +1,65 @@
+id: cover_design_children_fiction
+description: >
+  Kashif cover-design flow. Service is established on turn 1 and must
+  remain stable through turn 4. Genre and manuscript stage are shared
+  by turn 3; the system must not re-ask for them on turn 4.
+
+turns:
+  - role: user
+    message: "I need a design on cover for my book. Can you help me with it?"
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      trace:
+        context_arbiter:
+          active_service_after: cover_design_illustration
+
+  - role: user
+    message: "Its children book"
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      context_pack:
+        active_genre_set: true
+
+  - role: user
+    message: "I have finished my manuscript."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      context_pack:
+        manuscript_status: completed_draft
+      trace:
+
+  - role: user
+    message: "Its fiction children book as I told you."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+        service_secondary: []
+      response:
+        forbidden_phrases:
+          - ghostwriting
+          - "what genre"
+          - "do you have a draft"
+          - "have a draft"
+          - "starting from scratch"
+          - "manuscript stage"
+      context_pack:
+        active_service: cover_design_illustration
+        manuscript_status: completed_draft
+        forbidden_reasks_include:
+          - genre
+          - manuscript_stage
+      trace:
+        sales_tone:
+          failures_must_not_contain: banned_opener
+        context_arbiter:
+          corrections_contain: state_service_inertia
+
+expectations_summary:
+  - service remains cover_design_illustration throughout
+  - genre and manuscript_stage never re-asked after they are known
+  - no ghostwriting mention in any response
+  - response_quality passes on final turn
+  - sales_tone has no banned opener

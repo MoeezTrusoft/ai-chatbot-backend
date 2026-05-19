@@ -1,0 +1,60 @@
+id: nda_agreement_negation
+description: >
+  User explicitly negates NDA and agreement requests. System must not
+  attempt document generation and must not claim any document was produced.
+
+turns:
+  - role: user
+    message: "I don't need an NDA."
+    expect:
+      intent:
+        query_primary_not: nda_request
+      action_plan:
+        action_type_not: generate_nda
+      trace:
+        tool_governance:
+          reason_not: allowed_with_idempotency_key
+        context_arbiter:
+          corrections_contain_one_of:
+            - nda_request_vetoed
+            - pricing_negation_veto
+      response:
+        forbidden_phrases:
+          - "your NDA"
+          - "NDA has been generated"
+          - "NDA sent"
+          - "NDA created"
+          - "document has been"
+        must_not_claim_document_generated: true
+
+  - role: user
+    message: "I am not ready for an agreement."
+    expect:
+      intent:
+        query_primary_not: agreement_request
+      action_plan:
+        action_type_not: generate_agreement
+      trace:
+        tool_governance:
+          reason_one_of:
+            - negated_agreement_blocked
+            - agreement_requires_approved_quote
+            - no_action
+      response:
+        forbidden_phrases:
+          - "your agreement"
+          - "agreement has been generated"
+          - "agreement sent"
+          - "contract created"
+          - "signed"
+        must_not_claim_document_generated: true
+      trace:
+        response_quality:
+          failures_must_not_contain: blocked_action_claimed_as_success
+
+expectations_summary:
+  - generate_nda action never fires on turn 1
+  - generate_agreement action never fires on turn 2
+  - no response text claims a document was produced
+  - tool_governance blocks or has no action on both turns
+  - response_quality does not detect blocked_action_claimed_as_success

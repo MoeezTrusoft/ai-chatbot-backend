@@ -1,0 +1,59 @@
+id: service_switch_and_addition
+description: >
+  Cover design is established, then user explicitly switches to editing,
+  then adds marketing. Each event must be recorded in TRG service_shifts
+  and the active service must reflect the correct state.
+
+turns:
+  - role: user
+    message: "I need a cover design for my fantasy novel."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      context_pack:
+        active_service: cover_design_illustration
+      trace:
+        trg_semantic:
+          service_shifts_empty_or_inertia: true
+
+  - role: user
+    message: "Actually I need editing and proofreading instead."
+    expect:
+      intent:
+        service_primary: editing_proofreading
+        service_secondary: []
+      trace:
+        context_arbiter:
+          audit_contains: explicit_service_switch
+        trg_semantic:
+          service_shifts_contain_mode: switch
+      response:
+        forbidden_phrases:
+          - "cover design"   # should not keep talking about cover design
+        one_question_rule: true
+
+  - role: user
+    message: "Can you also help with marketing?"
+    expect:
+      intent:
+        service_primary: editing_proofreading
+        service_secondary_contains: marketing_promotion
+      trace:
+        context_arbiter:
+          corrections_contain: additive_service
+          audit_contains: service_arbiter:additive_request_detected
+        trg_semantic:
+          service_shifts_contain_mode: addition
+      response:
+        one_question_rule: true
+        forbidden_phrases:
+          - cover design   # cover design should not resurface unprompted
+      trace:
+
+expectations_summary:
+  - turn 1 establishes cover_design_illustration
+  - turn 2 switches to editing_proofreading via explicit switch
+  - turn 2 TRG records a mode=switch service shift
+  - turn 3 adds marketing_promotion as secondary
+  - turn 3 TRG records a mode=addition service shift
+  - cover design does not re-appear after the switch

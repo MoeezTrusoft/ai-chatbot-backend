@@ -1,0 +1,62 @@
+id: portfolio_request
+description: >
+  User asks for portfolio samples for children's book cover design.
+  System must route to portfolio path and stay service-relevant;
+  no pricing tool and no document tool should fire.
+
+turns:
+  - role: user
+    message: >
+      Can you show me some samples of children's book cover designs
+      that BookCraft has done?
+    expect:
+      intent:
+        query_primary: portfolio_request
+        service_primary_one_of:
+          - cover_design_illustration
+          - null
+      action_plan:
+        action_type_one_of:
+          - portfolio_lookup
+          - null        # missing_info also acceptable
+        action_type_not: generate_nda
+        action_type_not_2: generate_agreement
+        action_type_not_3: price_quote
+      trace:
+        tool_governance:
+          allowed: true
+          reason_not: low_confidence_side_effect_blocked
+      response:
+        forbidden_phrases:
+          - "your NDA"
+          - "your agreement"
+          - "$"
+          - "USD"
+        must_stay_service_relevant: true
+        one_question_rule: true
+
+  - role: user
+    message: "Do you have samples for fantasy novel covers too?"
+    expect:
+      intent:
+        query_primary: portfolio_request
+      action_plan:
+        action_type_one_of:
+          - portfolio_lookup
+          - null
+        action_type_not: price_quote
+      response:
+        forbidden_phrases:
+          - "$"
+          - "your NDA"
+        one_question_rule: true
+      trace:
+        sales_tone:
+          passed: true
+
+expectations_summary:
+  - intent is portfolio_request on both turns
+  - no pricing, NDA, or agreement action fires
+  - response stays relevant to cover design samples
+  - no price figures in any response
+  - response_quality and sales_tone pass on turn 2

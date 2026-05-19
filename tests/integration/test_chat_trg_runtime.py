@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import pytest
 
 from bookcraft.api.chat import ChatTurnRequest
 from bookcraft.api.main import build_chat_service, build_trg_engine
-from bookcraft.components.extraction.schemas import StateDelta
 from bookcraft.components.trg import InMemoryGraphRepository, TemporalRelationGraphEngine
 from bookcraft.infra.config import Settings
 from bookcraft.tools import MemoryCache
@@ -16,6 +15,12 @@ from bookcraft.tools import MemoryCache
 @dataclass(slots=True)
 class FailingTrgEngine:
     calls: int = 0
+    # Phase 8: ChatService accesses .repository for _build_trg_context before
+    # calling update_after_turn.  Provide a real in-memory repository so the
+    # pre-response context build succeeds; the failure is injected at update time.
+    repository: InMemoryGraphRepository = field(  # type: ignore[assignment]
+        default_factory=InMemoryGraphRepository
+    )
 
     async def update_after_turn(
         self,
@@ -25,11 +30,26 @@ class FailingTrgEngine:
         user_text: str,
         assistant_text: str,
         previous_state: object | None = None,
-        state_deltas: list[StateDelta] | tuple[StateDelta, ...] = (),
+        state_deltas: object = (),
+        arbiter_signals: object = None,
     ) -> object:
-        del thread_id, turn_sequence, user_text, assistant_text, previous_state, state_deltas
+        del (
+            thread_id,
+            turn_sequence,
+            user_text,
+            assistant_text,
+            previous_state,
+            state_deltas,
+            arbiter_signals,
+        )
         self.calls += 1
         raise RuntimeError("trg backend unavailable author@example.com")
+
+    def build_context(self, graph: object) -> object:
+        from bookcraft.components.trg.schemas import TRGContext
+
+        del graph
+        return TRGContext()
 
 
 @pytest.mark.asyncio
