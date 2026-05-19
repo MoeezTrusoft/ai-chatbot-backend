@@ -81,11 +81,12 @@ class ResponsePlanner:
         tool_governance: ToolGovernanceDecision | None = None,
         action_plan: Any | None = None,
         action_result: Any | None = None,
+        negation_targets: list[Any] | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
         facts = _acknowledge_facts(context_pack)
-        forbidden = _must_not_mention(context_pack)
+        forbidden = _must_not_mention(context_pack, negation_targets=negation_targets)
         goal = _primary_goal(intent, context_pack, tool_governance)
         nq = _next_question(intent, context_pack, goal)
         summary = _customer_safe_tool_summary(tool_governance, action_result)
@@ -141,7 +142,11 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
     return facts
 
 
-def _must_not_mention(context_pack: ContextPack) -> list[str]:
+def _must_not_mention(
+    context_pack: ContextPack,
+    *,
+    negation_targets: list[Any] | None = None,
+) -> list[str]:
     """Return topics and terms that must not appear in the customer-facing reply."""
     items: list[str] = []
 
@@ -154,6 +159,17 @@ def _must_not_mention(context_pack: ContextPack) -> list[str]:
     # Suppress unrelated service drift when a service focus is established.
     if context_pack.active_service:
         items.append("unrelated_service_drift")
+
+    # Suppress explicitly negated services/actions from the response.
+    if negation_targets:
+        for t in negation_targets:
+            if getattr(t, "polarity", None) == "negated":
+                tt = getattr(t, "target_type", "")
+                tv = getattr(t, "target", "")
+                if tt == "service" and tv:
+                    items.append(tv)
+                elif tt in ("tool_action", "document") and tv:
+                    items.append(tv)
 
     return _ordered_unique(items)
 

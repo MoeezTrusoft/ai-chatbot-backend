@@ -463,6 +463,7 @@ class ChatService:
                 tool_governance=governance_decision,
                 action_plan=action_plan,
                 action_result=action_result,
+                negation_targets=processed.negation_targets or None,
             )
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
@@ -716,6 +717,9 @@ class ChatService:
                     if trimatch_shadow_result is not None
                     else None,
                     "runtime_atoms": processed.deterministic_atoms,
+                    "negation_targets": [
+                        t.model_dump(mode="json") for t in processed.negation_targets
+                    ],
                     "context_pack": context_pack.model_dump(mode="json"),
                     "project_context": project_snapshot.model_dump(mode="json"),
                     "context_arbiter": {

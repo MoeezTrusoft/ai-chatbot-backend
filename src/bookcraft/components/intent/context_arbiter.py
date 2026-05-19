@@ -75,6 +75,7 @@ class ContextArbiter:
         intent = _arbitrate_service(intent, processed, state, corrections, audit)
         intent = _veto_negated_pricing(intent, processed, corrections, audit)
         intent = _veto_negated_document(intent, processed, corrections, audit)
+        intent = _apply_negation_targets(intent, processed, corrections, audit)
         _audit_known_facts(state, context_pack, audit)
 
         return ContextArbiterResult(intent=intent, corrections=corrections, audit=audit)
@@ -250,6 +251,121 @@ def _veto_negated_document(
                 }
             )
         audit.append("document_arbiter:agreement_request_valid")
+
+    return intent
+
+
+# ---------------------------------------------------------------------------
+# Negation-target arbitration — uses NegationTarget list from ProcessedMessage
+# ---------------------------------------------------------------------------
+
+
+def _apply_negation_targets(
+    intent: IntentVote,
+    processed: ProcessedMessage,
+    corrections: list[str],
+    audit: list[str],
+) -> IntentVote:
+    """Use structured negation targets to fix service / query swaps.
+
+    Runs after the existing veto passes so it can repair over-vetoed intents
+    (e.g. NDA→SERVICE_QUESTION when agreement is the real replacement).
+    """
+    neg_targets = list(getattr(processed, "negation_targets", None) or [])
+    if not neg_targets:
+        audit.append("negation_targets:none")
+        return intent
+
+    negated: dict[str, set[str]] = {}  # target_type → set of negated values
+    replacements: dict[str, set[str]] = {}  # target_type → set of replacement/affirmed values
+
+    for t in neg_targets:
+        tt = t.target_type
+        tv = t.target
+        p = t.polarity
+        if p == "negated":
+            negated.setdefault(tt, set()).add(tv)
+        elif p in ("affirmed", "replacement"):
+            replacements.setdefault(tt, set()).add(tv)
+
+    audit.append(f"negation_targets:negated={dict(negated)},replacements={dict(replacements)}")
+
+    # --- Service swap ---
+    neg_services = negated.get("service", set())
+    rep_services = replacements.get("service", set())
+
+    if neg_services and rep_services:
+        current_svc = intent.service_primary
+        current_svc_val = current_svc.value if current_svc else None
+        # If current primary is negated, replace with the affirmed service.
+        if current_svc_val in neg_services or current_svc is None:
+            for svc_val in rep_services:
+                try:
+                    new_svc = ServiceCategory(svc_val)
+                    corrections.append(f"negation_target_service_swap:{current_svc_val}→{svc_val}")
+                    new_secondary = [
+                        s for s in intent.service_secondary if s.value not in neg_services
+                    ]
+                    return intent.model_copy(
+                        update={
+                            "service_primary": new_svc,
+                            "service_secondary": new_secondary,
+                            "evidence": [*intent.evidence, "negation_target_service_replacement"],
+                        }
+                    )
+                except ValueError:
+                    pass
+    elif neg_services:
+        # Service negated with no replacement → remove from primary/secondary.
+        current_svc = intent.service_primary
+        if current_svc is not None and current_svc.value in neg_services:
+            non_neg_secondary = [s for s in intent.service_secondary if s.value not in neg_services]
+            new_primary = non_neg_secondary[0] if non_neg_secondary else None
+            new_secondary = non_neg_secondary[1:] if non_neg_secondary else []
+            corrections.append(f"negation_target_service_removed:{current_svc.value}")
+            intent = intent.model_copy(
+                update={
+                    "service_primary": new_primary,
+                    "service_secondary": new_secondary,
+                    "evidence": [*intent.evidence, "negation_target_service_removal"],
+                }
+            )
+
+    # --- Document / tool-action swap ---
+    neg_actions = negated.get("tool_action", set()) | negated.get("document", set())
+    rep_actions = replacements.get("tool_action", set()) | replacements.get("document", set())
+
+    # NDA negated + agreement affirmed → upgrade intent to AGREEMENT_REQUEST.
+    if "generate_nda" in neg_actions or "nda" in neg_actions:
+        if "generate_agreement" in rep_actions or "agreement" in rep_actions:
+            if intent.query_primary != QueryIntentType.AGREEMENT_REQUEST:
+                corrections.append(
+                    "negation_target:nda_negated_agreement_affirmed→agreement_request"
+                )
+                intent = intent.model_copy(
+                    update={
+                        "query_primary": QueryIntentType.AGREEMENT_REQUEST,
+                        "needs_clarification": False,
+                        "evidence": [*intent.evidence, "negation_target_nda_to_agreement"],
+                    }
+                )
+
+    # Pricing negated + portfolio affirmed → upgrade intent to PORTFOLIO_REQUEST.
+    if "price_quote" in neg_actions or "pricing" in neg_actions:
+        if "portfolio_lookup" in rep_actions:
+            if intent.query_primary not in {
+                QueryIntentType.PORTFOLIO_REQUEST,
+            }:
+                corrections.append(
+                    "negation_target:price_quote_negated_portfolio_affirmed→portfolio_request"
+                )
+                intent = intent.model_copy(
+                    update={
+                        "query_primary": QueryIntentType.PORTFOLIO_REQUEST,
+                        "needs_clarification": False,
+                        "evidence": [*intent.evidence, "negation_target_pricing_to_portfolio"],
+                    }
+                )
 
     return intent
 

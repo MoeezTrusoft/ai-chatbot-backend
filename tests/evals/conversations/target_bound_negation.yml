@@ -1,0 +1,43 @@
+id: target_bound_negation
+description: >
+  Verifies that negation is bound to the specific target it negates, not the
+  whole conversation. A replacement/contrast target must still proceed.
+  All customer-facing text comes from Claude; engines only compute the routing.
+
+turns:
+  - role: user
+    message: "I don't need ghostwriting, I need editing."
+    expect:
+      intent:
+        service_primary: editing_proofreading
+        service_primary_not: ghostwriting
+      trace:
+        negation_targets:
+          negated_contains: ghostwriting
+          affirmed_contains: editing_proofreading
+
+  - role: user
+    message: "Don't send pricing yet, just show me samples."
+    expect:
+      trace:
+        negation_targets:
+          negated_contains: price_quote
+          affirmed_contains: portfolio_lookup
+      response:
+        forbidden_phrases:
+          - "$"
+
+  - role: user
+    message: "I don't need an NDA, but I do need a service agreement."
+    expect:
+      trace:
+        negation_targets:
+          negated_contains: generate_nda
+          affirmed_contains: generate_agreement
+
+expectations_summary:
+  - ghostwriting is negated and editing_proofreading is affirmed on turn 1
+  - service_primary is editing_proofreading after negation swap (not ghostwriting)
+  - price_quote is negated on turn 2; no price emitted in response
+  - portfolio_lookup is affirmed on turn 2
+  - NDA is negated on turn 3; agreement is affirmed
