@@ -17,6 +17,7 @@ from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response.planner import ResponsePlan
 from bookcraft.components.response.routing import ResponseRouter
 from bookcraft.components.response.schemas import GeneratedResponseText, ResponseDraft
+from bookcraft.components.response.style_policy import ResponseStylePolicy
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
 
@@ -24,6 +25,9 @@ RESPONSE_SECONDS = Histogram("response_generation_seconds", "Response generation
 
 GREETING_RESPONSE = "Hello! How can I help with your book project today?"
 logger = structlog.get_logger(__name__)
+
+# Module-level style policy used to build the LLM system prompt.
+_STYLE_POLICY = ResponseStylePolicy.default()
 
 
 @dataclass(slots=True)
@@ -186,7 +190,11 @@ class SonnetResponseGenerator:
             generated = cast(
                 GeneratedResponseText,
                 await self.adapter.structured(
-                    system=_response_system_prompt(),
+                    system=_response_system_prompt(
+                        active_service=context_pack.active_service
+                        if context_pack is not None
+                        else None
+                    ),
                     user=_response_user_prompt(
                         message=message,
                         state=state,
@@ -591,18 +599,14 @@ def _clean_customer_text(text: str) -> str:
     return cleaned.strip()
 
 
-def _response_system_prompt() -> str:
+def _response_system_prompt(active_service: str | None = None) -> str:
+    style = _STYLE_POLICY.style_instructions(active_service=active_service)
     return (
         "You are a senior BookCraft project consultant talking with an author "
         "who is considering BookCraft for their book.\n\n"
         "Your job is to help them get clarity and move one concrete step closer "
-        "to a quote, sample request, NDA, or consultation. Talk like a real "
-        "human consultant who has done this hundreds of times — warm, "
-        "plain-spoken, and direct. Use first person naturally: I, we, BookCraft. "
-        "Acknowledge what they actually said — their deadline, NDA concern, "
-        "genre, manuscript stage, platform, frustration, or excitement — before "
-        "pivoting to the next step. End with exactly one question that moves "
-        "things forward. Keep it to 3–5 sentences.\n\n"
+        "to a quote, sample request, NDA, or consultation.\n\n"
+        f"{style}\n\n"
         "What you must NOT do:\n"
         "- Do not invent prices, timelines, sample links, legal clauses, or guarantees. "
         "If you do not have an approved number, say we should scope it together.\n"
@@ -614,8 +618,7 @@ def _response_system_prompt() -> str:
         "- Do not use markdown headings, tables, bullet lists, or Source labels.\n"
         "- Do not say: is the scope I am seeing, BookCraft cannot show, deterministic "
         "engine, approved engine, quote engine, document queue, tool output, backend, "
-        "classifier, provider votes, or runtime atoms.\n"
-        "- Do not repeat the same opener every turn. Avoid sounding scripted.\n\n"
+        "classifier, provider votes, or runtime atoms.\n\n"
         "RAG context, if provided, is private grounding only. Use it to inform your "
         "reply, but do not quote it, summarize it back, cite it, or copy its structure.\n\n"
         'Output protocol: respond with one JSON object: {"text": "your reply"} '

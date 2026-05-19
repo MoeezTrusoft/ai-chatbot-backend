@@ -4,6 +4,7 @@ from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.planner import ResponsePlan
 from bookcraft.components.response.quality_gate import ResponseQualityGate
+from bookcraft.components.response.style_policy import ResponseStylePolicy, SalesToneReport
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 from bookcraft.domain.state import ThreadState
@@ -710,3 +711,43 @@ def test_blocked_tool_response_must_respect_safe_message() -> None:
     )
     assert not result.passed
     assert any("blocked_action" in f for f in result.failures)
+
+
+def test_quality_gate_uses_default_style_policy() -> None:
+    gate = ResponseQualityGate()
+    result = gate.evaluate(
+        text="Since your manuscript is finished, what cover style do you want?",
+        intent=_intent(),
+        state=ThreadState(),
+    )
+    assert result.sales_tone is not None
+
+
+def test_quality_gate_includes_sales_tone_failure_and_repair_suggestions() -> None:
+    class FailingStylePolicy(ResponseStylePolicy):
+        def evaluate(
+            self,
+            *,
+            text: str,
+            response_plan: ResponsePlan | None = None,
+            context_pack: ContextPack | None = None,
+        ) -> SalesToneReport:
+            del text, response_plan, context_pack
+            return SalesToneReport(
+                passed=False,
+                failures=["fake_excitement"],
+                suggestions=["Use calm consultative language."],
+                audit=["tone:fake_excitement:FAIL"],
+            )
+
+    gate = ResponseQualityGate(style_policy=FailingStylePolicy())
+    result = gate.evaluate(
+        text="Clean response text with one question?",
+        intent=_intent(),
+        state=ThreadState(),
+    )
+    assert not result.passed
+    assert "sales_tone" in result.failures
+    assert any("sales_tone:tone:fake_excitement:FAIL" == a for a in result.audit)
+    assert result.repair_instructions is not None
+    assert "Use calm consultative language." in result.repair_instructions

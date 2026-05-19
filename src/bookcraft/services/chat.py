@@ -42,6 +42,7 @@ from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
+from bookcraft.components.response.style_policy import ResponseStylePolicy
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
@@ -96,6 +97,7 @@ class ChatService:
     tool_governance_gate: ToolGovernanceGate = field(default_factory=ToolGovernanceGate)
     response_planner: ResponsePlanner = field(default_factory=ResponsePlanner)
     response_quality_gate: ResponseQualityGate = field(default_factory=ResponseQualityGate)
+    response_style_policy: ResponseStylePolicy = field(default_factory=ResponseStylePolicy.default)
     rag_query_builder: RAGQueryBuilder = field(default_factory=RAGQueryBuilder)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
@@ -523,6 +525,13 @@ class ChatService:
             else:
                 final_text = draft.text
                 final_source = draft.source
+            sales_tone_report = quality_report.sales_tone
+            if sales_tone_report is None or final_text != draft.text:
+                sales_tone_report = self.response_style_policy.evaluate(
+                    text=final_text,
+                    response_plan=response_plan,
+                    context_pack=context_pack,
+                )
             bubbles = self.formatter.format(final_text, approved_urls=set(draft.approved_urls))
             trg_context_for_trace: TRGContext | None = trg_context
             if self.trg_engine is not None:
@@ -623,6 +632,7 @@ class ChatService:
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
                     "response_quality": quality_report.model_dump(mode="json"),
+                    "sales_tone": sales_tone_report.model_dump(mode="json"),
                     "trg_semantic": {
                         "active_facts": [
                             f.model_dump(mode="json") for f in trg_context_for_trace.active_facts
