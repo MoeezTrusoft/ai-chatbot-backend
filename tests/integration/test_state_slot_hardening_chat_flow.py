@@ -62,7 +62,12 @@ def test_vague_deadline_not_used_for_quote() -> None:
 
     assert memory.state.project.target_completion_date.value is None
     assert "whenever i'm ready" not in str(memory.state.project.target_completion_date.value)
-    assert "deadline" in text or "manuscript stage" in text
+    # Response must ask a sensible next question; ResponsePlanner may prefer
+    # word_or_page_count, manuscript_stage, or deadline — all are acceptable.
+    assert any(
+        term in text
+        for term in ("deadline", "manuscript stage", "word count", "page count")
+    )
 
 
 def test_send_pricing_details_does_not_confirm_booking() -> None:
