@@ -34,7 +34,14 @@ from bookcraft.components.intent.context_arbiter import ContextArbiter
 from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
-from bookcraft.components.portfolio import PortfolioEngine, PortfolioRequest, PortfolioResponse
+from bookcraft.components.portfolio import (
+    PortfolioEngine,
+    PortfolioFallbackDecision,
+    PortfolioFallbackPolicy,
+    PortfolioRequest,
+    PortfolioResponse,
+)
+from bookcraft.components.portfolio.fallback_policy import update_portfolio_filter_state
 from bookcraft.components.preprocessor import SharedPreprocessor
 from bookcraft.components.pricing import (
     PricingQuoteRequest,
@@ -108,6 +115,9 @@ class ChatService:
     rag_query_builder: RAGQueryBuilder = field(default_factory=RAGQueryBuilder)
     project_context_manager: ProjectContextManager = field(default_factory=ProjectContextManager)
     slot_tracker: SlotTracker = field(default_factory=SlotTracker)
+    portfolio_fallback_policy: PortfolioFallbackPolicy = field(
+        default_factory=PortfolioFallbackPolicy
+    )
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -419,12 +429,45 @@ class ChatService:
                             ]
                         ),
                     )
+            # Phase 12 PR 5: portfolio fallback policy.
+            portfolio_fallback_decision: PortfolioFallbackDecision | None = (
+                self.portfolio_fallback_policy.decide(
+                    message=payload.message,
+                    intent=intent,
+                    state=state,
+                    action_plan=action_plan,
+                )
+            )
+            if portfolio_fallback_decision is not None:
+                update_portfolio_filter_state(
+                    state,
+                    decision=portfolio_fallback_decision,
+                    turn_id=str(event_id),
+                )
+
             portfolio_response: PortfolioResponse | None = self._portfolio_response_from_action(
                 action_result
             )
             if (
                 portfolio_response is None
                 and intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and portfolio_fallback_decision is not None
+                and portfolio_fallback_decision.strategy != "ask_filter_once"
+            ):
+                portfolio_response = await self._portfolio_turn(
+                    thread_id=thread_id,
+                    customer_id=payload.customer_id,
+                    turn_sequence=event_sequence + 1,
+                    correlation_id=payload.correlation_id,
+                    state=state,
+                    intent_service=intent.service_primary,
+                    message=payload.message,
+                    fallback_decision=portfolio_fallback_decision,
+                )
+            elif (
+                portfolio_response is None
+                and intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and portfolio_fallback_decision is None
             ):
                 portfolio_response = await self._portfolio_turn(
                     thread_id=thread_id,
@@ -466,6 +509,7 @@ class ChatService:
                 action_plan=action_plan,
                 action_result=action_result,
                 negation_targets=processed.negation_targets or None,
+                portfolio_fallback_decision=portfolio_fallback_decision,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -494,6 +538,7 @@ class ChatService:
                     action_plan=action_plan,
                     action_result=action_result,
                     negation_targets=processed.negation_targets or None,
+                    portfolio_fallback_decision=portfolio_fallback_decision,
                 )
 
             # Phase 9: context-aware RAG retrieval using enriched query.
@@ -754,6 +799,9 @@ class ChatService:
                     "slot_resolution": [s.model_dump(mode="json") for s in slot_statuses],
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None
+                    else None,
+                    "portfolio_fallback": portfolio_fallback_decision.model_dump(mode="json")
+                    if portfolio_fallback_decision is not None
                     else None,
                     "context_pack": context_pack.model_dump(mode="json"),
                     "project_context": project_snapshot.model_dump(mode="json"),
@@ -1414,20 +1462,42 @@ class ChatService:
         state: ThreadState,
         intent_service: ServiceCategory | None,
         message: str,
+        fallback_decision: PortfolioFallbackDecision | None = None,
     ) -> PortfolioResponse | None:
         if self.portfolio_engine is None:
             return None
-        service = intent_service or (
-            state.project.services_discussed[0].service.value
-            if state.project.services_discussed
-            and state.project.services_discussed[0].service.value is not None
-            else None
-        )
+
+        # Determine service from fallback filters or normal flow.
+        if fallback_decision is not None and fallback_decision.filters.get("service"):
+            raw_svc = fallback_decision.filters["service"]
+            try:
+                service: ServiceCategory | None = ServiceCategory(str(raw_svc))
+            except ValueError:
+                service = intent_service
+        else:
+            service = intent_service or (
+                state.project.services_discussed[0].service.value
+                if state.project.services_discussed
+                and state.project.services_discussed[0].service.value is not None
+                else None
+            )
         if service is None:
             return None
+
+        # For fallback_general/service_samples: skip genre filter.
+        if fallback_decision is not None and fallback_decision.strategy in (
+            "fallback_general_samples",
+            "fallback_service_samples",
+        ):
+            genre: str | None = None
+        elif fallback_decision is not None and fallback_decision.filters.get("genre"):
+            genre = str(fallback_decision.filters["genre"])
+        else:
+            genre = state.project.genre.value or _genre_from_text(message)
+
         request = PortfolioRequest(
             service=ServiceCategory(str(service)),
-            genre=state.project.genre.value or _genre_from_text(message),
+            genre=genre,
             limit=3,
         )
         if self.tool_dispatcher is None:

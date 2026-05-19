@@ -1,5 +1,7 @@
 """Portfolio Request Engine component placeholder for Phase 5."""
+
 from .engine import PortfolioEngine
+from .fallback_policy import PortfolioFallbackDecision, PortfolioFallbackPolicy
 from .registry import PortfolioRegistry
 from .schemas import (
     PortfolioMediaType,
@@ -14,6 +16,8 @@ from .verifier import PortfolioVerifier
 
 __all__ = [
     "PortfolioEngine",
+    "PortfolioFallbackDecision",
+    "PortfolioFallbackPolicy",
     "PortfolioMediaType",
     "PortfolioRegistry",
     "PortfolioRequest",

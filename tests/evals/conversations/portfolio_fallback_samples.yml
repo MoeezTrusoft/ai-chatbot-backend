@@ -1,0 +1,34 @@
+id: portfolio_fallback_samples
+description: >
+  User asks for samples with no genre/context, gets asked once for a filter.
+  On the second turn, the user says they do not know. The bot must show
+  samples without asking genre/category again.
+
+turns:
+  - role: user
+    message: "Show me some samples of your work."
+    expect:
+      intent:
+        query_primary: portfolio_request
+      trace:
+        portfolio_fallback:
+          strategy_one_of: [ask_filter_once, use_context_filter, fallback_general_samples]
+
+  - role: user
+    message: "I don't know the genre, just show me any samples."
+    expect:
+      trace:
+        portfolio_fallback:
+          strategy_one_of: [fallback_general_samples, fallback_service_samples]
+      response:
+        forbidden_phrases:
+          - "what genre"
+          - "which genre"
+          - "what category"
+          - "what type of book"
+
+expectations_summary:
+  - Turn 1 portfolio_fallback strategy is ask_filter_once or context-based
+  - Turn 2 strategy is fallback_general_samples or fallback_service_samples
+  - Response on turn 2 must not ask genre/category/type
+  - Final source is Claude-compliant (not portfolio_engine_quality_fallback)

@@ -117,6 +117,12 @@ _REASK_PATTERNS: dict[str, re.Pattern[str]] = {
         r"\b(?:deadline|launch\s+(?:date|window|timeline)|by\s+when|target\s+(?:date|deadline))\b",
         re.IGNORECASE,
     ),
+    # Portfolio filter re-ask — caught after fallback_allowed.
+    "portfolio_filter": re.compile(
+        r"\b(?:what\s+genre|which\s+genre|what\s+(?:type|kind)\s+of\s+(?:book|samples?)"
+        r"|what\s+service|which\s+service|what\s+category)\b",
+        re.IGNORECASE,
+    ),
 }
 
 # Slot-resolution re-ask patterns for delegated/declined/unknown slots.

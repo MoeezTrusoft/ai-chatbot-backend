@@ -82,12 +82,17 @@ class ResponsePlanner:
         action_plan: Any | None = None,
         action_result: Any | None = None,
         negation_targets: list[Any] | None = None,
+        portfolio_fallback_decision: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
         facts = _acknowledge_facts(context_pack)
-        forbidden = _must_not_mention(context_pack, negation_targets=negation_targets)
-        goal = _primary_goal(intent, context_pack, tool_governance)
+        forbidden = _must_not_mention(
+            context_pack,
+            negation_targets=negation_targets,
+            portfolio_fallback_decision=portfolio_fallback_decision,
+        )
+        goal = _primary_goal(intent, context_pack, tool_governance, portfolio_fallback_decision)
         nq = _next_question(intent, context_pack, goal)
         summary = _customer_safe_tool_summary(tool_governance, action_result)
 
@@ -146,6 +151,7 @@ def _must_not_mention(
     context_pack: ContextPack,
     *,
     negation_targets: list[Any] | None = None,
+    portfolio_fallback_decision: Any | None = None,
 ) -> list[str]:
     """Return topics and terms that must not appear in the customer-facing reply."""
     items: list[str] = []
@@ -181,6 +187,14 @@ def _must_not_mention(
                 elif tt in ("tool_action", "document") and tv:
                     items.append(tv)
 
+    # Suppress portfolio genre/category filter question when fallback is active.
+    if portfolio_fallback_decision is not None:
+        strategy = getattr(portfolio_fallback_decision, "strategy", None)
+        if strategy in ("fallback_general_samples", "fallback_service_samples"):
+            for _suppressed in ("genre", "category", "portfolio_filter"):
+                if _suppressed not in items:
+                    items.append(_suppressed)
+
     return _ordered_unique(items)
 
 
@@ -188,6 +202,7 @@ def _primary_goal(
     intent: IntentVote,
     context_pack: ContextPack,
     tool_governance: ToolGovernanceDecision | None,
+    portfolio_fallback_decision: Any | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
     if tool_governance is not None and not tool_governance.allowed:
@@ -198,6 +213,18 @@ def _primary_goal(
     # Project-event overrides (evaluated before service/intent goals).
     if context_pack.project_event == "ambiguous_project_reference":
         return "clarify_project_scope"
+
+    # Portfolio fallback goal overrides.
+    if portfolio_fallback_decision is not None:
+        strategy = getattr(portfolio_fallback_decision, "strategy", None)
+        if strategy == "ask_filter_once":
+            return "portfolio_scoping"
+        if strategy in (
+            "fallback_general_samples",
+            "fallback_service_samples",
+            "use_context_filter",
+        ):
+            return "portfolio_matching"
 
     # Delegated creative slot: cover_style handed off to BookCraft.
     delegated_slot_names = {s.slot for s in (context_pack.delegated_slots or [])}
@@ -231,6 +258,14 @@ def _next_question(
 
     # Delegated creative turn: no next question for the delegated slot.
     if primary_goal == "process_explanation":
+        return None
+
+    # Portfolio scoping: ask for service/genre filter once.
+    if primary_goal == "portfolio_scoping":
+        return "portfolio_filter"
+
+    # Portfolio matching: no genre/category filter question after fallback.
+    if primary_goal == "portfolio_matching":
         return None
 
     # Select the priority list for this scenario.
