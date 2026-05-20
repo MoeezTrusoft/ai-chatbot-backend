@@ -170,6 +170,14 @@ class RAGQueryBuilder:
             if context_pack.project_event:
                 filters["project_event"] = context_pack.project_event
                 audit.append(f"rag_query:project_event:{context_pack.project_event}")
+            # Explicitly note when previous project facts are excluded from query text.
+            if context_pack.previous_project_id:
+                audit.append(
+                    f"rag_query:previous_project_excluded:{context_pack.previous_project_id[:8]}"
+                )
+            # project_event==new_project: confirm active facts are scoped to new project.
+            if context_pack.project_event == "new_project":
+                audit.append("rag_query:new_project_scope_enforced")
 
         if response_plan is not None:
             # Primary goal context phrase.

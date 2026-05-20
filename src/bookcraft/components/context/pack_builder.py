@@ -136,21 +136,49 @@ class ContextPackBuilder:
                     f"trg_semantic_contradiction:{len(trg_context.contradictions)}"
                 )
 
-        # Build project memory summary from inactive projects.
+        # Build project memory summary and richer project context.
         project_memory_summary: list[str] = []
+        previous_project_summary: list[str] = []
+        project_scope_warnings: list[str] = []
         active_project_id: str | None = None
         previous_project_id: str | None = None
+        active_project_label: str | None = None
         if project_snapshot is not None:
             active_project_id = project_snapshot.active_project_id
             previous_project_id = project_snapshot.previous_project_id
+            # Active project label.
             for proj in project_snapshot.projects:
-                if not proj.active and proj.known_facts:
-                    summary = ", ".join(f"{k}={v}" for k, v in list(proj.known_facts.items())[:3])
-                    project_memory_summary.append(f"prev_project:{proj.project_id[:8]}:{summary}")
+                if proj.active:
+                    active_project_label = proj.label
+            # Previous project summaries.
+            for proj in project_snapshot.projects:
+                if not proj.active:
+                    if proj.known_facts:
+                        summary = ", ".join(
+                            f"{k}={v}" for k, v in list(proj.known_facts.items())[:3]
+                        )
+                        entry = f"prev_project:{proj.project_id[:8]}:{summary}"
+                        project_memory_summary.append(entry)
+                        previous_project_summary.append(entry)
+                    else:
+                        project_memory_summary.append(
+                            f"prev_project:{proj.project_id[:8]}:no_facts"
+                        )
+            # Scope warning when carry_over is not allowed.
+            if project_event == "new_project":
+                project_scope_warnings.append("carry_over_not_allowed:new_project_active")
 
-        # Apply slot resolution statuses from thread state.
+        # Apply slot resolution statuses from thread state — project-aware filtering.
         raw_statuses = getattr(state, "slot_resolution_statuses", None) or []
-        slot_statuses = load_slot_statuses(raw_statuses)
+        all_slot_statuses = load_slot_statuses(raw_statuses)
+
+        # Only consider statuses that belong to the active project or have no project_id (legacy).
+        slot_statuses = [
+            s
+            for s in all_slot_statuses
+            if s.project_id is None or s.project_id == active_project_id
+        ]
+
         declined_list, delegated_list, unknown_list = _split_slot_statuses(slot_statuses)
 
         # Slots that are resolved non-positively should not be re-asked.
@@ -194,6 +222,9 @@ class ContextPackBuilder:
             project_event=project_event,
             previous_project_id=previous_project_id,
             project_memory_summary=project_memory_summary,
+            active_project_label=active_project_label,
+            previous_project_summary=previous_project_summary,
+            project_scope_warnings=project_scope_warnings,
             declined_slots=declined_list,
             delegated_slots=delegated_list,
             unknown_slots=unknown_list,

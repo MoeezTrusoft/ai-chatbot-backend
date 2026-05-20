@@ -71,6 +71,8 @@ class SlotResolutionStatus(BaseModel):
     reason: str | None = None
     forbidden_reask: bool = False
     confidence: float = 1.0
+    # Project scoping — None means legacy/global (applies to any project).
+    project_id: str | None = None
 
 
 class DelegatedDecision(BaseModel):

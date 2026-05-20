@@ -83,6 +83,13 @@ class TurnExpectation(BaseModel):
     flexible_intent_mode_one_of: list[str] = Field(default_factory=list)
     flexible_intent_recommended_primary_goal: str | None = None
 
+    # RAG query trace checks.
+    rag_query_text_must_not_contain: str | None = None
+    rag_filters_active_project_id: str | None = None
+
+    # TRG project-shift checks.
+    trg_project_shifts_contains_event: str | None = None
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -241,6 +248,14 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["flexible_intent_recommended_primary_goal"] = checks[
                     "recommended_primary_goal"
                 ]
+        if section == "rag_query":
+            if "text_must_not_contain" in checks:
+                flat["rag_query_text_must_not_contain"] = checks["text_must_not_contain"]
+            if "filters_active_project_id" in checks:
+                flat["rag_filters_active_project_id"] = checks["filters_active_project_id"]
+        if section == "trg_semantic":
+            if "project_shifts_contains_event" in checks:
+                flat["trg_project_shifts_contains_event"] = checks["project_shifts_contains_event"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -379,6 +394,8 @@ def run_conversation_case(
         sr_trace: list[dict[str, Any]] = trace.get("slot_resolution") or []
         pf_trace: dict[str, Any] = trace.get("portfolio_fallback") or {}
         fi_trace: dict[str, Any] = trace.get("flexible_intent") or {}
+        rag_trace: dict[str, Any] = trace.get("rag_query") or {}
+        trg_trace: dict[str, Any] = trace.get("trg_semantic") or {}
 
         ex = turn.expect
 
@@ -674,6 +691,45 @@ def run_conversation_case(
             else:
                 failures.append(
                     f"turn {idx} portfolio_fallback.strategy: '{got_strategy}' not in {allowed}"
+                )
+            context_expected += 1
+
+        # — RAG query checks —
+        if ex.rag_query_text_must_not_contain is not None:
+            query_text = rag_trace.get("query_text") or ""
+            forbidden_term = ex.rag_query_text_must_not_contain.casefold()
+            if forbidden_term in query_text.casefold():
+                failures.append(
+                    f"turn {idx} rag_query.query_text must not contain '{forbidden_term}'"
+                )
+            context_expected += 1
+            if forbidden_term not in query_text.casefold():
+                context_matched += 1
+
+        if ex.rag_filters_active_project_id is not None:
+            rag_filters = rag_trace.get("filters") or {}
+            got_pid = rag_filters.get("active_project_id")
+            want_pid = ex.rag_filters_active_project_id
+            if got_pid == want_pid:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} rag_query.filters.active_project_id: "
+                    f"expected '{want_pid}', got '{got_pid}'"
+                )
+            context_expected += 1
+
+        # — TRG project-shift checks —
+        if ex.trg_project_shifts_contains_event is not None:
+            shifts = trg_trace.get("project_shifts") or []
+            want_event = ex.trg_project_shifts_contains_event
+            found_event = any(s.get("event") == want_event for s in shifts)
+            if found_event:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} trg_semantic.project_shifts: "
+                    f"event '{want_event}' not found in {shifts}"
                 )
             context_expected += 1
 

@@ -65,7 +65,12 @@ from bookcraft.components.storage.thread_repository import (
 )
 from bookcraft.components.tools.governance import ToolGovernanceGate
 from bookcraft.components.trg import TemporalRelationGraphEngine
-from bookcraft.components.trg.schemas import TRGContext
+from bookcraft.components.trg.schemas import (
+    DelegationEvent,
+    ProjectShiftEvent,
+    SlotResolutionEvent,
+    TRGContext,
+)
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
@@ -894,6 +899,13 @@ class ChatService:
                         ]
                         if trg_context_for_trace is not None
                         else [],
+                        "project_shifts": _build_project_shifts(project_snapshot),
+                        "slot_resolutions": _build_slot_resolutions(
+                            slot_statuses, project_snapshot
+                        ),
+                        "delegations": _build_delegations(
+                            self.slot_tracker.last_decision, project_snapshot
+                        ),
                     },
                     "trg_response_hint": trg_response_hint,
                     "components": {
@@ -2745,3 +2757,67 @@ def _trg_response_hint_from_context(
         return None
 
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 PR 7: project/slot event helpers for TRG trace enrichment
+# ---------------------------------------------------------------------------
+
+
+def _build_project_shifts(project_snapshot: Any) -> list[dict[str, Any]]:
+    if project_snapshot is None:
+        return []
+    decision = getattr(project_snapshot, "decision", None)
+    if decision is None:
+        return []
+    event = getattr(decision, "event", None)
+    if not event or event == "same_project":
+        return []
+    shift = ProjectShiftEvent(
+        previous_project_id=getattr(decision, "previous_project_id", None),
+        new_project_id=getattr(decision, "active_project_id", None),
+        event=str(event),
+        audit=list(getattr(decision, "audit", [])),
+    )
+    return [shift.model_dump(mode="json")]
+
+
+def _build_slot_resolutions(
+    slot_statuses: list[Any],
+    project_snapshot: Any,
+) -> list[dict[str, Any]]:
+    if not slot_statuses:
+        return []
+    active_id: str | None = None
+    if project_snapshot is not None:
+        active_id = getattr(project_snapshot, "active_project_id", None)
+    result: list[dict[str, Any]] = []
+    for s in slot_statuses:
+        ev = SlotResolutionEvent(
+            project_id=active_id,
+            slot=s.slot,
+            status=s.status,
+            source_turn_id=s.source_turn_id,
+            forbidden_reask=s.forbidden_reask,
+        )
+        result.append(ev.model_dump(mode="json"))
+    return result
+
+
+def _build_delegations(
+    delegated_decision: Any,
+    project_snapshot: Any,
+) -> list[dict[str, Any]]:
+    if delegated_decision is None:
+        return []
+    if not getattr(delegated_decision, "detected", False):
+        return []
+    active_id: str | None = None
+    if project_snapshot is not None:
+        active_id = getattr(project_snapshot, "active_project_id", None)
+    ev = DelegationEvent(
+        project_id=active_id,
+        slot=getattr(delegated_decision, "target_slot", None),
+        status=str(getattr(delegated_decision, "status", "not_delegated")),
+    )
+    return [ev.model_dump(mode="json")]
