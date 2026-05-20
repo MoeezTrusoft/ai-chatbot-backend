@@ -35,6 +35,9 @@ export type ChatTurnResponse = {
   intent?: ChatIntent;
   language_status?: string;
   debug_event_ids?: string[];
+  blocked?: boolean;
+  input_disabled?: boolean;
+  system_message?: string | null;
   [key: string]: unknown;
 };
 
@@ -85,4 +88,6 @@ export type TestThread = {
   createdAt: string;
   updatedAt: string;
   turns: ThreadTurn[];
+  inputDisabled?: boolean;
+  blockedSystemMessage?: string;
 };
