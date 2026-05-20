@@ -29,6 +29,25 @@ except ImportError:
 _MAX_TRACE_LIMIT = 500
 
 
+def _trace_rows_from_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+
+    if isinstance(payload, dict):
+        for key in ("traces", "items", "data"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [row for row in value if isinstance(row, dict)]
+
+    return []
+
+
+def _thread_id_from_trace(row: dict[str, Any]) -> str:
+    thread = row.get("thread")
+    nested_id = thread.get("id") if isinstance(thread, dict) else None
+    return str(row.get("thread_id") or row.get("threadId") or nested_id or "")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export latest thread traces")
     parser.add_argument("--base-url", default="http://localhost:8000")
@@ -60,7 +79,7 @@ def main() -> int:
             params={"limit": trace_limit},
         )
         resp.raise_for_status()
-        latest_rows: list[dict[str, Any]] = resp.json()
+        latest_rows = _trace_rows_from_payload(resp.json())
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR fetching latest traces: {exc}", file=sys.stderr)
         return 1
@@ -69,7 +88,7 @@ def main() -> int:
     seen: set[str] = set()
     thread_ids: list[str] = []
     for row in latest_rows:
-        tid = str(row.get("thread_id") or "")
+        tid = _thread_id_from_trace(row)
         if tid and tid not in seen:
             seen.add(tid)
             thread_ids.append(tid)
@@ -89,7 +108,7 @@ def main() -> int:
                 params={"limit": trace_limit},
             )
             resp.raise_for_status()
-            rows: list[dict[str, Any]] = resp.json()
+            rows = _trace_rows_from_payload(resp.json())
         except Exception as exc:  # noqa: BLE001
             print(f"  WARNING: failed to fetch thread {tid}: {exc}", file=sys.stderr)
             errors.append({"thread_id": tid, "error": str(exc)})
