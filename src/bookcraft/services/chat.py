@@ -31,6 +31,7 @@ from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
 from bookcraft.components.intent.context_arbiter import ContextArbiter
+from bookcraft.components.intent.flexible_router import FlexibleIntentDecision, FlexibleIntentRouter
 from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
@@ -118,6 +119,7 @@ class ChatService:
     portfolio_fallback_policy: PortfolioFallbackPolicy = field(
         default_factory=PortfolioFallbackPolicy
     )
+    flexible_intent_router: FlexibleIntentRouter = field(default_factory=FlexibleIntentRouter)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -541,6 +543,29 @@ class ChatService:
                     portfolio_fallback_decision=portfolio_fallback_decision,
                 )
 
+            # Phase 12 PR 6: flexible intent routing.
+            flexible_intent_decision: FlexibleIntentDecision = self.flexible_intent_router.route(
+                text=payload.message,
+                intent=intent,
+                state=state,
+                context_pack=context_pack,
+                response_plan=response_plan,
+                delegated_decision=self.slot_tracker.last_decision,
+                portfolio_fallback_decision=portfolio_fallback_decision,
+            )
+            if flexible_intent_decision.detected:
+                response_plan = self.response_planner.plan(
+                    intent=intent,
+                    state=state,
+                    context_pack=context_pack,
+                    tool_governance=governance_decision,
+                    action_plan=action_plan,
+                    action_result=action_result,
+                    negation_targets=processed.negation_targets or None,
+                    portfolio_fallback_decision=portfolio_fallback_decision,
+                    flexible_intent_decision=flexible_intent_decision,
+                )
+
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
                 message=payload.message,
@@ -803,6 +828,7 @@ class ChatService:
                     "portfolio_fallback": portfolio_fallback_decision.model_dump(mode="json")
                     if portfolio_fallback_decision is not None
                     else None,
+                    "flexible_intent": flexible_intent_decision.model_dump(mode="json"),
                     "context_pack": context_pack.model_dump(mode="json"),
                     "project_context": project_snapshot.model_dump(mode="json"),
                     "context_arbiter": {

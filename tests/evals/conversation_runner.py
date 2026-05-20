@@ -78,6 +78,11 @@ class TurnExpectation(BaseModel):
     # Portfolio-fallback trace checks.
     portfolio_fallback_strategy_one_of: list[str] = Field(default_factory=list)
 
+    # Flexible-intent trace checks.
+    flexible_intent_detected: bool | None = None
+    flexible_intent_mode_one_of: list[str] = Field(default_factory=list)
+    flexible_intent_recommended_primary_goal: str | None = None
+
 
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -227,6 +232,15 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
         if section == "portfolio_fallback":
             if "strategy_one_of" in checks:
                 flat["portfolio_fallback_strategy_one_of"] = checks["strategy_one_of"]
+        if section == "flexible_intent":
+            if "detected" in checks:
+                flat["flexible_intent_detected"] = checks["detected"]
+            if "mode_one_of" in checks:
+                flat["flexible_intent_mode_one_of"] = checks["mode_one_of"]
+            if "recommended_primary_goal" in checks:
+                flat["flexible_intent_recommended_primary_goal"] = checks[
+                    "recommended_primary_goal"
+                ]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -364,6 +378,7 @@ def run_conversation_case(
         nt_trace: list[dict[str, Any]] = trace.get("negation_targets") or []
         sr_trace: list[dict[str, Any]] = trace.get("slot_resolution") or []
         pf_trace: dict[str, Any] = trace.get("portfolio_fallback") or {}
+        fi_trace: dict[str, Any] = trace.get("flexible_intent") or {}
 
         ex = turn.expect
 
@@ -612,6 +627,41 @@ def run_conversation_case(
             else:
                 failures.append(
                     f"turn {idx} slot_resolution: status '{want_status}' not found in {sr_trace}"
+                )
+            context_expected += 1
+
+        # — flexible-intent checks —
+        if ex.flexible_intent_detected is not None:
+            got_detected = bool(fi_trace.get("detected"))
+            if got_detected == ex.flexible_intent_detected:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} flexible_intent.detected: "
+                    f"expected {ex.flexible_intent_detected}, got {got_detected}"
+                )
+            context_expected += 1
+
+        if ex.flexible_intent_mode_one_of:
+            got_mode = fi_trace.get("mode")
+            allowed_modes = ex.flexible_intent_mode_one_of
+            if got_mode in allowed_modes:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} flexible_intent.mode: '{got_mode}' not in {allowed_modes}"
+                )
+            context_expected += 1
+
+        if ex.flexible_intent_recommended_primary_goal is not None:
+            got_goal = fi_trace.get("recommended_primary_goal")
+            want_goal = ex.flexible_intent_recommended_primary_goal
+            if got_goal == want_goal:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} flexible_intent.recommended_primary_goal: "
+                    f"expected '{want_goal}', got '{got_goal}'"
                 )
             context_expected += 1
 

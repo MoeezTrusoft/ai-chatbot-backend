@@ -83,6 +83,7 @@ class ResponsePlanner:
         action_result: Any | None = None,
         negation_targets: list[Any] | None = None,
         portfolio_fallback_decision: Any | None = None,
+        flexible_intent_decision: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -92,8 +93,14 @@ class ResponsePlanner:
             negation_targets=negation_targets,
             portfolio_fallback_decision=portfolio_fallback_decision,
         )
-        goal = _primary_goal(intent, context_pack, tool_governance, portfolio_fallback_decision)
-        nq = _next_question(intent, context_pack, goal)
+        goal = _primary_goal(
+            intent,
+            context_pack,
+            tool_governance,
+            portfolio_fallback_decision,
+            flexible_intent_decision,
+        )
+        nq = _next_question(intent, context_pack, goal, flexible_intent_decision)
         summary = _customer_safe_tool_summary(tool_governance, action_result)
 
         facts_tag = (
@@ -203,6 +210,7 @@ def _primary_goal(
     context_pack: ContextPack,
     tool_governance: ToolGovernanceDecision | None,
     portfolio_fallback_decision: Any | None = None,
+    flexible_intent_decision: Any | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
     if tool_governance is not None and not tool_governance.allowed:
@@ -226,6 +234,14 @@ def _primary_goal(
         ):
             return "portfolio_matching"
 
+    # Flexible intent overrides — evaluated before service-specific goals.
+    if flexible_intent_decision is not None and getattr(
+        flexible_intent_decision, "detected", False
+    ):
+        return str(
+            getattr(flexible_intent_decision, "recommended_primary_goal", "continue_discovery")
+        )
+
     # Delegated creative slot: cover_style handed off to BookCraft.
     delegated_slot_names = {s.slot for s in (context_pack.delegated_slots or [])}
     if (
@@ -244,6 +260,7 @@ def _next_question(
     intent: IntentVote,
     context_pack: ContextPack,
     primary_goal: str,
+    flexible_intent_decision: Any | None = None,
 ) -> str | None:
     """Return the single highest-priority missing fact to ask about next."""
     del intent  # reserved for future per-intent refinement
@@ -258,6 +275,21 @@ def _next_question(
 
     # Delegated creative turn: no next question for the delegated slot.
     if primary_goal == "process_explanation":
+        return None
+
+    # Flexible intent goals: use the decision's suggested next question.
+    if primary_goal in (
+        "flexible_service_guidance",
+        "bookcraft_discretion",
+        "consultation_handoff",
+    ):
+        if flexible_intent_decision is not None:
+            nq_raw = getattr(flexible_intent_decision, "next_question", None)
+            nq = str(nq_raw) if nq_raw is not None else None
+            # Ensure the suggested question is not in disallowed_next_questions.
+            disallowed = set(context_pack.disallowed_next_questions)
+            if nq and nq not in disallowed:
+                return nq
         return None
 
     # Portfolio scoping: ask for service/genre filter once.
