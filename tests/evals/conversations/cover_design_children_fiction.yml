@@ -28,7 +28,7 @@ turns:
       intent:
         service_primary: cover_design_illustration
       context_pack:
-        manuscript_status: completed_draft
+        manuscript_status: completed
       trace:
 
   - role: user
@@ -47,7 +47,7 @@ turns:
           - "manuscript stage"
       context_pack:
         active_service: cover_design_illustration
-        manuscript_status: completed_draft
+        manuscript_status: completed
         forbidden_reasks_include:
           - genre
           - manuscript_stage

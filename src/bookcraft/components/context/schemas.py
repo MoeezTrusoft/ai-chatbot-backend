@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.context.delegation import SlotResolutionStatus
 
 
@@ -45,3 +46,8 @@ class ContextPack(BaseModel):
     declined_slots: list[SlotResolutionStatus] = Field(default_factory=list)
     delegated_slots: list[SlotResolutionStatus] = Field(default_factory=list)
     unknown_slots: list[SlotResolutionStatus] = Field(default_factory=list)
+    # Phase 13: attachment intake fields.
+    attachments_received: list[ChatAttachment] = Field(default_factory=list)
+    assessment_type: str | None = None
+    specialist_role: str | None = None
+    attachment_policy: str = "metadata_only_no_content_analysis"

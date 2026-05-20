@@ -58,10 +58,20 @@ class SalesStage(StrEnum):
 
 
 class ManuscriptStatus(StrEnum):
-    IDEA_ONLY = "idea_only"
+    # Legacy values (kept for backward compatibility).
+    IDEA_ONLY = "idea_only"  # maps to IDEA in v2
+    COMPLETED_DRAFT = "completed_draft"  # maps to COMPLETED in v2
+    # v2 taxonomy.
+    IDEA = "idea"
+    ROUGH_NOTES = "rough_notes"
+    JOURNAL_ENTRIES = "journal_entries"
+    VOICE_MEMO = "voice_memo"
     OUTLINE = "outline"
+    IN_PROGRESS = "in_progress"
     PARTIAL_DRAFT = "partial_draft"
-    COMPLETED_DRAFT = "completed_draft"
+    DRAFT = "draft"
+    COMPLETED = "completed"
+    # Structural states.
     EDITED = "edited"
     PUBLISHED = "published"
     UNKNOWN = "unknown"

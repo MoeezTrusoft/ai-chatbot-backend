@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.api.auth import authenticate_websocket, require_http_auth
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
+from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
 from bookcraft.infra.config import Settings
@@ -22,6 +23,7 @@ class ChatTurnRequest(BaseModel):
     customer_id: UUID | None = None
     message: str = Field(min_length=1, max_length=8000)
     correlation_id: str | None = Field(default=None, max_length=128)
+    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ChatTurnResponse(BaseModel):

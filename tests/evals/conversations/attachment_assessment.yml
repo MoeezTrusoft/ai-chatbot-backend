@@ -1,0 +1,34 @@
+id: attachment_assessment
+description: >
+  User requests editing help and provides a manuscript attachment.
+  The bot must acknowledge the file, route to editorial assessment, and must
+  NOT claim to have reviewed, analyzed, or read the file content.
+
+turns:
+  - role: user
+    message: "I need editing for my completed manuscript. I'm attaching the file."
+    expect:
+      intent:
+        service_primary: editing_proofreading
+      response:
+        forbidden_phrases:
+          - "I reviewed"
+          - "I analyzed"
+          - "I read"
+          - "your manuscript says"
+          - "I found in the attachment"
+
+  - role: user
+    message: "What happens next with the assessment?"
+    expect:
+      response:
+        forbidden_phrases:
+          - "I reviewed your"
+          - "having analyzed"
+          - "after reading your manuscript"
+
+expectations_summary:
+  - service_primary is editing_proofreading
+  - Response never claims attachment was reviewed or analyzed
+  - Assessment routing structured in response plan (not hardcoded prose)
+  - Bot may mention specialist assessment in a forward-looking way
