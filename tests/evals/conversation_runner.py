@@ -350,6 +350,15 @@ def run_conversation_case(
     rq_failures = tone_failures = 0
     latency_samples: list[float] = []
 
+    # Phase 12 capability counters
+    p12_project_exp = p12_project_hit = 0
+    p12_negation_exp = p12_negation_hit = 0
+    p12_portfolio_exp = p12_portfolio_hit = 0
+    p12_flexible_exp = p12_flexible_hit = 0
+    p12_rag_exp = p12_rag_hit = 0
+    p12_delegated_reask_violations = 0
+    p12_claude_only_turns = p12_claude_only_passed = 0
+
     for idx, turn in enumerate(case.turns, start=1):
         payload: dict[str, Any] = {"message": turn.user}
         if thread_id is not None:
@@ -566,12 +575,14 @@ def run_conversation_case(
             got_event = pc_decision.get("event")
             if got_event == ex.project_context_event:
                 context_matched += 1
+                p12_project_hit += 1
             else:
                 failures.append(
                     f"turn {idx} project_context.event: "
                     f"expected '{ex.project_context_event}', got '{got_event}'"
                 )
             context_expected += 1
+            p12_project_exp += 1
 
         if ex.project_context_active_id_changed is True:
             pc_decision = pc_trace.get("decision") or {}
@@ -601,8 +612,10 @@ def run_conversation_case(
                     f"turn {idx} negation_targets: '{want}' not found in negated targets {neg_vals}"
                 )
             context_expected += 1
+            p12_negation_exp += 1
             if want in neg_vals:
                 context_matched += 1
+                p12_negation_hit += 1
 
         if ex.negation_targets_affirmed_contains is not None:
             aff_vals = {
@@ -617,8 +630,10 @@ def run_conversation_case(
                     f"targets {aff_vals}"
                 )
             context_expected += 1
+            p12_negation_exp += 1
             if want in aff_vals:
                 context_matched += 1
+                p12_negation_hit += 1
 
         # — slot-resolution checks —
         if ex.slot_resolution_contains_slot is not None:
@@ -652,35 +667,41 @@ def run_conversation_case(
             got_detected = bool(fi_trace.get("detected"))
             if got_detected == ex.flexible_intent_detected:
                 context_matched += 1
+                p12_flexible_hit += 1
             else:
                 failures.append(
                     f"turn {idx} flexible_intent.detected: "
                     f"expected {ex.flexible_intent_detected}, got {got_detected}"
                 )
             context_expected += 1
+            p12_flexible_exp += 1
 
         if ex.flexible_intent_mode_one_of:
             got_mode = fi_trace.get("mode")
             allowed_modes = ex.flexible_intent_mode_one_of
             if got_mode in allowed_modes:
                 context_matched += 1
+                p12_flexible_hit += 1
             else:
                 failures.append(
                     f"turn {idx} flexible_intent.mode: '{got_mode}' not in {allowed_modes}"
                 )
             context_expected += 1
+            p12_flexible_exp += 1
 
         if ex.flexible_intent_recommended_primary_goal is not None:
             got_goal = fi_trace.get("recommended_primary_goal")
             want_goal = ex.flexible_intent_recommended_primary_goal
             if got_goal == want_goal:
                 context_matched += 1
+                p12_flexible_hit += 1
             else:
                 failures.append(
                     f"turn {idx} flexible_intent.recommended_primary_goal: "
                     f"expected '{want_goal}', got '{got_goal}'"
                 )
             context_expected += 1
+            p12_flexible_exp += 1
 
         # — portfolio-fallback checks —
         if ex.portfolio_fallback_strategy_one_of:
@@ -688,11 +709,13 @@ def run_conversation_case(
             allowed = ex.portfolio_fallback_strategy_one_of
             if got_strategy in allowed:
                 context_matched += 1
+                p12_portfolio_hit += 1
             else:
                 failures.append(
                     f"turn {idx} portfolio_fallback.strategy: '{got_strategy}' not in {allowed}"
                 )
             context_expected += 1
+            p12_portfolio_exp += 1
 
         # — RAG query checks —
         if ex.rag_query_text_must_not_contain is not None:
@@ -703,8 +726,10 @@ def run_conversation_case(
                     f"turn {idx} rag_query.query_text must not contain '{forbidden_term}'"
                 )
             context_expected += 1
+            p12_rag_exp += 1
             if forbidden_term not in query_text.casefold():
                 context_matched += 1
+                p12_rag_hit += 1
 
         if ex.rag_filters_active_project_id is not None:
             rag_filters = rag_trace.get("filters") or {}
@@ -712,12 +737,14 @@ def run_conversation_case(
             want_pid = ex.rag_filters_active_project_id
             if got_pid == want_pid:
                 context_matched += 1
+                p12_rag_hit += 1
             else:
                 failures.append(
                     f"turn {idx} rag_query.filters.active_project_id: "
                     f"expected '{want_pid}', got '{got_pid}'"
                 )
             context_expected += 1
+            p12_rag_exp += 1
 
         # — TRG project-shift checks —
         if ex.trg_project_shifts_contains_event is not None:
@@ -726,12 +753,14 @@ def run_conversation_case(
             found_event = any(s.get("event") == want_event for s in shifts)
             if found_event:
                 context_matched += 1
+                p12_project_hit += 1
             else:
                 failures.append(
                     f"turn {idx} trg_semantic.project_shifts: "
                     f"event '{want_event}' not found in {shifts}"
                 )
             context_expected += 1
+            p12_project_exp += 1
 
         # — automatic safety audits (always run) —
         # Note: repeated_violations is incremented ONLY from explicit YAML
@@ -741,10 +770,19 @@ def run_conversation_case(
         rq_fail_list = [str(f) for f in rq.get("failures", [])]
         if any("blocked_action" in f for f in rq_fail_list):
             tool_violations += 1
+        if any("delegated_slot_reask" in f for f in rq_fail_list):
+            p12_delegated_reask_violations += 1
         if not bool(rq.get("passed", True)):
             rq_failures += 1
         if not bool(st.get("passed", True)):
             tone_failures += 1
+
+        # — Phase 12: Claude-only response contract tracking —
+        contract = trace.get("customer_response_contract") or {}
+        if contract:
+            p12_claude_only_turns += 1
+            if contract.get("contract_passed"):
+                p12_claude_only_passed += 1
 
         _INTERNAL_MARKERS = (
             "backend",
@@ -784,6 +822,14 @@ def run_conversation_case(
         "response_quality_failures": rq_failures,
         "sales_tone_failures": tone_failures,
         "avg_latency_ms": avg_lat,
+        # Phase 12 capability metrics
+        "claude_only_response_rate": _ratio(p12_claude_only_passed, p12_claude_only_turns),
+        "project_shift_accuracy": _ratio(p12_project_hit, p12_project_exp),
+        "negation_target_accuracy": _ratio(p12_negation_hit, p12_negation_exp),
+        "delegated_slot_reask_violations": p12_delegated_reask_violations,
+        "portfolio_fallback_accuracy": _ratio(p12_portfolio_hit, p12_portfolio_exp),
+        "flexible_intent_accuracy": _ratio(p12_flexible_hit, p12_flexible_exp),
+        "project_aware_rag_accuracy": _ratio(p12_rag_hit, p12_rag_exp),
         "max_latency_ms": max_lat,
     }
 
