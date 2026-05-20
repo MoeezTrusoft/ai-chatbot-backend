@@ -14,4 +14,3 @@ class LLMProvider(Protocol):
         output_model: type[BaseModel],
         purpose: str,
     ) -> BaseModel: ...
-

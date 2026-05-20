@@ -6,4 +6,3 @@ LLM_LATENCY = Histogram(
     "LLM call latency by purpose/provider.",
     ["provider", "purpose"],
 )
-

@@ -110,10 +110,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_tracing(app, resolved_settings)
+        chat_service = getattr(app.state, "chat_service", None)
+        gen = getattr(chat_service, "response_generator", None)
+        adapter = getattr(gen, "adapter", None)
         structlog.get_logger(__name__).info(
             "app_started",
             app_name=resolved_settings.app_name,
             app_env=resolved_settings.app_env,
+            response_generator_adapter="anthropic" if adapter is not None else "none",
+            response_generator_provider=getattr(gen, "provider_name", "unknown"),
+            response_generator_contract_mode=(
+                "production_strict"
+                if resolved_settings.app_env not in {"test", "dev", "development", "local"}
+                else "test_dev"
+            ),
         )
         yield
         db_engine = getattr(app.state, "db_engine", None)
@@ -571,20 +581,63 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
 
 
 def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
-    if settings.app_env == "test" or settings.llm_provider_mode == "mock":
+    from bookcraft.components.response.contracts import (
+        is_production_like,
+    )
+
+    logger = structlog.get_logger(__name__)
+    production_like = is_production_like(settings.app_env)
+
+    # Test env: always use the no-adapter mock to preserve unit-test isolation.
+    if settings.app_env == "test":
+        logger.info(
+            "response_generator_adapter",
+            response_generator_adapter="none",
+            response_generator_provider="template_no_adapter",
+            response_generator_contract_mode="test_dev",
+        )
         return SonnetResponseGenerator()
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER_MODE=live")
-    return SonnetResponseGenerator(
-        provider_name="claude_sonnet",
-        adapter=AnthropicAdapter(
+
+    # If ANTHROPIC_API_KEY is present, wire the real Anthropic adapter regardless
+    # of llm_provider_mode — key presence is the authoritative signal.
+    if settings.anthropic_api_key:
+        adapter = AnthropicAdapter(
             api_key=settings.anthropic_api_key,
             base_url=settings.anthropic_base_url,
             timeout_seconds=settings.llm_request_timeout_seconds,
             model=settings.anthropic_sonnet_model,
             name="claude_sonnet",
-        ),
+        )
+        contract_mode = "production_strict" if production_like else "test_dev"
+        logger.info(
+            "response_generator_adapter",
+            response_generator_adapter="anthropic",
+            response_generator_provider="claude_sonnet",
+            response_generator_contract_mode=contract_mode,
+            anthropic_model=settings.anthropic_sonnet_model,
+        )
+        return SonnetResponseGenerator(
+            provider_name="claude_sonnet",
+            adapter=adapter,
+        )
+
+    # No API key in production-like environment or when live mode is explicit.
+    if production_like or settings.llm_provider_mode == "live":
+        raise RuntimeError(
+            f"ANTHROPIC_API_KEY is required in production-like environment "
+            f"(app_env={settings.app_env!r}, llm_provider_mode={settings.llm_provider_mode!r}). "
+            "Set ANTHROPIC_API_KEY or switch LLM_PROVIDER_MODE=mock for local dev."
+        )
+
+    # Dev/local without API key — use mock and warn.
+    logger.warning(
+        "response_generator_adapter",
+        response_generator_adapter="none",
+        response_generator_provider="template_no_adapter",
+        response_generator_contract_mode="test_dev",
+        warning="no ANTHROPIC_API_KEY in non-test env; responses will use template fallback",
     )
+    return SonnetResponseGenerator()
 
 
 app = create_app()
