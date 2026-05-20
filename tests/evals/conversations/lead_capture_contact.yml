@@ -1,0 +1,24 @@
+id: lead_capture_contact
+description: Service request followed by contact details should create a lead and hand off.
+turns:
+  - role: user
+    message: "I need editing for my completed fantasy novel."
+    expect:
+      trace:
+        lead_objective:
+          objective_move_one_of: [ask_contact, offer_consultation]
+          stop_discovery: true
+  - role: user
+    message: "My name is Sarah Khan and my email is sarah@example.com."
+    expect:
+      response:
+        forbidden_phrases:
+          - "what genre"
+          - "word count"
+      trace:
+        contact_capture:
+          lead_contact_ready: true
+        lead_objective:
+          objective_move: create_lead
+        lead:
+          created: true

@@ -895,6 +895,18 @@ def _response_plan_prompt_section(response_plan: ResponsePlan | None) -> str:
     if response_plan.next_question:
         parts.append(f"- The one question to ask next: {response_plan.next_question}")
 
+    if response_plan.primary_goal in {
+        "lead_contact_capture",
+        "consultation_handoff",
+        "specialist_handoff",
+    }:
+        parts.append("- Keep discovery minimal and ask only for name and email or phone.")
+        parts.append("- Do not provide final pricing or timeline commitments in this step.")
+        parts.append("- Do not act as the final consultant; route to senior specialist follow-up.")
+
+    if response_plan.primary_goal == "lead_created_confirmation":
+        parts.append("- Confirm specialist/consultant follow-up and ask no additional questions.")
+
     # Filter to content-relevant suppressions (skip pure internal implementation terms).
     _INTERNAL_FILTER = {
         "backend",

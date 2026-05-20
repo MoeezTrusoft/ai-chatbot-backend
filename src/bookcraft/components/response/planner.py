@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.state import ThreadState
 
@@ -20,6 +21,14 @@ _INTERNAL_TERMS: list[str] = [
     "action_plan",
     "deterministic engine",
     "quote engine",
+]
+
+_LEAD_DISCOVERY_SUPPRESSIONS: list[str] = [
+    "word_or_page_count",
+    "genre",
+    "manuscript_stage",
+    "deadline",
+    "cover_style",
 ]
 
 # next_question priority by planning scenario.
@@ -96,6 +105,8 @@ class ResponsePlanner:
         negation_targets: list[Any] | None = None,
         portfolio_fallback_decision: Any | None = None,
         flexible_intent_decision: Any | None = None,
+        lead_objective_decision: LeadObjectiveDecision | None = None,
+        contact_capture_result: ContactCaptureResult | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -111,9 +122,23 @@ class ResponsePlanner:
             tool_governance,
             portfolio_fallback_decision,
             flexible_intent_decision,
+            lead_objective_decision,
         )
-        nq = _next_question(intent, context_pack, goal, flexible_intent_decision)
+        nq = _next_question(
+            intent,
+            context_pack,
+            goal,
+            flexible_intent_decision,
+            lead_objective_decision,
+            contact_capture_result,
+        )
         summary = _customer_safe_tool_summary(tool_governance, action_result)
+        max_questions = 1
+        if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
+            max_questions = 1
+            for item in _LEAD_DISCOVERY_SUPPRESSIONS:
+                if item not in forbidden:
+                    forbidden.append(item)
 
         facts_tag = (
             f"planner:acknowledge_facts:{len(facts)}" if facts else "planner:acknowledge_facts:none"
@@ -132,7 +157,7 @@ class ResponsePlanner:
             primary_goal=goal,
             next_question=nq,
             must_not_mention=forbidden,
-            max_questions=1,
+            max_questions=max_questions,
             tone="warm_consultative",
             customer_safe_tool_summary=summary,
             audit=audit,
@@ -238,8 +263,27 @@ def _primary_goal(
     tool_governance: ToolGovernanceDecision | None,
     portfolio_fallback_decision: Any | None = None,
     flexible_intent_decision: Any | None = None,
+    lead_objective_decision: LeadObjectiveDecision | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
+    if context_pack.lead_created or (
+        lead_objective_decision is not None and lead_objective_decision.stage == "lead_created"
+    ):
+        return "lead_created_confirmation"
+
+    if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
+        if lead_objective_decision.recommended_primary_goal:
+            return lead_objective_decision.recommended_primary_goal
+        if lead_objective_decision.objective_move in {
+            "offer_consultation",
+            "schedule_consultation",
+        }:
+            return "consultation_handoff"
+        if lead_objective_decision.objective_move == "handoff_to_specialist":
+            return "specialist_handoff"
+        if lead_objective_decision.objective_move in {"ask_contact", "create_lead"}:
+            return "lead_contact_capture"
+
     if tool_governance is not None and not tool_governance.allowed:
         if "counterfactual" in tool_governance.reason:
             return "clarify_intent"
@@ -294,6 +338,8 @@ def _next_question(
     context_pack: ContextPack,
     primary_goal: str,
     flexible_intent_decision: Any | None = None,
+    lead_objective_decision: LeadObjectiveDecision | None = None,
+    contact_capture_result: ContactCaptureResult | None = None,
 ) -> str | None:
     """Return the single highest-priority missing fact to ask about next."""
     del intent  # reserved for future per-intent refinement
@@ -301,6 +347,14 @@ def _next_question(
     # Blocked or ambiguous turns: do not auto-issue a follow-up question.
     if primary_goal in {"safe_blocked_action", "clarify_intent"}:
         return None
+
+    if primary_goal == "lead_created_confirmation":
+        return None
+
+    if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
+        if contact_capture_result is not None and contact_capture_result.lead_contact_ready:
+            return None
+        return lead_objective_decision.next_question or "name_and_email_or_phone"
 
     # Project-scope clarification: ask Claude to resolve same vs. new project.
     if primary_goal == "clarify_project_scope":

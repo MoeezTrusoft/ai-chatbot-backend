@@ -294,9 +294,19 @@ def _has_required_slots(
     action_type: str,
 ) -> bool:
     """Return True when all required slots for the action type are present."""
-    del state, action_type  # reserved for per-action validation in future
+    del state
     missing = getattr(action_plan, "missing_slots", None) or []
-    return len(missing) == 0
+    if len(missing) > 0:
+        return False
+
+    if action_type == "create_lead":
+        slots = getattr(action_plan, "collected_slots", None) or {}
+        name = (slots.get("name") or "").strip() if isinstance(slots.get("name"), str) else None
+        email = (slots.get("email") or "").strip() if isinstance(slots.get("email"), str) else None
+        phone = (slots.get("phone") or "").strip() if isinstance(slots.get("phone"), str) else None
+        return bool(name) and bool(email or phone)
+
+    return True
 
 
 def _idempotency_key(

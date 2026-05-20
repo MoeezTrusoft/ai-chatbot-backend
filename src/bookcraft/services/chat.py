@@ -39,6 +39,11 @@ from bookcraft.components.intent.flexible_router import FlexibleIntentDecision, 
 from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
+from bookcraft.components.leads import (
+    ContactCaptureDetector,
+    LeadIntakePayload,
+    LeadObjectiveEngine,
+)
 from bookcraft.components.portfolio import (
     PortfolioEngine,
     PortfolioFallbackDecision,
@@ -132,6 +137,8 @@ class ChatService:
     attachment_intake_processor: AttachmentIntakeProcessor = field(
         default_factory=AttachmentIntakeProcessor
     )
+    contact_capture_detector: ContactCaptureDetector = field(default_factory=ContactCaptureDetector)
+    lead_objective_engine: LeadObjectiveEngine = field(default_factory=LeadObjectiveEngine)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -382,6 +389,9 @@ class ChatService:
                 processed=processed,
                 intent=intent,
             )
+            contact_capture = self.contact_capture_detector.extract(payload.message)
+            contact_capture = self.contact_capture_detector.merge_with_state(contact_capture, state)
+            state.contact_info = contact_capture.contact.model_dump(mode="json")
             STATE_UPDATES.labels(result="applied").inc()
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -397,6 +407,33 @@ class ChatService:
                 intent=intent,
                 extraction=extraction,
             )
+            lead_objective_decision = self.lead_objective_engine.decide(
+                message=payload.message,
+                intent=intent,
+                state=state,
+                attachment_intake=attachment_intake_result,
+                contact_capture=contact_capture,
+            )
+            state.lead_objective_stage = lead_objective_decision.stage
+            state.lead_intake_payload = self._build_lead_intake_payload(
+                state=state,
+                message=payload.message,
+                intent=intent,
+                attachment_intake=attachment_intake_result,
+                contact_capture=contact_capture,
+                thread_id=thread_id,
+                customer_id=payload.customer_id,
+            ).model_dump(mode="json")
+            if (
+                lead_objective_decision.objective_move == "create_lead"
+                and not state.lead_created
+                and contact_capture.lead_contact_ready
+            ):
+                action_plan = self._create_lead_action_plan_from_contact(
+                    state=state,
+                    contact_capture=contact_capture,
+                    intent=intent,
+                )
             self._apply_sales_action_plan_to_state(state, action_plan)
             governance_decision = self.tool_governance_gate.evaluate(
                 action_plan=action_plan,
@@ -541,6 +578,8 @@ class ChatService:
                 action_result=action_result,
                 negation_targets=processed.negation_targets or None,
                 portfolio_fallback_decision=portfolio_fallback_decision,
+                lead_objective_decision=lead_objective_decision,
+                contact_capture_result=contact_capture,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -570,6 +609,8 @@ class ChatService:
                     action_result=action_result,
                     negation_targets=processed.negation_targets or None,
                     portfolio_fallback_decision=portfolio_fallback_decision,
+                    lead_objective_decision=lead_objective_decision,
+                    contact_capture_result=contact_capture,
                 )
 
             # Phase 12 PR 6: flexible intent routing.
@@ -593,6 +634,8 @@ class ChatService:
                     negation_targets=processed.negation_targets or None,
                     portfolio_fallback_decision=portfolio_fallback_decision,
                     flexible_intent_decision=flexible_intent_decision,
+                    lead_objective_decision=lead_objective_decision,
+                    contact_capture_result=contact_capture,
                 )
 
             # Phase 9: context-aware RAG retrieval using enriched query.
@@ -760,6 +803,18 @@ class ChatService:
                     context_pack=context_pack,
                 )
             bubbles = self.formatter.format(final_text, approved_urls=set(draft.approved_urls))
+            if (
+                lead_objective_decision.objective_move == "ask_contact"
+                and not contact_capture.lead_contact_ready
+                and bubbles
+            ):
+                bubbles[0].rich_segments.append(
+                    {
+                        "type": "lead_intake_form",
+                        "fields": ["name", "email", "phone", "message", "attachments"],
+                        "required": ["name", "email_or_phone"],
+                    }
+                )
             trg_context_for_trace: TRGContext | None = trg_context
             if self.trg_engine is not None:
                 try:
@@ -852,6 +907,10 @@ class ChatService:
                     ],
                     "slot_resolution": [s.model_dump(mode="json") for s in slot_statuses],
                     "attachment_intake": attachment_intake_result.model_dump(mode="json"),
+                    "contact_capture": contact_capture.model_dump(mode="json"),
+                    "lead_objective": lead_objective_decision.model_dump(mode="json"),
+                    "lead_intake": state.lead_intake_payload,
+                    "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None
                     else None,
@@ -1174,6 +1233,9 @@ class ChatService:
                 return
 
             state.sales_actions.lead.lead_id = str(lead.get("id") or action_result.result_id)
+            state.lead_id = state.sales_actions.lead.lead_id
+            state.lead_created = True
+            state.lead_objective_stage = "lead_created"
             state.sales_actions.lead.name = _optional_string(lead.get("name"))
             state.sales_actions.lead.email = _optional_string(lead.get("email"))
             state.sales_actions.lead.phone = _optional_string(lead.get("phone"))
@@ -1252,6 +1314,61 @@ class ChatService:
             state.sales_actions.pending_confirmation.created_at = None
             state.sales_actions.pending_confirmation.expires_at = None
             return
+
+    @staticmethod
+    def _create_lead_action_plan_from_contact(
+        *,
+        state: ThreadState,
+        contact_capture: Any,
+        intent: IntentVote,
+    ) -> ActionPlan:
+        service = intent.service_primary.value if intent.service_primary is not None else None
+        return ActionPlan(
+            action_type=ActionType.CREATE_LEAD,
+            status=ActionStatus.READY,
+            collected_slots={
+                "name": contact_capture.contact.name,
+                "email": contact_capture.contact.email,
+                "phone": contact_capture.contact.phone,
+                "services": [service] if service else [],
+                "manuscript_status": (
+                    str(state.project.manuscript_status.value)
+                    if state.project.manuscript_status.value is not None
+                    else None
+                ),
+                "message": state.rolling_summary or "",
+            },
+            reason="Lead objective engine marked contact as ready for lead creation.",
+        )
+
+    @staticmethod
+    def _build_lead_intake_payload(
+        *,
+        state: ThreadState,
+        message: str,
+        intent: IntentVote,
+        attachment_intake: AttachmentIntakeResult,
+        contact_capture: Any,
+        thread_id: UUID,
+        customer_id: UUID | None,
+    ) -> LeadIntakePayload:
+        attachments = [a.model_dump(mode="json") for a in attachment_intake.attachments]
+        return LeadIntakePayload(
+            name=contact_capture.contact.name,
+            email=contact_capture.contact.email,
+            phone=contact_capture.contact.phone,
+            message=message,
+            service=intent.service_primary.value if intent.service_primary is not None else None,
+            manuscript_status=(
+                str(state.project.manuscript_status.value)
+                if state.project.manuscript_status.value is not None
+                else None
+            ),
+            assessment_type=attachment_intake.assessment_type,
+            attachments=attachments,
+            thread_id=str(thread_id),
+            customer_id=str(customer_id) if customer_id is not None else None,
+        )
 
     def _stabilize_service_context(
         self,

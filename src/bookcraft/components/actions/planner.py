@@ -135,6 +135,13 @@ class SalesActionPlanner:
         contact: dict[str, str],
         services: list[str],
     ) -> ActionPlan:
+        if "name" not in contact:
+            return ActionPlan(
+                action_type=ActionType.CREATE_LEAD,
+                status=ActionStatus.MISSING_INFO,
+                missing_slots=["name"],
+                reason="Lead creation requires a contact name.",
+            )
         if not has_email_or_phone(contact):
             return ActionPlan(
                 action_type=ActionType.CREATE_LEAD,

@@ -220,6 +220,18 @@ class ContextPackBuilder:
 
         assessment_type = getattr(state, "latest_assessment_type", None)
         specialist_role = getattr(state, "latest_specialist_role", None)
+        lead_objective_stage = getattr(state, "lead_objective_stage", None)
+        lead_created = bool(getattr(state, "lead_created", False))
+        contact_info = getattr(state, "contact_info", None) or {}
+        has_name = bool(contact_info.get("name"))
+        has_email = bool(contact_info.get("email"))
+        has_phone = bool(contact_info.get("phone"))
+        if has_name and (has_email or has_phone):
+            contact_capture_status = "ready"
+        elif has_name or has_email or has_phone:
+            contact_capture_status = "partial"
+        else:
+            contact_capture_status = "missing"
 
         # Suppress manuscript_stage re-ask when status is already known.
         if manuscript_status:
@@ -255,6 +267,9 @@ class ContextPackBuilder:
             attachments_received=attachments_received_list,
             assessment_type=assessment_type,
             specialist_role=specialist_role,
+            lead_objective_stage=lead_objective_stage,
+            contact_capture_status=contact_capture_status,
+            lead_created=lead_created,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 

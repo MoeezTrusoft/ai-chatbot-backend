@@ -51,3 +51,6 @@ class ContextPack(BaseModel):
     assessment_type: str | None = None
     specialist_role: str | None = None
     attachment_policy: str = "metadata_only_no_content_analysis"
+    lead_objective_stage: str | None = None
+    contact_capture_status: str | None = None
+    lead_created: bool = False

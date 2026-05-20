@@ -1,0 +1,14 @@
+id: pricing_to_lead_capture
+description: Pricing request should not invent price; should move to contact capture/handoff.
+turns:
+  - role: user
+    message: "How much does ghostwriting cost?"
+    expect:
+      response:
+        forbidden_phrases:
+          - "$"
+          - "USD"
+      trace:
+        lead_objective:
+          objective_move_one_of: [ask_contact, offer_consultation]
+          stop_discovery: true
