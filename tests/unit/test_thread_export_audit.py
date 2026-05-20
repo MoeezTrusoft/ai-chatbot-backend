@@ -151,3 +151,85 @@ def test_audit_empty_threads() -> None:
     assert result["turns_checked"] == 0
     assert result["deterministic_source_hits"] == 0
     assert result["source_compliance_rate"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# PR 9: dict-shaped export + contract source tests
+# ---------------------------------------------------------------------------
+
+
+def test_audit_catches_template_quality_fallback() -> None:
+    threads = _make_threads(
+        ("t1", [_bad_trace("t1", source="template_no_adapter_quality_fallback")]),
+    )
+    result = _audit(threads)
+    assert result["deterministic_source_hits"] == 1
+    assert (
+        result["deterministic_sources"][0]["final_source"] == "template_no_adapter_quality_fallback"
+    )
+
+
+def test_audit_catches_source_from_contract_block() -> None:
+    # assistant.source is empty but contract block has final_source set
+    trace = {
+        "thread_id": "t1",
+        "assistant": {},  # no source here
+        "customer_response_contract": {
+            "final_source": "template_no_adapter_quality_fallback",
+            "contract_passed": True,
+        },
+        "response_quality": {"passed": True},
+        "sales_tone": {"passed": True},
+        "context_pack": {},
+        "response_plan": {},
+    }
+    threads = _make_threads(("t1", [trace]))
+    result = _audit(threads)
+    assert result["deterministic_source_hits"] == 1
+
+
+def test_audit_handles_dict_shaped_combined_export() -> None:
+    """New export format: threads is a dict keyed by thread_id."""
+    good = _good_trace("thread-a")
+    bad = _bad_trace("thread-b", "template_x")
+    # Simulate the dict format written by the updated export script
+    import importlib
+    from pathlib import Path
+
+    audit_path = (
+        Path(__file__).resolve().parents[2] / "scripts" / "data" / "audit_thread_exports.py"
+    )
+    spec = importlib.util.spec_from_file_location("audit_te", audit_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    raw_combined = {
+        "exported_at": "20260520T000000Z",
+        "thread_count": 2,
+        "threads": {
+            "thread-a": {"thread_id": "thread-a", "traces": [good]},
+            "thread-b": {"thread_id": "thread-b", "traces": [bad]},
+        },
+        "errors": [],
+    }
+    # Use _load_threads via the module
+    import json
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as f:
+        json.dump(raw_combined, f)
+        tmp = Path(f.name)
+    threads = mod._load_threads(tmp)
+    tmp.unlink()
+    assert len(threads) == 2
+    result = mod._audit(threads)
+    assert result["deterministic_source_hits"] == 1
+
+
+def test_audit_handles_list_shaped_legacy_export() -> None:
+    """Legacy export format: threads is a list."""
+    good = _good_trace("thread-c")
+    threads = _make_threads(("thread-c", [good]))
+    result = _audit(threads)
+    assert result["deterministic_source_hits"] == 0
+    assert result["threads_checked"] == 1

@@ -108,11 +108,17 @@ def main() -> int:
         combined.append(thread_export)
         print(f"  thread {tid[:8]}: {len(rows)} traces → {thread_file.name}")
 
-    # 4. Write combined JSON.
+    # 4. Write combined JSON — dict-keyed by thread_id for stable schema.
+    threads_dict: dict[str, Any] = {t["thread_id"]: t for t in combined}
     combined_path = out_dir / "latest_threads_combined.json"
     combined_path.write_text(
         json.dumps(
-            {"exported_at": stamp, "threads": combined, "errors": errors},
+            {
+                "exported_at": stamp,
+                "thread_count": len(combined),
+                "threads": threads_dict,
+                "errors": errors,
+            },
             indent=2,
             default=str,
         )

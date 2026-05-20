@@ -778,11 +778,22 @@ def run_conversation_case(
             tone_failures += 1
 
         # — Phase 12: Claude-only response contract tracking —
+        # Only sources claude_sonnet / claude_sonnet_repair count as truly Claude-only.
+        # Dev/template fallbacks do NOT count even if contract_passed=True in test env.
         contract = trace.get("customer_response_contract") or {}
         if contract:
             p12_claude_only_turns += 1
-            if contract.get("contract_passed"):
-                p12_claude_only_passed += 1
+            # Prefer production_contract_passed if present (added in PR 9),
+            # otherwise fall back to checking the actual source string.
+            if contract.get("production_contract_passed") is not None:
+                if contract.get("production_contract_passed"):
+                    p12_claude_only_passed += 1
+            else:
+                final_src = contract.get("final_source") or ""
+                if not final_src:
+                    final_src = (trace.get("assistant") or {}).get("source") or ""
+                if final_src in ("claude_sonnet", "claude_sonnet_repair"):
+                    p12_claude_only_passed += 1
 
         _INTERNAL_MARKERS = (
             "backend",

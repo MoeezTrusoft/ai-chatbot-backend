@@ -207,3 +207,94 @@ def test_final_response_has_no_internal_terms_when_possible() -> None:
     assert "backend" not in text.lower()
     assert "classifier" not in text.lower()
     assert "tool_governance" not in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# PR 9: production_contract_passed and dev_fallback_used in trace
+# ---------------------------------------------------------------------------
+
+
+def test_production_contract_passed_true_for_claude_source() -> None:
+    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+
+    with TestClient(app) as client:
+        client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
+            initial=ResponseDraft(
+                text="For editing, we offer copy editing and proofreading.",
+                source="claude_sonnet",
+            )
+        )
+        resp = _chat(client, "Tell me about editing options.")
+        trace = _latest_trace(client, resp["thread_id"])
+
+    contract = trace.get("customer_response_contract") or {}
+    assert contract.get("production_contract_passed") is True, (
+        f"production_contract_passed must be True for claude_sonnet, got {contract}"
+    )
+    assert contract.get("dev_fallback_used") is False
+
+
+def test_dev_fallback_marked_not_production_compliant_in_trace() -> None:
+    """When the default (no-adapter) generator runs in test env, trace must reflect
+    that the final source is a dev fallback — not production-compliant."""
+    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+
+    with TestClient(app) as client:
+        resp = _chat(client, "I need ghostwriting for my novel.")
+        trace = _latest_trace(client, resp["thread_id"])
+
+    contract = trace.get("customer_response_contract") or {}
+    final_src = contract.get("final_source") or ""
+    if final_src not in ("claude_sonnet", "claude_sonnet_repair"):
+        # If a non-Claude source was used, production_contract_passed must be False
+        assert contract.get("production_contract_passed") is False, (
+            f"Non-Claude source '{final_src}' must set production_contract_passed=False"
+        )
+
+
+def test_claude_repair_source_passes_production_contract() -> None:
+    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+
+    with TestClient(app) as client:
+        client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
+            initial=ResponseDraft(
+                text="The runtime atoms classified your request.",
+                source="claude_sonnet",
+            ),
+            repair=ResponseDraft(
+                text="I can help you with cover design — what style are you thinking?",
+                source="claude_sonnet_repair",
+            ),
+        )
+        resp = _chat(client, "I need cover design.")
+        trace = _latest_trace(client, resp["thread_id"])
+
+    contract = trace.get("customer_response_contract") or {}
+    assert contract.get("production_contract_passed") is True
+    assert trace["assistant"]["source"] in ("claude_sonnet", "claude_sonnet_repair")
+
+
+def test_no_assistant_source_starts_with_deterministic_prefix() -> None:
+    """Ensure no real-world chat turn emits a deterministic source as final response."""
+    from bookcraft.components.response.contracts import _DETERMINISTIC_PREFIXES
+
+    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    messages = [
+        "I don't need ghostwriting, I need editing.",
+        "Show me some samples.",
+    ]
+    with TestClient(app) as client:
+        for msg in messages:
+            resp = _chat(client, msg)
+            trace = _latest_trace(client, resp["thread_id"])
+            final_src = (trace.get("assistant") or {}).get("source") or ""
+            contract = trace.get("customer_response_contract") or {}
+            prod_passed = contract.get("production_contract_passed")
+            for prefix in _DETERMINISTIC_PREFIXES:
+                if final_src.startswith(prefix):
+                    # Non-production-compliant source is allowed in test, but
+                    # production_contract_passed must be False.
+                    assert prod_passed is False, (
+                        f"source '{final_src}' starts with '{prefix}' "
+                        f"but production_contract_passed={prod_passed}"
+                    )
