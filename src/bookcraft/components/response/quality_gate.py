@@ -670,6 +670,13 @@ def _fact_key_to_question(key: str) -> str:
         "manuscript_stage": "What stage is the manuscript in?",
         "deadline": "What deadline or launch window should I plan for?",
         "services": "Which services would you like help with?",
+        # Flexible intent routing questions.
+        "consultation_interest": "Would you like to schedule a free consultation with our team?",
+        "manuscript_stage_or_project_status": (
+            "What stage is your manuscript in, and what are you hoping to achieve?"
+        ),
+        "portfolio_filter": "Which service or genre would you like samples for?",
+        "same_or_new_project": "Is this the same book we were discussing, or a new project?",
     }
     return questions.get(key, f"Could you share more about {key.replace('_', ' ')}?")
 

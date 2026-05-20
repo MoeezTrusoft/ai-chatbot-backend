@@ -1,0 +1,26 @@
+id: flexible_service_guidance
+description: >
+  User is unsure which service they need. The bot must not force a service
+  classification but instead route to guided service discovery. It should
+  ask one helpful routing question instead of locking to a service.
+
+turns:
+  - role: user
+    message: "I don't know what I need, can you guide me? I have a book but no idea where to start."
+    expect:
+      trace:
+        flexible_intent:
+          detected: true
+          mode_one_of: [service_guidance, consultation_handoff]
+
+  - role: user
+    message: "I'm writing a fantasy novel and I've finished the first draft."
+    expect:
+      intent:
+        service_primary_not: null
+
+expectations_summary:
+  - flexible_intent.detected is true on turn 1
+  - mode is service_guidance or consultation_handoff
+  - bot asks a helpful routing question (not a locked-service question)
+  - no forced service classification on turn 1

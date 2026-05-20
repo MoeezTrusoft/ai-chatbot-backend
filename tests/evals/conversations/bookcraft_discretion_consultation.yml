@@ -1,0 +1,33 @@
+id: bookcraft_discretion_consultation
+description: >
+  User delegates all decisions to BookCraft. The bot should route to
+  consultation_handoff or process_explanation, not re-ask delegated slots.
+  No consultation should be auto-booked without confirmation.
+
+turns:
+  - role: user
+    message: "I trust your team. Whatever you think is best for my book."
+    expect:
+      trace:
+        flexible_intent:
+          detected: true
+          mode_one_of: [bookcraft_discretion, consultation_handoff, process_explanation]
+      response:
+        forbidden_phrases:
+          - "has been scheduled"
+          - "booked for"
+          - "confirmed your"
+
+  - role: user
+    message: "Use your own creativity — I leave it all to BookCraft."
+    expect:
+      trace:
+        flexible_intent:
+          detected: true
+          mode_one_of: [bookcraft_discretion, consultation_handoff, process_explanation]
+
+expectations_summary:
+  - flexible_intent.detected is true on both turns
+  - mode is bookcraft_discretion, consultation_handoff, or process_explanation
+  - no consultation auto-booked without confirmation
+  - response does not ask delegated slots again
