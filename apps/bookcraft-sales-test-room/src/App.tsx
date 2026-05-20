@@ -115,6 +115,7 @@ export function App() {
   }, []);
 
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
+  const threadInputDisabled = Boolean(activeThread?.inputDisabled);
   const selectedTurn = activeThread?.turns.find((turn) => turn.id === selectedTurnId) ?? activeThread?.turns.at(-1);
 
   const filteredThreads = useMemo(() => {
@@ -165,7 +166,7 @@ export function App() {
 
   async function send() {
     const trimmed = message.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || threadInputDisabled) return;
 
     let thread = activeThread;
     if (!thread) {
@@ -212,6 +213,9 @@ export function App() {
         trace,
         traceStatus
       };
+      if (response.system_message) {
+        turn.assistantText = response.system_message;
+      }
 
       setThreads((current) =>
         current.map((item) =>
@@ -222,7 +226,11 @@ export function App() {
                 threadId: response.thread_id,
                 customerId: activeSession.customerId,
                 updatedAt: turn.createdAt,
-                turns: [...item.turns, turn]
+                turns: [...item.turns, turn],
+                inputDisabled:
+                  item.inputDisabled ||
+                  Boolean(response.blocked || response.input_disabled),
+                blockedSystemMessage: response.system_message || item.blockedSystemMessage
               }
             : item
         )
@@ -363,9 +371,11 @@ export function App() {
                 }
               }}
               placeholder="Type a customer message..."
+              disabled={threadInputDisabled}
             />
-            <button className="send" disabled={busy || !message.trim()} onClick={() => void send()}>{busy ? 'Sending...' : 'Send'}</button>
+            <button className="send" disabled={busy || !message.trim() || threadInputDisabled} onClick={() => void send()}>{busy ? 'Sending...' : 'Send'}</button>
           </div>
+          {threadInputDisabled ? <div className="error-box">{activeThread?.blockedSystemMessage || 'This thread is blocked.'}</div> : null}
           {error ? <div className="error-box">{error}</div> : null}
         </section>
 
@@ -429,6 +439,10 @@ function Inspector({ turn }: { turn?: ThreadTurn }) {
         <Row label="Status" value={plainStatus(action.status)} />
         <Row label="Missing info" value={plainList(action.missingSlots)} />
         <Row label="Trace" value={plainTraceStatus(turn.traceStatus)} />
+        <Row
+          label="Blocked input"
+          value={turn.response?.blocked || turn.response?.input_disabled ? 'Yes' : 'No'}
+        />
       </ScoreCard>
 
       <ScoreCard title="Detected details">
