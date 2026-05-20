@@ -857,7 +857,18 @@ class ChatService:
                             final_source,
                             app_env=self.environment,
                         ),
+                        "production_contract_passed": contract.is_production_compliant_source(
+                            final_source
+                        ),
+                        "dev_fallback_used": (
+                            not production_like
+                            and not contract.is_production_compliant_source(final_source)
+                            and contract.is_allowed_final_source(
+                                final_source, app_env=self.environment
+                            )
+                        ),
                         "repair_attempted": repair_attempted,
+                        "repair_source": final_draft.source if repair_attempted else None,
                         "deterministic_final_text_blocked": deterministic_final_text_blocked,
                         "audit": [
                             f"contract:final_source={final_source}",
@@ -867,10 +878,11 @@ class ChatService:
                                     app_env=self.environment,
                                 )
                             }",
-                            f"contract:repair_attempted={repair_attempted}",
-                            f"contract:production_like={
-                                self.environment not in {'test', 'dev', 'development', 'local'}
+                            f"contract:production_compliant={
+                                contract.is_production_compliant_source(final_source)
                             }",
+                            f"contract:repair_attempted={repair_attempted}",
+                            f"contract:production_like={production_like}",
                         ],
                     },
                     "sales_tone": sales_tone_report.model_dump(mode="json"),

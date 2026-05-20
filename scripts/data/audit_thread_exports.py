@@ -68,14 +68,38 @@ def main() -> int:
     return 0
 
 
+def _normalise_thread(raw: dict[str, Any]) -> dict[str, Any]:
+    """Flatten any API-wrapper nesting so 'traces' is always a list of row dicts."""
+    tid = str(raw.get("thread_id") or "unknown")
+    traces_raw = raw.get("traces") or []
+    if isinstance(traces_raw, dict) and "traces" in traces_raw:
+        traces_raw = traces_raw["traces"]
+    rows = [r for r in (traces_raw or []) if isinstance(r, dict)]
+    return {"thread_id": tid, "traces": rows}
+
+
 def _load_threads(path: Path) -> list[dict[str, Any]]:
     if path.is_file() and path.suffix == ".json":
         raw = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and "threads" in raw:
-            return list(raw["threads"])
+            threads_raw = raw["threads"]
+            # New format: dict keyed by thread_id → list of thread dicts.
+            if isinstance(threads_raw, dict):
+                return [
+                    _normalise_thread({"thread_id": tid, **payload})
+                    if isinstance(payload, dict) and "thread_id" not in payload
+                    else _normalise_thread(payload)
+                    for tid, payload in threads_raw.items()
+                    if isinstance(payload, dict)
+                ]
+            # Legacy format: list of thread dicts.
+            if isinstance(threads_raw, list):
+                return [_normalise_thread(t) for t in threads_raw if isinstance(t, dict)]
         if isinstance(raw, list):
-            return raw
-        return [raw]
+            return [_normalise_thread(t) for t in raw if isinstance(t, dict)]
+        if isinstance(raw, dict) and "traces" in raw:
+            return [_normalise_thread(raw)]
+        return []
 
     if path.is_dir():
         combined = path / "latest_threads_combined.json"
@@ -88,7 +112,7 @@ def _load_threads(path: Path) -> list[dict[str, Any]]:
             try:
                 raw = json.loads(f.read_text(encoding="utf-8"))
                 if isinstance(raw, dict) and "traces" in raw:
-                    threads.append(raw)
+                    threads.append(_normalise_thread(raw))
             except Exception:  # noqa: BLE001,S110
                 pass
         return threads
@@ -107,16 +131,32 @@ def _audit(threads: list[dict[str, Any]]) -> dict[str, Any]:
         tid = str(thread.get("thread_id", "unknown"))
         traces = thread.get("traces") or []
         for trace in traces:
+            if not isinstance(trace, dict):
+                continue
             turns_checked += 1
             assistant = trace.get("assistant") or {}
-            final_source = str(assistant.get("source") or "")
-
-            # Check deterministic/bad prefix.
-            if _is_bad_source(final_source):
+            # Primary source from assistant block; also check contract block.
+            source_from_assistant = str(assistant.get("source") or "")
+            contract_block = trace.get("customer_response_contract") or {}
+            source_from_contract = str(contract_block.get("final_source") or "")
+            # Check deterministic/bad prefix from either source field.
+            bad_source = (
+                source_from_assistant
+                if _is_bad_source(source_from_assistant)
+                else source_from_contract
+                if _is_bad_source(source_from_contract)
+                else ""
+            )
+            if bad_source:
                 det_source_hits.append(
                     {
                         "thread_id": tid,
-                        "final_source": final_source,
+                        "final_source": bad_source,
+                        "assistant_source": source_from_assistant,
+                        "contract_source": source_from_contract,
+                        "production_contract_passed": contract_block.get(
+                            "production_contract_passed"
+                        ),
                         "recorded_at": trace.get("recorded_at", ""),
                     }
                 )
