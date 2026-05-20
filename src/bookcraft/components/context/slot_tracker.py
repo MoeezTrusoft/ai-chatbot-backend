@@ -49,6 +49,14 @@ class SlotTracker:
         if not decision.detected or decision.target_slot is None:
             return []
 
+        # Attach active project_id so statuses are project-scoped.
+        active_project_id: str | None = None
+        conv_projects = getattr(state, "conversation_projects", None) or []
+        for proj in conv_projects:
+            if isinstance(proj, dict) and proj.get("active"):
+                active_project_id = proj.get("project_id")
+                break
+
         new_status = SlotResolutionStatus(
             slot=decision.target_slot,
             status=decision.status,
@@ -56,10 +64,19 @@ class SlotTracker:
             reason=decision.cue,
             forbidden_reask=True,
             confidence=decision.confidence,
+            project_id=active_project_id,
         )
 
         raw = getattr(state, "slot_resolution_statuses", None) or []
         existing = load_slot_statuses(raw)
-        merged = [s for s in existing if s.slot != decision.target_slot]
+        # Replace same slot for the same project (or legacy).
+        merged = [
+            s
+            for s in existing
+            if not (
+                s.slot == decision.target_slot
+                and (s.project_id == active_project_id or s.project_id is None)
+            )
+        ]
         merged.append(new_status)
         return merged

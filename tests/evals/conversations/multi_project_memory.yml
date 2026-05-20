@@ -1,0 +1,48 @@
+id: multi_project_memory
+description: >
+  User starts cover design for a first book (fantasy, completed draft), then
+  introduces a second book needing editing. The bot must switch active project
+  scope, not carry over first-book genre/status, and keep previous book info
+  in memory summary only.
+
+turns:
+  - role: user
+    message: "I need cover design for my completed fantasy thriller novel."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+      trace:
+        project_context:
+          event: same_project
+
+  - role: user
+    message: "The manuscript is fully finished and edited — about 80,000 words."
+    expect:
+      intent:
+        service_primary: cover_design_illustration
+
+  - role: user
+    message: "I have another book that needs editing — it's a business leadership guide."
+    expect:
+      intent:
+        service_primary_not: cover_design_illustration
+      trace:
+        project_context:
+          event: new_project
+          active_project_id_changed: true
+
+  - role: user
+    message: "What information do you need for the editing quote?"
+    expect:
+      response:
+        forbidden_phrases:
+          - "cover style"
+          - "cover illustration"
+
+expectations_summary:
+  - Project shift detected on turn 3 (new_project event)
+  - active_project_id changes between turn 2 and turn 3
+  - Previous book (fantasy thriller) info kept only in project_memory_summary
+  - Active known_facts on turn 3/4 do not include fantasy or word_count from book 1
+  - Response on turn 4 does not reference previous project details
+  - RAG query on turn 3/4 does not contain previous project genre/status

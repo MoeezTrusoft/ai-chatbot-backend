@@ -165,3 +165,42 @@ class TRGContext(BaseModel):
     forbidden_reasks: list[str] = Field(default_factory=list)
     contradictions: list[ContradictionEvent] = Field(default_factory=list)
     service_shifts: list[ServiceShiftEvent] = Field(default_factory=list)
+
+    # Phase 12 PR 7: project-aware semantic events.
+    project_shifts: list[ProjectShiftEvent] = Field(default_factory=list)
+    slot_resolutions: list[SlotResolutionEvent] = Field(default_factory=list)
+    delegations: list[DelegationEvent] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 PR 7: project-aware event models
+# ---------------------------------------------------------------------------
+
+
+class ProjectShiftEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    previous_project_id: str | None = None
+    new_project_id: str | None = None
+    event: str
+    source_turn_id: str | None = None
+    audit: list[str] = Field(default_factory=list)
+
+
+class SlotResolutionEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str | None = None
+    slot: str
+    status: str
+    source_turn_id: str | None = None
+    forbidden_reask: bool = False
+
+
+class DelegationEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str | None = None
+    slot: str | None = None
+    status: str
+    source_turn_id: str | None = None

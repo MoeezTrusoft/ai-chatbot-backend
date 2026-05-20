@@ -37,6 +37,10 @@ class ContextPack(BaseModel):
     project_event: str | None = None
     previous_project_id: str | None = None
     project_memory_summary: list[str] = Field(default_factory=list)
+    # Phase 12 PR 7: richer project context.
+    active_project_label: str | None = None
+    previous_project_summary: list[str] = Field(default_factory=list)
+    project_scope_warnings: list[str] = Field(default_factory=list)
     # Slot resolution fields (populated by SlotTracker / ContextPackBuilder).
     declined_slots: list[SlotResolutionStatus] = Field(default_factory=list)
     delegated_slots: list[SlotResolutionStatus] = Field(default_factory=list)
