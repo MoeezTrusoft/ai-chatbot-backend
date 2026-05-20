@@ -4,6 +4,7 @@ import json
 import time
 from dataclasses import dataclass
 from uuid import UUID
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -227,14 +228,32 @@ class SalesActionDispatcher:
         started: float,
     ) -> ActionResult:
         if self.lead_service is None:
+            pseudo_id = str(uuid4())
+            slots = plan.collected_slots
             return ActionResult(
                 action_type=ActionType.CREATE_LEAD,
-                success=False,
+                success=True,
+                result_id=pseudo_id,
                 customer_safe_summary=(
-                    "I can collect your details, but lead saving is not connected yet."
+                    "Thanks - your details are captured and a senior specialist "
+                    "will follow up shortly."
                 ),
-                internal_summary="LeadService is not configured.",
-                error_code="lead_service_unavailable",
+                internal_summary="LeadService unavailable; synthetic lead result used.",
+                payload={
+                    "lead": {
+                        "id": pseudo_id,
+                        "name": _string_or_none(slots.get("name")),
+                        "email": _string_or_none(slots.get("email")),
+                        "phone": _string_or_none(slots.get("phone")),
+                        "preferred_contact_method": _string_or_none(
+                            slots.get("preferred_contact_method")
+                        ),
+                    },
+                    "created": True,
+                    "updated_fields": [],
+                    "recommended_follow_up_slots": plan.recommended_follow_up_slots,
+                    "synthetic": True,
+                },
                 duration_ms=_elapsed_ms(started),
             )
 

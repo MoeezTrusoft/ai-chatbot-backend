@@ -50,6 +50,8 @@ class TurnExpectation(BaseModel):
 
     # Response-text checks.
     forbidden_response_phrases: list[str] = Field(default_factory=list)
+    response_must_contain_one_of: list[str] = Field(default_factory=list)
+    response_must_not_contain_all: list[str] = Field(default_factory=list)
     response_must_not_ask: list[str] = Field(default_factory=list)
     one_question_rule: bool = False
     must_not_claim_document_generated: bool = False
@@ -90,6 +92,11 @@ class TurnExpectation(BaseModel):
     # Attachment intake trace checks.
     attachment_intake_assessment_type: str | None = None
     attachment_intake_detected_categories_contains: str | None = None
+    contact_capture_lead_contact_ready: bool | None = None
+    lead_objective_objective_move: str | None = None
+    lead_objective_objective_move_one_of: list[str] = Field(default_factory=list)
+    lead_objective_stop_discovery: bool | None = None
+    lead_created: bool | None = None
 
     # TRG project-shift checks.
     trg_project_shifts_contains_event: str | None = None
@@ -206,6 +213,8 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
         ]
     if "must_contain_one_of" in resp_block:
         flat["response_must_contain_one_of"] = resp_block["must_contain_one_of"]
+    if "must_not_contain_all" in resp_block:
+        flat["response_must_not_contain_all"] = resp_block["must_not_contain_all"]
     if resp_block.get("one_question_rule"):
         flat["one_question_rule"] = True
     if resp_block.get("must_not_claim_document_generated"):
@@ -267,6 +276,17 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
                 flat["attachment_intake_detected_categories_contains"] = checks[
                     "detected_categories_contains"
                 ]
+        if section == "contact_capture" and "lead_contact_ready" in checks:
+            flat["contact_capture_lead_contact_ready"] = checks["lead_contact_ready"]
+        if section == "lead_objective":
+            if "objective_move" in checks:
+                flat["lead_objective_objective_move"] = checks["objective_move"]
+            if "objective_move_one_of" in checks:
+                flat["lead_objective_objective_move_one_of"] = checks["objective_move_one_of"]
+            if "stop_discovery" in checks:
+                flat["lead_objective_stop_discovery"] = checks["stop_discovery"]
+        if section == "lead" and "created" in checks:
+            flat["lead_created"] = checks["created"]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -417,6 +437,8 @@ def run_conversation_case(
         rag_trace: dict[str, Any] = trace.get("rag_query") or {}
         trg_trace: dict[str, Any] = trace.get("trg_semantic") or {}
         ai_trace: dict[str, Any] = trace.get("attachment_intake") or {}
+        cc_trace: dict[str, Any] = trace.get("contact_capture") or {}
+        lo_trace: dict[str, Any] = trace.get("lead_objective") or {}
 
         ex = turn.expect
 
@@ -515,6 +537,17 @@ def run_conversation_case(
         for phrase in ex.forbidden_response_phrases:
             if phrase.casefold() in text_lower:
                 failures.append(f"turn {idx} forbidden phrase in response: '{phrase}'")
+        if ex.response_must_contain_one_of:
+            if not any(p.casefold() in text_lower for p in ex.response_must_contain_one_of):
+                failures.append(
+                    f"turn {idx} response must contain one of {ex.response_must_contain_one_of}"
+                )
+        if ex.response_must_not_contain_all:
+            if all(p.casefold() in text_lower for p in ex.response_must_not_contain_all):
+                failures.append(
+                    f"turn {idx} response must not contain all of "
+                    f"{ex.response_must_not_contain_all}"
+                )
 
         for ask in ex.response_must_not_ask:
             if ask.casefold() in text_lower:
@@ -752,6 +785,45 @@ def run_conversation_case(
                     f"turn {idx} attachment_intake.detected_categories: '{want_cat}' not in {cats}"
                 )
             context_expected += 1
+
+        if ex.contact_capture_lead_contact_ready is not None:
+            got_ready = bool(cc_trace.get("lead_contact_ready"))
+            if got_ready != ex.contact_capture_lead_contact_ready:
+                failures.append(
+                    f"turn {idx} contact_capture.lead_contact_ready expected "
+                    f"{ex.contact_capture_lead_contact_ready}, got {got_ready}"
+                )
+
+        if ex.lead_objective_objective_move is not None:
+            got_move = lo_trace.get("objective_move")
+            if got_move != ex.lead_objective_objective_move:
+                failures.append(
+                    f"turn {idx} lead_objective.objective_move expected "
+                    f"'{ex.lead_objective_objective_move}', got '{got_move}'"
+                )
+
+        if ex.lead_objective_objective_move_one_of:
+            got_move = lo_trace.get("objective_move")
+            if got_move not in set(ex.lead_objective_objective_move_one_of):
+                failures.append(
+                    f"turn {idx} lead_objective.objective_move expected one of "
+                    f"{ex.lead_objective_objective_move_one_of}, got '{got_move}'"
+                )
+
+        if ex.lead_objective_stop_discovery is not None:
+            got_stop = bool(lo_trace.get("stop_discovery"))
+            if got_stop != ex.lead_objective_stop_discovery:
+                failures.append(
+                    f"turn {idx} lead_objective.stop_discovery expected "
+                    f"{ex.lead_objective_stop_discovery}, got {got_stop}"
+                )
+
+        if ex.lead_created is not None:
+            got_created = bool(trace.get("lead_created"))
+            if got_created != ex.lead_created:
+                failures.append(
+                    f"turn {idx} lead_created expected {ex.lead_created}, got {got_created}"
+                )
 
         # — RAG query checks —
         if ex.rag_query_text_must_not_contain is not None:

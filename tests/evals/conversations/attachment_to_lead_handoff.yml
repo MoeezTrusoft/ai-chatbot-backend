@@ -1,0 +1,15 @@
+id: attachment_to_lead_handoff
+description: Attachment + editing request should route to assessment handoff and ask contact.
+turns:
+  - role: user
+    message: "I need editing and I attached my manuscript."
+    expect:
+      response:
+        forbidden_phrases:
+          - "I reviewed"
+          - "I analyzed"
+      trace:
+        attachment_intake:
+          assessment_type: editorial_assessment
+        lead_objective:
+          objective_move_one_of: [ask_contact, handoff_to_specialist]

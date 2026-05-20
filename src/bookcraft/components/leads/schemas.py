@@ -80,3 +80,20 @@ class LeadOperationResult(BaseModel):
     lead: LeadView
     created: bool
     updated_fields: list[str] = Field(default_factory=list)
+
+
+class LeadIntakePayload(BaseModel):
+    """Structured payload built at lead-creation time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    message: str | None = None
+    service: str | None = None
+    manuscript_status: str | None = None
+    assessment_type: str | None = None
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    thread_id: str | None = None
+    customer_id: str | None = None

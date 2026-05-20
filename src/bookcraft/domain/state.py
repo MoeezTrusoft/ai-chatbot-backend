@@ -168,3 +168,9 @@ class ThreadState(BaseModel):
     attachments_received: list[dict[str, Any]] = Field(default_factory=list)
     latest_assessment_type: str | None = None
     latest_specialist_role: str | None = None
+    # Lead objective state (Phase 13 / PR 2).
+    lead_objective_stage: str | None = None
+    contact_info: dict[str, Any] = Field(default_factory=dict)
+    lead_created: bool = False
+    lead_id: str | None = None
+    lead_intake_payload: dict[str, Any] = Field(default_factory=dict)

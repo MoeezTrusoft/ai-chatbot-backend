@@ -228,6 +228,27 @@ class ResponseQualityGate:
         else:
             audit.append(f"quality:question_count:{count}:max={max_q}:ok")
 
+        # Check 4b — stop-discovery mode must avoid additional scoping loops.
+        if _stop_discovery_multi_scope_failure(text, response_plan):
+            failures.append("stop_discovery_multi_scope_questions")
+            audit.append("quality:stop_discovery_scope:FAIL")
+        else:
+            audit.append("quality:stop_discovery_scope:ok")
+
+        # Check 4c — once lead is created, no further discovery questions.
+        if _lead_created_discovery_failure(text, response_plan):
+            failures.append("lead_created_discovery_question")
+            audit.append("quality:lead_created_discovery:FAIL")
+        else:
+            audit.append("quality:lead_created_discovery:ok")
+
+        # Check 4d — never demand both email and phone.
+        if _demands_both_email_and_phone(text):
+            failures.append("demands_both_email_and_phone")
+            audit.append("quality:contact_demand_both:FAIL")
+        else:
+            audit.append("quality:contact_demand_both:ok")
+
         # Check 5 — Unapproved price figures.
         price_hits = _unapproved_price_mentions(text, intent, response_plan, tool_governance)
         if price_hits:
@@ -515,6 +536,51 @@ def _blocked_tool_mismatch(
     if tool_governance is None or tool_governance.allowed:
         return False
     return bool(_SUCCESS_CLAIM_RE.search(text))
+
+
+def _stop_discovery_multi_scope_failure(text: str, response_plan: ResponsePlan | None) -> bool:
+    if response_plan is None or response_plan.primary_goal not in {
+        "lead_contact_capture",
+        "consultation_handoff",
+        "specialist_handoff",
+    }:
+        return False
+    lowered = text.casefold()
+    scope_topics = (
+        "genre",
+        "word count",
+        "page count",
+        "deadline",
+        "timeline",
+        "cover style",
+        "manuscript stage",
+    )
+    hit_count = sum(1 for topic in scope_topics if topic in lowered)
+    return hit_count >= 2
+
+
+def _lead_created_discovery_failure(text: str, response_plan: ResponsePlan | None) -> bool:
+    if response_plan is None or response_plan.primary_goal != "lead_created_confirmation":
+        return False
+    lowered = text.casefold()
+    discovery_markers = (
+        "what genre",
+        "word count",
+        "page count",
+        "deadline",
+        "cover style",
+        "manuscript stage",
+    )
+    return any(marker in lowered for marker in discovery_markers)
+
+
+def _demands_both_email_and_phone(text: str) -> bool:
+    lowered = text.casefold()
+    if "email or phone" in lowered or "email or a phone" in lowered:
+        return False
+    if "email and phone" in lowered:
+        return True
+    return bool(re.search(r"\bboth\s+(?:your\s+)?email\s+and\s+(?:your\s+)?phone\b", lowered))
 
 
 _ATTACHMENT_REVIEW_CLAIM_RE = re.compile(

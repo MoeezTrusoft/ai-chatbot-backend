@@ -75,6 +75,12 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
     "consultation_scoping": "Propose booking next step and ask one scheduling detail.",
     "document_scoping": "Confirm the exact document and missing legal-safe details.",
     "portfolio_matching": "Ask one clarifier to provide relevant portfolio samples.",
+    "lead_contact_capture": "Ask for name and email or phone in one concise question.",
+    "consultation_handoff": (
+        "Offer specialist consultation handoff and collect one contact channel."
+    ),
+    "specialist_handoff": "Confirm specialist handoff and collect required contact details.",
+    "lead_created_confirmation": "Confirm handoff to a senior specialist and avoid more discovery.",
     "safe_blocked_action": "Do not imply completion. Explain safe next step only.",
     "clarify_intent": "Clarify the request before taking any action-oriented step.",
 }
