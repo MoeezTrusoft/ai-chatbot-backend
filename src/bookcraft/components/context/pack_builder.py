@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
@@ -205,6 +206,29 @@ class ContextPackBuilder:
                 if _slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_slot)
 
+        # Phase 13: attachment intake fields from state.
+        raw_attachments = getattr(state, "attachments_received", None) or []
+        attachments_received_list: list[ChatAttachment] = []
+        for raw_att in raw_attachments:
+            if isinstance(raw_att, dict):
+                try:
+                    attachments_received_list.append(ChatAttachment.model_validate(raw_att))
+                except Exception:  # noqa: BLE001,S110
+                    pass
+            elif isinstance(raw_att, ChatAttachment):
+                attachments_received_list.append(raw_att)
+
+        assessment_type = getattr(state, "latest_assessment_type", None)
+        specialist_role = getattr(state, "latest_specialist_role", None)
+
+        # Suppress manuscript_stage re-ask when status is already known.
+        if manuscript_status:
+            for _ms_slot in ("manuscript_stage", "manuscript_status"):
+                if _ms_slot not in forbidden_reasks:
+                    forbidden_reasks.append(_ms_slot)
+                if _ms_slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_ms_slot)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -228,6 +252,9 @@ class ContextPackBuilder:
             declined_slots=declined_list,
             delegated_slots=delegated_list,
             unknown_slots=unknown_list,
+            attachments_received=attachments_received_list,
+            assessment_type=assessment_type,
+            specialist_role=specialist_role,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 

@@ -87,6 +87,10 @@ class TurnExpectation(BaseModel):
     rag_query_text_must_not_contain: str | None = None
     rag_filters_active_project_id: str | None = None
 
+    # Attachment intake trace checks.
+    attachment_intake_assessment_type: str | None = None
+    attachment_intake_detected_categories_contains: str | None = None
+
     # TRG project-shift checks.
     trg_project_shifts_contains_event: str | None = None
 
@@ -256,6 +260,13 @@ def _normalise_turn(raw: dict[str, Any]) -> dict[str, Any]:
         if section == "trg_semantic":
             if "project_shifts_contains_event" in checks:
                 flat["trg_project_shifts_contains_event"] = checks["project_shifts_contains_event"]
+        if section == "attachment_intake":
+            if "assessment_type" in checks:
+                flat["attachment_intake_assessment_type"] = checks["assessment_type"]
+            if "detected_categories_contains" in checks:
+                flat["attachment_intake_detected_categories_contains"] = checks[
+                    "detected_categories_contains"
+                ]
 
     # -- action_plan sub-block --
     ap_block = raw_expect.get("action_plan") or {}
@@ -405,6 +416,7 @@ def run_conversation_case(
         fi_trace: dict[str, Any] = trace.get("flexible_intent") or {}
         rag_trace: dict[str, Any] = trace.get("rag_query") or {}
         trg_trace: dict[str, Any] = trace.get("trg_semantic") or {}
+        ai_trace: dict[str, Any] = trace.get("attachment_intake") or {}
 
         ex = turn.expect
 
@@ -716,6 +728,30 @@ def run_conversation_case(
                 )
             context_expected += 1
             p12_portfolio_exp += 1
+
+        # — attachment intake checks —
+        if ex.attachment_intake_assessment_type is not None:
+            got_at = ai_trace.get("assessment_type")
+            want_at = ex.attachment_intake_assessment_type
+            if got_at == want_at:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} attachment_intake.assessment_type: "
+                    f"expected '{want_at}', got '{got_at}'"
+                )
+            context_expected += 1
+
+        if ex.attachment_intake_detected_categories_contains is not None:
+            cats = ai_trace.get("detected_categories") or []
+            want_cat = ex.attachment_intake_detected_categories_contains
+            if want_cat in cats:
+                context_matched += 1
+            else:
+                failures.append(
+                    f"turn {idx} attachment_intake.detected_categories: '{want_cat}' not in {cats}"
+                )
+            context_expected += 1
 
         # — RAG query checks —
         if ex.rag_query_text_must_not_contain is not None:

@@ -54,6 +54,18 @@ _GOAL_BY_QUERY: dict[str, str] = {
     "portfolio_request": "portfolio_matching",
 }
 
+# Phrases that must never appear in responses when attachments are present.
+_ATTACHMENT_FORBIDDEN_PHRASES: list[str] = [
+    "i reviewed",
+    "i analyzed",
+    "your manuscript says",
+    "your file contains",
+    "i found in the attachment",
+    "i read",
+    "after reading",
+    "having reviewed",
+]
+
 # next_question key for project-scope clarification.
 _PROJECT_CLARIFICATION_QUESTION = "same_or_new_project"
 
@@ -151,6 +163,15 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
         if fact.label in {"genre", "manuscript_status", "word_count", "page_count"}:
             facts.append(f"{fact.label}: {fact.value}")
 
+    # Phase 13: attachment acknowledgement.
+    if context_pack.attachments_received:
+        cats = [a.category or "other" for a in context_pack.attachments_received]
+        facts.append(f"attachment_received: {', '.join(cats)}")
+        if context_pack.assessment_type:
+            facts.append(f"assessment_type: {context_pack.assessment_type}")
+        if context_pack.specialist_role:
+            facts.append(f"specialist_role: {context_pack.specialist_role}")
+
     return facts
 
 
@@ -194,6 +215,12 @@ def _must_not_mention(
                 elif tt in ("tool_action", "document") and tv:
                     items.append(tv)
 
+    # Phase 13: suppress attachment content-analysis phrases.
+    if context_pack.attachments_received:
+        for phrase in _ATTACHMENT_FORBIDDEN_PHRASES:
+            if phrase not in items:
+                items.append(phrase)
+
     # Suppress portfolio genre/category filter question when fallback is active.
     if portfolio_fallback_decision is not None:
         strategy = getattr(portfolio_fallback_decision, "strategy", None)
@@ -221,6 +248,12 @@ def _primary_goal(
     # Project-event overrides (evaluated before service/intent goals).
     if context_pack.project_event == "ambiguous_project_reference":
         return "clarify_project_scope"
+
+    # Phase 13: attachment intake overrides.
+    if context_pack.attachments_received:
+        if context_pack.assessment_type:
+            return "assessment_handoff"
+        return "attachment_received_assessment"
 
     # Portfolio fallback goal overrides.
     if portfolio_fallback_decision is not None:
@@ -276,6 +309,10 @@ def _next_question(
     # Delegated creative turn: no next question for the delegated slot.
     if primary_goal == "process_explanation":
         return None
+
+    # Phase 13: attachment assessment — do not ask a follow-up content question.
+    if primary_goal in ("assessment_handoff", "attachment_received_assessment"):
+        return "consultation_interest"
 
     # Flexible intent goals: use the decision's suggested next question.
     if primary_goal in (

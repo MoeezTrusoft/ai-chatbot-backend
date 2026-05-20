@@ -1,0 +1,42 @@
+id: manuscript_status_taxonomy
+description: >
+  Tests the v2 manuscript status taxonomy across all supported stages.
+  Verifies the bot correctly acknowledges the status and does not re-ask for it.
+
+turns:
+  - role: user
+    message: "I need ghostwriting help. I just have an idea for a book."
+    expect:
+      intent:
+        service_primary: ghostwriting
+
+  - role: user
+    message: "I have rough notes scattered everywhere — no real structure yet."
+
+  - role: user
+    message: "My story is captured in voice memos I recorded."
+    expect:
+      response:
+        forbidden_phrases:
+          - "what stage is"
+          - "do you have a draft"
+          - "starting from scratch"
+
+  - role: user
+    message: "Actually I do have an outline — plot and chapters mapped out."
+
+  - role: user
+    message: "Wait, I've also started writing. I have 3 chapters done."
+
+  - role: user
+    message: "My manuscript is complete and ready for editing."
+    expect:
+      response:
+        forbidden_phrases:
+          - "what stage"
+          - "do you have a manuscript"
+
+expectations_summary:
+  - Manuscript status is updated as user provides progressively more detail
+  - Bot does not re-ask manuscript stage once it is known
+  - Each status acknowledged without hardcoded customer prose

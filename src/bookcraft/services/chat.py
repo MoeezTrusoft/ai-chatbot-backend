@@ -21,6 +21,10 @@ from bookcraft.components.actions import (
     action_trace_payload,
 )
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.attachments.intake import (
+    AttachmentIntakeProcessor,
+    AttachmentIntakeResult,
+)
 from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.context.project_manager import (
     ProjectContextManager,
@@ -125,6 +129,9 @@ class ChatService:
         default_factory=PortfolioFallbackPolicy
     )
     flexible_intent_router: FlexibleIntentRouter = field(default_factory=FlexibleIntentRouter)
+    attachment_intake_processor: AttachmentIntakeProcessor = field(
+        default_factory=AttachmentIntakeProcessor
+    )
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -350,6 +357,23 @@ class ChatService:
                 },
             )
             event_ids.append(event_id)
+            # Phase 13: attachment intake.
+            _raw_attachments = list(getattr(payload, "attachments", None) or [])
+            attachment_intake_result: AttachmentIntakeResult = (
+                self.attachment_intake_processor.process(
+                    attachments=_raw_attachments if _raw_attachments else None,
+                    message=payload.message,
+                    active_service=None,  # updated after extraction below
+                    manuscript_status=None,
+                )
+            )
+            if attachment_intake_result.attachments:
+                state.attachments_received = [
+                    a.model_dump(mode="json") for a in attachment_intake_result.attachments
+                ]
+                state.latest_assessment_type = attachment_intake_result.assessment_type
+                state.latest_specialist_role = attachment_intake_result.specialist_role
+
             extraction = await self.extractor.extract(processed, state)
             previous_state = state.model_copy(deep=True)
             state = self.state_applier.apply(state, extraction)
@@ -827,6 +851,7 @@ class ChatService:
                         t.model_dump(mode="json") for t in processed.negation_targets
                     ],
                     "slot_resolution": [s.model_dump(mode="json") for s in slot_statuses],
+                    "attachment_intake": attachment_intake_result.model_dump(mode="json"),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None
                     else None,

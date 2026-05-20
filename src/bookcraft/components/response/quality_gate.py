@@ -283,6 +283,14 @@ class ResponseQualityGate:
         else:
             audit.append("quality:delegated_slot_reask:clean")
 
+        # Check 12 — Attachment content-review claim (Phase 13).
+        attachment_review_hits = _attachment_content_review_claims(text, context_pack)
+        if attachment_review_hits:
+            failures.append(f"attachment_content_reviewed:{attachment_review_hits[0][:40]}")
+            audit.append(f"quality:attachment_review_claim:FAIL:{attachment_review_hits[0][:30]}")
+        else:
+            audit.append("quality:attachment_review_claim:clean")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -507,6 +515,31 @@ def _blocked_tool_mismatch(
     if tool_governance is None or tool_governance.allowed:
         return False
     return bool(_SUCCESS_CLAIM_RE.search(text))
+
+
+_ATTACHMENT_REVIEW_CLAIM_RE = re.compile(
+    r"\b(?:i\s+(?:have\s+)?(?:reviewed|read|analyzed|analysed|checked|examined|"
+    r"inspected|assessed|gone\s+through|looked\s+at|went\s+through)|"
+    r"after\s+(?:reviewing|reading|analyzing|checking|examining|going\s+through)|"
+    r"having\s+(?:reviewed|read|analyzed)|"
+    r"your\s+(?:manuscript|file|document|attachment)\s+(?:says|contains|shows|indicates|"
+    r"mentions|describes|states)|"
+    r"i\s+found\s+(?:in\s+)?(?:your\s+)?(?:manuscript|file|document|attachment)|"
+    r"based\s+on\s+(?:your\s+)?(?:manuscript|file|document|attachment))\b",
+    re.IGNORECASE,
+)
+
+
+def _attachment_content_review_claims(text: str, context_pack: ContextPack | None) -> list[str]:
+    """Return review-claim phrases when attachments are present and claims are found."""
+    if context_pack is None:
+        return []
+    if not context_pack.attachments_received:
+        return []
+    hits: list[str] = []
+    for m in _ATTACHMENT_REVIEW_CLAIM_RE.finditer(text):
+        hits.append(m.group(0))
+    return hits
 
 
 def _delegated_slot_reasks(text: str, context_pack: ContextPack | None) -> list[str]:

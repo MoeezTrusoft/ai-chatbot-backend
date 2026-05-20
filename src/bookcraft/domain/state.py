@@ -164,3 +164,7 @@ class ThreadState(BaseModel):
     slot_resolution_statuses: list[dict[str, Any]] = Field(default_factory=list)
     # Portfolio filter tracking — controls ask-once / fallback behaviour.
     portfolio_filter_state: dict[str, Any] = Field(default_factory=dict)
+    # Attachment intake state (Phase 13).
+    attachments_received: list[dict[str, Any]] = Field(default_factory=list)
+    latest_assessment_type: str | None = None
+    latest_specialist_role: str | None = None

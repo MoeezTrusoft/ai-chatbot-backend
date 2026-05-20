@@ -82,9 +82,9 @@ async def test_negated_published_does_not_set_published(
     ("text", "expected"),
     [
         ("The book is published already.", "published"),
-        ("I have finished my manuscript.", "completed_draft"),
-        ("The draft is complete.", "completed_draft"),
-        ("I only have an idea.", "idea_only"),
+        ("I have finished my manuscript.", "completed"),
+        ("The draft is complete.", "completed"),
+        ("I only have an idea.", "idea"),
         ("I have some chapters done.", "partial_draft"),
     ],
 )
