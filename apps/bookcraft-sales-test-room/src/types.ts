@@ -10,10 +10,30 @@ export type BrowserSession = {
   source: 'local' | 'session-service' | 'manual' | 'none';
 };
 
+export type PortfolioLinkSegment = {
+  type: 'portfolio_link';
+  title: string;
+  url: string;
+  service?: string;
+};
+
+export type PortfolioLinksSegment = {
+  type: 'portfolio_links';
+  items: Array<{ title: string; url: string; service?: string }>;
+};
+
+export type LeadIntakeFormSegment = {
+  type: 'lead_intake_form';
+  fields: string[];
+  required: string[];
+};
+
+export type RichSegment = PortfolioLinkSegment | PortfolioLinksSegment | LeadIntakeFormSegment | Record<string, unknown>;
+
 export type ChatBubble = {
   text: string;
   bubble_index?: number;
-  rich_segments?: unknown[];
+  rich_segments?: RichSegment[];
 };
 
 export type ChatIntent = {

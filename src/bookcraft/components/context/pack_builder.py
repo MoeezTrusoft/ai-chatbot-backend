@@ -221,6 +221,28 @@ class ContextPackBuilder:
         assessment_type = getattr(state, "latest_assessment_type", None)
         specialist_role = getattr(state, "latest_specialist_role", None)
         lead_objective_stage = getattr(state, "lead_objective_stage", None)
+
+        # PR 3: when attachments are present, suppress scoping slots.
+        # The bot must not ask word count, genre, manuscript stage, etc. before handoff.
+        if attachments_received_list:
+            _att_suppress = {
+                "word_or_page_count",
+                "word_count",
+                "page_count",
+                "genre",
+                "draft_status",
+                "manuscript_stage",
+                "manuscript_status",
+                "cover_style",
+                "deadline",
+            }
+            missing_facts = [f for f in missing_facts if f not in _att_suppress]
+            allowed_next_questions = [q for q in allowed_next_questions if q not in _att_suppress]
+            for _slot in _att_suppress:
+                if _slot not in forbidden_reasks:
+                    forbidden_reasks.append(_slot)
+                if _slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_slot)
         lead_created = bool(getattr(state, "lead_created", False))
         contact_info = getattr(state, "contact_info", None) or {}
         has_name = bool(contact_info.get("name"))

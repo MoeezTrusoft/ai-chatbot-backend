@@ -11,7 +11,14 @@ import {
   saveThreads,
   uid
 } from './storage';
-import type { ApiConfig, BrowserSession, LiveTrace, TestThread, ThreadTurn } from './types';
+import type {
+  ApiConfig,
+  BrowserSession,
+  LiveTrace,
+  RichSegment,
+  TestThread,
+  ThreadTurn
+} from './types';
 
 const PROMPTS = [
   {
@@ -394,10 +401,31 @@ export function App() {
 
 function Bubble({ role, text, selected, onClick, turn }: { role: 'customer' | 'assistant'; text: string; selected: boolean; onClick: () => void; turn?: ThreadTurn }) {
   const intent = turn ? getIntent(turn) : {};
+
+  // Collect rich segments from all response bubbles for portfolio link rendering.
+  const richSegments: RichSegment[] = [];
+  if (role === 'assistant' && turn?.response?.bubbles) {
+    for (const bubble of turn.response.bubbles) {
+      if (Array.isArray(bubble.rich_segments)) {
+        for (const seg of bubble.rich_segments) {
+          richSegments.push(seg as RichSegment);
+        }
+      }
+    }
+  }
+
+  const portfolioSegments = richSegments.filter(
+    (s) => s && typeof s === 'object' && (
+      (s as Record<string, unknown>).type === 'portfolio_link' ||
+      (s as Record<string, unknown>).type === 'portfolio_links'
+    )
+  );
+
   return (
     <div className={`bubble-row ${role}`}>
       <button className={`bubble ${selected ? 'selected' : ''}`} onClick={onClick}>
         <span>{text}</span>
+        {portfolioSegments.length > 0 ? <PortfolioLinks segments={portfolioSegments} /> : null}
         {role === 'assistant' && turn ? (
           <div className="bubble-tags">
             <em>{plainIntent(intent.query)}</em>
@@ -474,6 +502,50 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function Empty({ title, text }: { title: string; text: string }) {
   return <div className="empty"><strong>{title}</strong><p>{text}</p></div>;
+}
+
+function PortfolioLinks({ segments }: { segments: RichSegment[] }) {
+  const links: Array<{ title: string; url: string; service?: string }> = [];
+
+  for (const seg of segments) {
+    if (!seg || typeof seg !== 'object') continue;
+    const s = seg as Record<string, unknown>;
+
+    if (s.type === 'portfolio_link') {
+      const title = typeof s.title === 'string' ? s.title : 'Sample';
+      const url = typeof s.url === 'string' ? s.url : '';
+      const service = typeof s.service === 'string' ? s.service : undefined;
+      if (url.startsWith('https://')) links.push({ title, url, service });
+    } else if (s.type === 'portfolio_links' && Array.isArray(s.items)) {
+      for (const item of s.items as unknown[]) {
+        if (!item || typeof item !== 'object') continue;
+        const it = item as Record<string, unknown>;
+        const title = typeof it.title === 'string' ? it.title : 'Sample';
+        const url = typeof it.url === 'string' ? it.url : '';
+        const service = typeof it.service === 'string' ? it.service : undefined;
+        if (url.startsWith('https://')) links.push({ title, url, service });
+      }
+    }
+  }
+
+  if (!links.length) return null;
+
+  return (
+    <div className="portfolio-links">
+      {links.map((link, i) => (
+        <a
+          key={i}
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className="portfolio-link"
+          title={link.service ? `${link.service} sample` : 'Portfolio sample'}
+        >
+          {link.title}
+        </a>
+      ))}
+    </div>
+  );
 }
 
 function preview(thread: TestThread): string {

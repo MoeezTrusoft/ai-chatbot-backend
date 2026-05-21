@@ -128,6 +128,8 @@ class ResponsePlanner:
         consultation_objective_decision: Any | None = None,
         current_question_priority: Any | None = None,
         answer_before_capture_decision: Any | None = None,
+        # PR 3: attachment assessment priority.
+        attachment_priority_decision: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -163,6 +165,14 @@ class ResponsePlanner:
             for item in _LEAD_DISCOVERY_SUPPRESSIONS:
                 if item not in forbidden:
                     forbidden.append(item)
+
+        # PR 3: suppress scoping slots from forbidden when attachment priority active.
+        if attachment_priority_decision is not None and getattr(
+            attachment_priority_decision, "has_attachment_priority", False
+        ):
+            for slot in getattr(attachment_priority_decision, "suppress_slots", []):
+                if slot not in forbidden:
+                    forbidden.append(str(slot))
 
         facts_tag = (
             f"planner:acknowledge_facts:{len(facts)}" if facts else "planner:acknowledge_facts:none"
