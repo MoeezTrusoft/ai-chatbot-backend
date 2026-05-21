@@ -41,6 +41,11 @@ class ProjectInfo(BaseModel):
     )
     target_completion_date: FieldMeta[datetime] = Field(default_factory=FieldMeta[datetime])
     services_discussed: list[ServiceInterest] = Field(default_factory=list)
+    # Coherence / assumption-guard fields (PR: conversation-coherence).
+    genre_status: str | None = None  # "uncertain" | "confirmed" | None
+    genre_candidates: list[str] = Field(default_factory=list)
+    book_formats: list[str] = Field(default_factory=list)  # e.g. ["picture_book"]
+    audience: str | None = None  # e.g. "children" — only when explicitly evidenced
 
 
 class CommercialInfo(BaseModel):
@@ -174,3 +179,10 @@ class ThreadState(BaseModel):
     lead_created: bool = False
     lead_id: str | None = None
     lead_intake_payload: dict[str, Any] = Field(default_factory=dict)
+    # Language guard — segments ignored due to non-English content in mixed messages.
+    language_ignored_segments: list[dict[str, Any]] = Field(default_factory=list)
+    # Pending interaction context for coherent-reply resolution.
+    pending_slots: list[str] = Field(default_factory=list)
+    pending_question: dict[str, Any] = Field(default_factory=dict)
+    # Safety event log — used by input_guard to track recent hostility events.
+    safety_events: list[dict[str, Any]] = Field(default_factory=list)

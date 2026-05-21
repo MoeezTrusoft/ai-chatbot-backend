@@ -54,3 +54,14 @@ class ContextPack(BaseModel):
     lead_objective_stage: str | None = None
     contact_capture_status: str | None = None
     lead_created: bool = False
+    # Coherence / assumption-guard fields (PR: conversation-coherence).
+    genre_status: str | None = None  # "uncertain" | "confirmed" | None
+    genre_candidates: list[str] = Field(default_factory=list)
+    book_formats: list[str] = Field(default_factory=list)
+    audience: str | None = None
+    pending_slots: list[str] = Field(default_factory=list)
+    preferred_call_time: str | None = None
+    language_ignored_segments: list[dict[str, str]] = Field(default_factory=list)
+    assumption_warnings: list[str] = Field(default_factory=list)
+    # Greeting intent guard.
+    is_greeting_turn: bool = False

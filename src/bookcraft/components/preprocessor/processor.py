@@ -7,7 +7,10 @@ from typing import Any
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.preprocessor.detectors import (
+    detect_book_format,
     detect_genre,
+    detect_genre_uncertainty,
+    detect_greeting_only,
     detect_manuscript_status,
     has_agreement_request,
     has_nda_request,
@@ -331,10 +334,37 @@ class SharedPreprocessor:
             atoms["manuscript_status"] = status.value
             ATOMS_EXTRACTED.labels(atom_type="manuscript_status").inc()
 
-        genre = detect_genre(text)
-        if genre:
-            atoms["genre"] = genre
-            ATOMS_EXTRACTED.labels(atom_type="genre").inc()
+        # Genre uncertainty detection — must precede confirmed genre extraction.
+        # If the user expresses uncertainty, we record candidates but do NOT confirm genre.
+        uncertainty = detect_genre_uncertainty(text)
+        if uncertainty.uncertain:
+            atoms["genre_status"] = "uncertain"
+            ATOMS_EXTRACTED.labels(atom_type="genre_status").inc()
+            if uncertainty.genre_candidates:
+                atoms["genre_candidates"] = uncertainty.genre_candidates
+                ATOMS_EXTRACTED.labels(atom_type="genre_candidates").inc()
+            if uncertainty.negated_genres:
+                atoms["negated_genres"] = uncertainty.negated_genres
+        else:
+            genre = detect_genre(text)
+            if genre:
+                atoms["genre"] = genre
+                ATOMS_EXTRACTED.labels(atom_type="genre").inc()
+
+        # Book format detection — 'picture book' is a format, not a genre/audience.
+        book_format = detect_book_format(text)
+        if book_format.book_formats:
+            atoms["book_formats"] = book_format.book_formats
+            ATOMS_EXTRACTED.labels(atom_type="book_formats").inc()
+        if book_format.audience:
+            atoms["audience"] = book_format.audience
+            ATOMS_EXTRACTED.labels(atom_type="audience").inc()
+
+        # Greeting intent guard — greeting-only turns must not trigger scoping.
+        greeting = detect_greeting_only(text)
+        if greeting.is_greeting_only:
+            atoms["is_greeting_only"] = True
+            ATOMS_EXTRACTED.labels(atom_type="is_greeting_only").inc()
 
         return atoms
 
