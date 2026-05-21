@@ -10,6 +10,11 @@ from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecisi
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.state import ThreadState
 
+# Type alias to avoid circular import at runtime; resolved via Any in signatures.
+_ConsultationObjectiveDecision = Any
+_CurrentQuestionPriorityResult = Any
+_AnswerBeforeCaptureDecision = Any
+
 # Internal implementation terms that must never reach customer-facing output.
 _INTERNAL_TERMS: list[str] = [
     "backend",
@@ -64,6 +69,17 @@ _GOAL_BY_QUERY: dict[str, str] = {
     "portfolio_request": "portfolio_matching",
 }
 
+# Goals added by PR 2 (consultation-first planner).
+_CONSULTATION_GOALS: frozenset[str] = frozenset(
+    {
+        "answer_current_question",
+        "consultation_offer",
+        "contact_capture_for_consultation",
+        "consultation_time_capture",
+        "consultation_handoff_confirmation",
+    }
+)
+
 # Phrases that must never appear in responses when attachments are present.
 _ATTACHMENT_FORBIDDEN_PHRASES: list[str] = [
     "i reviewed",
@@ -108,6 +124,10 @@ class ResponsePlanner:
         flexible_intent_decision: Any | None = None,
         lead_objective_decision: LeadObjectiveDecision | None = None,
         contact_capture_result: ContactCaptureResult | None = None,
+        # PR 2: consultation-first planner decisions.
+        consultation_objective_decision: Any | None = None,
+        current_question_priority: Any | None = None,
+        answer_before_capture_decision: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -124,6 +144,8 @@ class ResponsePlanner:
             portfolio_fallback_decision,
             flexible_intent_decision,
             lead_objective_decision,
+            consultation_objective_decision=consultation_objective_decision,
+            current_question_priority=current_question_priority,
         )
         nq = _next_question(
             intent,
@@ -132,6 +154,7 @@ class ResponsePlanner:
             flexible_intent_decision,
             lead_objective_decision,
             contact_capture_result,
+            consultation_objective_decision=consultation_objective_decision,
         )
         summary = _customer_safe_tool_summary(tool_governance, action_result)
         max_questions = 1
@@ -265,8 +288,24 @@ def _primary_goal(
     portfolio_fallback_decision: Any | None = None,
     flexible_intent_decision: Any | None = None,
     lead_objective_decision: LeadObjectiveDecision | None = None,
+    *,
+    consultation_objective_decision: Any | None = None,
+    current_question_priority: Any | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
+    # PR 2 — Consultation-first overrides (highest priority).
+    if consultation_objective_decision is not None:
+        cod_move = getattr(consultation_objective_decision, "objective_move", None)
+        cod_goal = getattr(consultation_objective_decision, "recommended_primary_goal", None)
+        if cod_move == "create_consultation_handoff":
+            return "consultation_handoff_confirmation"
+        if cod_move == "ask_preferred_call_time":
+            return "consultation_time_capture"
+        if cod_move == "answer_then_consultation":
+            return "answer_current_question"
+        if cod_goal:
+            return str(cod_goal)
+
     if context_pack.lead_created or (
         lead_objective_decision is not None and lead_objective_decision.stage == "lead_created"
     ):
@@ -345,6 +384,8 @@ def _next_question(
     flexible_intent_decision: Any | None = None,
     lead_objective_decision: LeadObjectiveDecision | None = None,
     contact_capture_result: ContactCaptureResult | None = None,
+    *,
+    consultation_objective_decision: Any | None = None,
 ) -> str | None:
     """Return the single highest-priority missing fact to ask about next."""
     del intent  # reserved for future per-intent refinement
@@ -352,6 +393,20 @@ def _next_question(
     # Blocked or ambiguous turns: do not auto-issue a follow-up question.
     if primary_goal in {"safe_blocked_action", "clarify_intent"}:
         return None
+
+    # PR 2 — Consultation-first next questions.
+    if primary_goal == "consultation_handoff_confirmation":
+        return None
+    if primary_goal == "consultation_time_capture":
+        return "preferred_call_time"
+    if primary_goal == "answer_current_question":
+        # After answering, offer consultation — not a scoping question.
+        nq = (
+            getattr(consultation_objective_decision, "next_question", None)
+            if consultation_objective_decision is not None
+            else None
+        )
+        return nq or "consultation_interest"
 
     if primary_goal == "lead_created_confirmation":
         return None
@@ -362,6 +417,9 @@ def _next_question(
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:
+            # PR 2: contact ready — ask for call time instead of no-op.
+            if not context_pack.preferred_call_time:
+                return "preferred_call_time"
             return None
         return lead_objective_decision.next_question or "name_and_email_or_phone"
 

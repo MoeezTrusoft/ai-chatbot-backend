@@ -327,6 +327,20 @@ class ResponseQualityGate:
         else:
             audit.append("quality:assumption_guard:clean")
 
+        # Check 14 — Consultation-first: contact-only response when priority question active.
+        if _contact_only_when_priority_active(text, response_plan):
+            failures.append("contact_only_without_answering_priority_question")
+            audit.append("quality:consultation_first:contact_only_violation:FAIL")
+        else:
+            audit.append("quality:consultation_first:contact_only_check:ok")
+
+        # Check 15 — Wrong scoping after contact captured (should ask call time, not genre).
+        if _wrong_scoping_after_contact_ready(text, context_pack):
+            failures.append("scoping_question_after_contact_ready")
+            audit.append("quality:consultation_first:wrong_scoping_after_contact:FAIL")
+        else:
+            audit.append("quality:consultation_first:scoping_after_contact:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -645,6 +659,58 @@ def _delegated_slot_reasks(text: str, context_pack: ContextPack | None) -> list[
 
 
 # ---------------------------------------------------------------------------
+# Consultation-first quality checks (PR 2)
+# ---------------------------------------------------------------------------
+
+# Contact-capture-only phrases — response is only asking for contact with no answer.
+_CONTACT_ONLY_RE = re.compile(
+    r"\b(?:best\s+(?:name|email|number)|name\s+and\s+(?:email|phone|number)|"
+    r"email\s+(?:address\s+)?(?:and|or)\s+(?:phone|number)|"
+    r"(?:your\s+)?contact\s+(?:info(?:rmation)?|details?)|reach\s+you)\b",
+    re.IGNORECASE,
+)
+
+# Scoping questions that should not appear after contact is captured.
+_SCOPING_AFTER_CONTACT_RE = re.compile(
+    r"\b(?:what\s+(?:genre|type\s+of\s+book)|which\s+genre|"
+    r"word\s+count|page\s+count|how\s+many\s+(?:words|pages)|"
+    r"manuscript\s+stage|what\s+stage|deadline|launch\s+(?:date|window))\b",
+    re.IGNORECASE,
+)
+
+
+def _contact_only_when_priority_active(text: str, response_plan: ResponsePlan | None) -> bool:
+    """Fail when primary goal is answer_current_question but response only asks for contact."""
+    if response_plan is None:
+        return False
+    if response_plan.primary_goal != "answer_current_question":
+        return False
+    # Response must contain some answer, not just a contact request.
+    has_contact_ask = bool(_CONTACT_ONLY_RE.search(text))
+    has_question_mark = "?" in text
+    # If the only question is a contact ask, that's a violation.
+    if has_contact_ask and has_question_mark:
+        # Allow if there is substantive content before the contact ask.
+        # Heuristic: response should be at least 60 chars long and have > 1 sentence.
+        stripped = text.strip()
+        sentences = [s.strip() for s in stripped.split(".") if s.strip()]
+        if len(stripped) < 60 or len(sentences) <= 1:
+            return True
+    return False
+
+
+def _wrong_scoping_after_contact_ready(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when contact is ready but response asks genre/word_count/deadline."""
+    if context_pack is None:
+        return False
+    if context_pack.contact_capture_status != "ready":
+        return False
+    if context_pack.preferred_call_time:
+        return False  # already have call time
+    return bool(_SCOPING_AFTER_CONTACT_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
 # Repair / fallback helpers
 # ---------------------------------------------------------------------------
 
@@ -678,6 +744,16 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             )
         elif "greeting_asked_scoping" in f:
             parts.append("- This is a greeting turn. Welcome warmly; do not ask scoping questions.")
+        elif "contact_only_without_answering" in f:
+            parts.append(
+                "- Answer the user's current question first, then offer consultation. "
+                "Do not open with a contact request."
+            )
+        elif "scoping_question_after_contact_ready" in f:
+            parts.append(
+                "- Contact is already captured. Ask for preferred call time, "
+                "not genre or word count."
+            )
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."
@@ -803,8 +879,17 @@ def _fact_key_to_question(key: str) -> str:
         "deadline": "What deadline or launch window should I plan for?",
         "services": "Which services would you like help with?",
         "how_can_we_help": "What can I help you with today?",
+        # Consultation-first questions (PR 2).
+        "preferred_call_time": (
+            "What's the best time to reach you — morning, afternoon, or evening?"
+        ),
+        "consultation_interest": (
+            "Would you like to connect with a BookCraft specialist for a free consultation?"
+        ),
+        "name_and_email_or_phone": (
+            "What's the best name and email address or phone number to reach you?"
+        ),
         # Flexible intent routing questions.
-        "consultation_interest": "Would you like to schedule a free consultation with our team?",
         "manuscript_stage_or_project_status": (
             "What stage is your manuscript in, and what are you hoping to achieve?"
         ),

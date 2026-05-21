@@ -67,6 +67,11 @@ from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
+from bookcraft.components.sales import (
+    AnswerBeforeCapturePolicy,
+    ConsultationObjectiveEngine,
+    CurrentQuestionPriorityDetector,
+)
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
@@ -139,6 +144,16 @@ class ChatService:
     )
     contact_capture_detector: ContactCaptureDetector = field(default_factory=ContactCaptureDetector)
     lead_objective_engine: LeadObjectiveEngine = field(default_factory=LeadObjectiveEngine)
+    # PR 2: consultation-first sales planner engines.
+    current_question_priority_detector: CurrentQuestionPriorityDetector = field(
+        default_factory=CurrentQuestionPriorityDetector
+    )
+    answer_before_capture_policy: AnswerBeforeCapturePolicy = field(
+        default_factory=AnswerBeforeCapturePolicy
+    )
+    consultation_objective_engine: ConsultationObjectiveEngine = field(
+        default_factory=ConsultationObjectiveEngine
+    )
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -415,6 +430,35 @@ class ChatService:
                 contact_capture=contact_capture,
             )
             state.lead_objective_stage = lead_objective_decision.stage
+            # PR 2: consultation-first sales planner.
+            current_question_priority = self.current_question_priority_detector.detect(
+                payload.message
+            )
+            answer_before_capture_decision = self.answer_before_capture_policy.decide(
+                priority=current_question_priority,
+                contact_ready=contact_capture.lead_contact_ready,
+            )
+            consultation_objective_decision = self.consultation_objective_engine.decide(
+                message=payload.message,
+                state=state,
+                lead_objective_decision=lead_objective_decision,
+                contact_capture=contact_capture,
+                current_question_priority=current_question_priority,
+            )
+            # Apply extracted preferred_call_time to state if found this turn.
+            if consultation_objective_decision.extracted_preferred_call_time:
+                state.preferred_call_time = (
+                    consultation_objective_decision.extracted_preferred_call_time
+                )
+            # Track current question type and answer-before-capture flag in state.
+            if current_question_priority.has_priority:
+                state.current_question_type = current_question_priority.question_type
+                state.answer_before_capture_applied = (
+                    answer_before_capture_decision.suppress_contact_until_answered
+                )
+            # Sync consultation_stage from decision.
+            if consultation_objective_decision.stage:
+                state.consultation_stage = consultation_objective_decision.stage
             state.lead_intake_payload = self._build_lead_intake_payload(
                 state=state,
                 message=payload.message,
@@ -580,6 +624,9 @@ class ChatService:
                 portfolio_fallback_decision=portfolio_fallback_decision,
                 lead_objective_decision=lead_objective_decision,
                 contact_capture_result=contact_capture,
+                consultation_objective_decision=consultation_objective_decision,
+                current_question_priority=current_question_priority,
+                answer_before_capture_decision=answer_before_capture_decision,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -611,6 +658,9 @@ class ChatService:
                     portfolio_fallback_decision=portfolio_fallback_decision,
                     lead_objective_decision=lead_objective_decision,
                     contact_capture_result=contact_capture,
+                    consultation_objective_decision=consultation_objective_decision,
+                    current_question_priority=current_question_priority,
+                    answer_before_capture_decision=answer_before_capture_decision,
                 )
 
             # Phase 12 PR 6: flexible intent routing.
@@ -636,6 +686,9 @@ class ChatService:
                     flexible_intent_decision=flexible_intent_decision,
                     lead_objective_decision=lead_objective_decision,
                     contact_capture_result=contact_capture,
+                    consultation_objective_decision=consultation_objective_decision,
+                    current_question_priority=current_question_priority,
+                    answer_before_capture_decision=answer_before_capture_decision,
                 )
 
             # Phase 9: context-aware RAG retrieval using enriched query.
@@ -910,6 +963,12 @@ class ChatService:
                     "contact_capture": contact_capture.model_dump(mode="json"),
                     "lead_objective": lead_objective_decision.model_dump(mode="json"),
                     "lead_intake": state.lead_intake_payload,
+                    # PR 2: consultation-first trace keys.
+                    "current_question_priority": current_question_priority.model_dump(mode="json"),
+                    "answer_before_capture": answer_before_capture_decision.model_dump(mode="json"),
+                    "consultation_objective": consultation_objective_decision.model_dump(
+                        mode="json"
+                    ),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None

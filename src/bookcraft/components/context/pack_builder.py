@@ -281,6 +281,22 @@ class ContextPackBuilder:
                 forbidden_reasks.remove("genre")
             active_genre = None  # uncertain genre must not surface as active_genre
 
+        # Consultation-first fields (PR 2).
+        consultation_stage = getattr(state, "consultation_stage", None)
+        current_question_type = getattr(state, "current_question_type", None)
+        answer_before_capture_applied = bool(getattr(state, "answer_before_capture_applied", False))
+        # preferred_call_time already in ContextPack from PR 1; refresh from state.
+        state_preferred_call_time: str | None = getattr(state, "preferred_call_time", None)
+
+        # Suppress scoping slots when contact is ready but call time is missing.
+        contact_ready = contact_capture_status == "ready"
+        if contact_ready and not state_preferred_call_time:
+            for _ct_slot in ("word_or_page_count", "genre", "manuscript_stage", "deadline"):
+                if _ct_slot not in forbidden_reasks:
+                    forbidden_reasks.append(_ct_slot)
+                if _ct_slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_ct_slot)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -315,8 +331,12 @@ class ContextPackBuilder:
             book_formats=book_formats,
             audience=audience,
             pending_slots=pending_slots,
+            preferred_call_time=state_preferred_call_time,
             language_ignored_segments=language_ignored_segments,
             is_greeting_turn=is_greeting_only,
+            consultation_stage=consultation_stage,
+            current_question_type=current_question_type,
+            answer_before_capture_applied=answer_before_capture_applied,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
@@ -490,6 +510,31 @@ def _response_hint(pack: ContextPack) -> str | None:
         parts.append(
             "Some non-English segments were ignored. Answer the English portion only. "
             "Ask the user to continue in English through one gentle prompt."
+        )
+    # Consultation-first guidance.
+    if pack.consultation_stage == "consultation_pending":
+        parts.append(
+            "CONSULTATION IS PENDING. Do NOT ask for word count, genre, deadline, or any "
+            "scoping detail. Confirm specialist follow-up and timing only."
+        )
+    elif pack.consultation_stage == "consultation_time_requested":
+        parts.append(
+            "Contact is captured. Ask for the user's preferred call time only. "
+            "Do NOT ask for word count, genre, or deadline."
+        )
+    if pack.current_question_type:
+        parts.append(
+            f"User asked a priority question ({pack.current_question_type}). "
+            f"Answer this concern first before asking for contact details."
+        )
+    if pack.answer_before_capture_applied:
+        parts.append(
+            "Answer-before-capture policy was applied this turn. "
+            "Do not open with a contact request — answer the concern first."
+        )
+    if pack.preferred_call_time and pack.lead_created:
+        parts.append(
+            f"Preferred call time captured: {pack.preferred_call_time}. Confirm specialist handoff."
         )
     return " ".join(parts) if parts else None
 
