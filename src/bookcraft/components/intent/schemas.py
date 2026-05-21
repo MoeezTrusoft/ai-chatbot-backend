@@ -107,7 +107,6 @@ def _normalize_confidence(value: object) -> object:
 
 
 class IntentVote(BaseModel):
-
     @field_validator("query_primary", mode="before")
     @classmethod
     def _normalize_query_primary_field(cls, value: object) -> object:

@@ -1,0 +1,190 @@
+id: context_contact_consultation_recovery
+description: >
+  Full customer incident regression: user provides all context, shares contact,
+  requests free consultation, says "just schedule it", then complains the bot
+  repeated/misused their contact details. The bot must never ask for contact
+  again after contact_ready, must not echo raw PII, must move to time-window
+  ask, and must recover gracefully from the complaint.
+  All PII in this file is synthetic / fake.
+
+turns:
+  - role: user
+    message: "Hi"
+    expect:
+      response:
+        forbidden_phrases:
+          - "word count"
+          - "page count"
+          - "how many pages"
+          - "what genre"
+
+  - role: user
+    message: "I want to publish my book"
+    expect:
+      intent:
+        query_primary_one_of:
+          - service_question
+          - unclear
+      response:
+        one_question_rule: true
+
+  - role: user
+    message: "Around 500 pages"
+    expect:
+      context_pack:
+        manuscript_status_is_one_of:
+          - unknown
+          - rough_notes
+          - partial_draft
+          - draft
+          - completed
+      response:
+        one_question_rule: true
+        forbidden_phrases:
+          - "page count"
+          - "how many pages"
+
+  - role: user
+    message: "sci-fi fiction"
+    expect:
+      response:
+        one_question_rule: true
+        forbidden_phrases:
+          - "what genre"
+          - "genre or"
+
+  - role: user
+    message: "rough notes"
+    expect:
+      response:
+        one_question_rule: true
+        forbidden_phrases:
+          - "what stage"
+          - "manuscript stage"
+          - "starting from scratch"
+
+  - role: user
+    message: "John Smith john@example.com 5551234567"
+    expect:
+      trace:
+        contact_capture:
+          lead_contact_ready: true
+      response:
+        # Must not echo raw email or phone
+        forbidden_phrases:
+          - "john@example.com"
+          - "5551234567"
+          - "share your name"
+          - "best email"
+          - "phone number"
+
+  - role: user
+    message: >
+      I need the free consultation you promised on your website
+    expect:
+      intent:
+        query_primary_one_of:
+          - consultation_request
+          - service_question
+      trace:
+        contact_capture:
+          lead_contact_ready: true
+      response:
+        one_question_rule: true
+        forbidden_phrases:
+          - "share your name"
+          - "best email"
+          - "good email"
+          - "phone number"
+          - "what genre"
+          - "how many pages"
+          - "word count"
+          - "what kind of book"
+          - "what platforms"
+          - "john@example.com"
+          - "5551234567"
+
+  - role: user
+    message: "I will tell this to your consultant. Just schedule my consultation for tomorrow"
+    expect:
+      trace:
+        contact_capture:
+          lead_contact_ready: true
+      response:
+        one_question_rule: true
+        must_contain_one_of:
+          - "already shared your contact"
+          - "have your contact details"
+          - "contact details already"
+          - "details you provided"
+          - "what time tomorrow"
+          - "time window"
+          - "preferred time"
+          - "tomorrow"
+        forbidden_phrases:
+          - "share your name"
+          - "best name"
+          - "good email"
+          - "phone number"
+          - "what genre"
+          - "what kind of book"
+          - "what platforms"
+          - "john@example.com"
+          - "5551234567"
+
+  - role: user
+    message: "I just shared it to you above"
+    expect:
+      trace:
+        contact_capture:
+          lead_contact_ready: true
+      response:
+        must_contain_one_of:
+          - "already shared"
+          - "won't ask again"
+          - "have your"
+          - "on file"
+          - "noted"
+          - "apologies"
+          - "sorry"
+        forbidden_phrases:
+          - "share your name"
+          - "best name"
+          - "good email"
+          - "phone number"
+          - "john@example.com"
+          - "5551234567"
+
+  - role: user
+    message: "what the fuck thats my contact details you sharing"
+    expect:
+      response:
+        must_contain_one_of:
+          - "apologise"
+          - "apologies"
+          - "sorry"
+          - "I'm sorry"
+          - "mishandled"
+          - "you're right"
+          - "won't repeat"
+          - "your contact details"
+        forbidden_phrases:
+          - "john@example.com"
+          - "5551234567"
+          - "what genre"
+          - "how many pages"
+          - "word count"
+          - "what kind of book"
+          - "what platforms"
+          - "share your name"
+          - "good email"
+          - "phone number"
+
+expectations_summary:
+  - bot never re-asks for contact after it was captured
+  - bot never echoes raw email or phone number in responses
+  - bot does not treat user PII as BookCraft company contact
+  - consultation turn only asks for preferred time if contact is ready
+  - "already shared" message gets acknowledgment, not re-ask
+  - complaint/PII message gets apology and zero discovery questions
+  - one question max per turn throughout

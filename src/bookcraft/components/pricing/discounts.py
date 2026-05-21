@@ -13,11 +13,16 @@ def apply_discounts(
     currency: str = "USD",
 ) -> list[DiscountLine]:
     discounts: list[DiscountLine] = []
-    subtotal = sum((item.final_price_range.low.amount + item.final_price_range.high.amount) / 2 for item in line_items)
+    subtotal = sum(
+        (item.final_price_range.low.amount + item.final_price_range.high.amount) / 2
+        for item in line_items
+    )
     service_set = {ServiceCategory(item.service) for item in line_items}
 
     # Conservative bundle discounts: apply to midpoint estimate and return as a separate discount line.
-    if {ServiceCategory.EDITING_PROOFREADING, ServiceCategory.INTERIOR_FORMATTING}.issubset(service_set):
+    if {ServiceCategory.EDITING_PROOFREADING, ServiceCategory.INTERIOR_FORMATTING}.issubset(
+        service_set
+    ):
         pct = policy.bundle_discounts.get("editing_formatting", Decimal("0"))
         if pct:
             discounts.append(

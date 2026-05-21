@@ -62,9 +62,37 @@ _CONTACT_INTENT_RE = __import__("re").compile(
     r"want\s+to\s+start)|proceed|sign\s+up|book\s+(?:now|a\s+call|a\s+consultation))\b",
     __import__("re").IGNORECASE,
 )
-_TIMELINE_OR_PRICE_HINT_RE = __import__("re").compile(
-    r"\b(?:how\s+much|cost|price|pricing|how\s+long|timeline|turnaround|samples?|"
-    r"example|portfolio|how\s+it\s+works|process)\b",
+# Step 1: narrowed to genuine buying-intent phrases; informational terms removed.
+# "process," "samples," "example," "portfolio," "how it works" are informational
+# and should get answers before any contact ask.
+_BUYING_INTENT_RE = __import__("re").compile(
+    r"\b(?:how\s+much|cost|price|pricing|how\s+long|timeline|turnaround|"
+    r"i\s+(?:want|need|would\s+like)\s+(?:to\s+(?:start|hire|proceed|begin)|"
+    r"a\s+(?:quote|estimate|proposal))|"
+    r"send\s+(?:me|us)\s+(?:a\s+)?(?:quote|proposal)|"
+    r"get\s+(?:a\s+)?quote|request\s+(?:a\s+)?(?:quote|estimate)|"
+    r"hire\s+you|work\s+with\s+you|sign\s+up|ready\s+to\s+(?:start|begin|proceed))\b",
+    __import__("re").IGNORECASE,
+)
+
+# Step 2: explicit buying signals required for lead creation when contact-ready.
+_EXPLICIT_LEAD_INTENT_RE = __import__("re").compile(
+    r"\b(?:quote|estimate|proposal|consultation|schedule|book\s+a\s+call|"
+    r"hire|start\s+(?:the\s+)?(?:project|work)|ready\s+to\s+(?:start|begin|proceed|buy)|"
+    r"contact\s+me|call\s+me|email\s+me|reach\s+me|"
+    r"i\s+want\s+to\s+(?:proceed|start|hire|work)|"
+    r"please\s+(?:contact|call|reach)|"
+    r"need\s+(?:a\s+)?(?:quote|estimate|ghostwriter|editor|designer))\b",
+    __import__("re").IGNORECASE,
+)
+
+# Signals that indicate a complaint or non-lead context even with contact info.
+_NON_LEAD_CONTEXT_RE = __import__("re").compile(
+    r"\b(?:bug|broken|not\s+working|error|problem\s+with|issue\s+with|"
+    r"my\s+email\s+is\s+(?:broken|not\s+working|wrong)|"
+    r"privacy|complaint|annoyed|frustrated|angry|"
+    r"test(?:ing)?\s+(?:your|the)\s+(?:form|system|email)|"
+    r"does\s+this\s+(?:work|go\s+through)|checking\s+if|just\s+testing)\b",
     __import__("re").IGNORECASE,
 )
 
@@ -117,9 +145,31 @@ class LeadObjectiveEngine:
         audit: list[str] = []
 
         # ── Gather signals ────────────────────────────────────────────────
-        # Already created → no change needed.
+        # Step 4: lead_created loop guard — after acknowledgment, resume normal help.
         if getattr(state, "lead_created", False):
             audit.append("signal:lead_already_created")
+            # If the user is asking a new question (not lead-related), let them.
+            # lead_created_acknowledged prevents perpetual "lead_created_confirmation" loops.
+            lead_acknowledged = getattr(state, "lead_created_acknowledged", False)
+            query_primary_val = getattr(intent, "query_primary", None)
+            is_new_service_question = query_primary_val in {
+                QueryIntentType.SERVICE_QUESTION,
+                QueryIntentType.PRICING_QUESTION,
+                QueryIntentType.TIMELINE_QUESTION,
+                QueryIntentType.PORTFOLIO_REQUEST,
+                QueryIntentType.PUBLISHING_PLATFORM_QUESTION,
+                QueryIntentType.REVISION_QUESTION,
+            }
+            if lead_acknowledged and is_new_service_question:
+                audit.append("signal:lead_created_acknowledged_resuming_discovery")
+                return LeadObjectiveDecision(
+                    stage="lead_created",
+                    objective_move="continue_light_discovery",
+                    reason="Lead already created and acknowledged; answering new question.",
+                    stop_discovery=False,
+                    recommended_primary_goal=None,
+                    audit=audit,
+                )
             return LeadObjectiveDecision(
                 stage="lead_created",
                 objective_move="no_change",
@@ -145,15 +195,41 @@ class LeadObjectiveEngine:
         }:
             current_stage = "engaging"
 
-        # Contact ready → create lead.
+        # Contact ready → create lead ONLY with explicit lead intent (Step 2).
         if contact_capture is not None and contact_capture.lead_contact_ready:
             audit.append("signal:contact_ready")
+            # Do not create lead if this looks like a non-lead context (bug report, test, etc.).
+            if _NON_LEAD_CONTEXT_RE.search(message):
+                audit.append("signal:non_lead_context_suppresses_lead_creation")
+                return LeadObjectiveDecision(
+                    stage=current_stage,
+                    objective_move="continue_light_discovery",
+                    reason="Contact present but message context is non-lead (complaint/test/bug).",
+                    stop_discovery=False,
+                    recommended_primary_goal=None,
+                    audit=audit,
+                )
+            query_primary = getattr(intent, "query_primary", None)
+            has_explicit_intent = query_primary in _LEAD_CAPTURE_INTENTS or bool(
+                _EXPLICIT_LEAD_INTENT_RE.search(message)
+            )
+            if has_explicit_intent:
+                return LeadObjectiveDecision(
+                    stage="lead_ready",
+                    objective_move="create_lead",
+                    reason="Contact info present and explicit lead/buying intent confirmed.",
+                    stop_discovery=True,
+                    recommended_primary_goal="lead_contact_capture",
+                    audit=audit,
+                )
+            # Contact ready but no explicit intent → ask what they need.
+            audit.append("signal:contact_ready_no_explicit_intent")
             return LeadObjectiveDecision(
-                stage="lead_ready",
-                objective_move="create_lead",
-                reason="Contact info (name + email or phone) is present.",
-                stop_discovery=True,
-                recommended_primary_goal="lead_contact_capture",
+                stage="contact_captured",
+                objective_move="continue_light_discovery",
+                reason="Contact info present but no explicit buying/lead intent yet.",
+                stop_discovery=False,
+                recommended_primary_goal=None,
                 audit=audit,
             )
 
@@ -216,15 +292,13 @@ class LeadObjectiveEngine:
                 audit=audit,
             )
 
-        if _TIMELINE_OR_PRICE_HINT_RE.search(message):
-            audit.append("signal:message_level_price_timeline_process_or_samples")
+        # Step 1: only trigger on genuine buying intent, not informational questions.
+        if _BUYING_INTENT_RE.search(message):
+            audit.append("signal:message_level_buying_intent")
             return LeadObjectiveDecision(
                 stage="contact_requested",
                 objective_move="ask_contact",
-                reason=(
-                    "Message asks pricing/timeline/samples/process; route to contact capture "
-                    "instead of deep discovery."
-                ),
+                reason="Message has genuine buying/pricing intent; route to contact capture.",
                 stop_discovery=True,
                 recommended_primary_goal="lead_contact_capture",
                 next_question="name_and_email_or_phone",

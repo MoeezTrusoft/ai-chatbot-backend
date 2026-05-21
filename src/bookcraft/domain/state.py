@@ -200,3 +200,8 @@ class ThreadState(BaseModel):
     distribution_goal: str | None = None
     service_metadata: dict[str, dict[str, Any]] = Field(default_factory=dict)
     metadata_candidates: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    # Batch 2 Step 16: consultation handoff guard — prevents retrigger on unrelated turns.
+    consultation_handoff_created: bool = False
+    consultation_handoff_action_id: str | None = None
+    # Batch 3 Step 4: lead created acknowledgment guard — prevents looping on confirmation.
+    lead_created_acknowledged: bool = False

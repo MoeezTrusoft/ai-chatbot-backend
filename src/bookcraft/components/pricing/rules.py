@@ -154,8 +154,7 @@ def _check_numeric_values(rule_set: PricingRuleSet, errors: list[str]) -> None:
     values: list[tuple[str, object]] = []
     for service, pricing_rule in rule_set.pricing.rules.items():
         values.extend(
-            (f"pricing.{service.value}.{tier}", value)
-            for tier, value in pricing_rule.rates.items()
+            (f"pricing.{service.value}.{tier}", value) for tier, value in pricing_rule.rates.items()
         )
     for key, value in rule_set.pricing.range_multiplier.items():
         values.append((f"pricing.range_multiplier.{key}", value))

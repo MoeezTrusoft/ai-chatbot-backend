@@ -197,9 +197,7 @@ def test_context_arbitration_suppresses_create_book_when_book_trailer_matches() 
     )
 
     engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
-    result = engine.classify(
-        _processed("Can you create a book trailer for Instagram and YouTube?")
-    )
+    result = engine.classify(_processed("Can you create a book trailer for Instagram and YouTube?"))
 
     assert result.service_primary == ServiceCategory.VIDEO_TRAILER
     assert all(item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence)
@@ -267,14 +265,10 @@ def test_context_arbitration_suppresses_simple_terms_agreement() -> None:
     )
 
     engine = TriMatchEngine(rule_pack=rule_pack, mode=TriMatchMode.SHADOW)
-    result = engine.classify(
-        _processed("Can you explain BookCraft services in simple terms?")
-    )
+    result = engine.classify(_processed("Can you explain BookCraft services in simple terms?"))
 
     assert result.query_primary is None
-    assert all(
-        item.target != QueryIntentType.AGREEMENT_REQUEST.value for item in result.evidence
-    )
+    assert all(item.target != QueryIntentType.AGREEMENT_REQUEST.value for item in result.evidence)
 
 
 def test_trimatch_preserves_secondary_services_in_score_order() -> None:
@@ -388,9 +382,7 @@ def test_trimatch_uses_preprocessor_service_order_when_available() -> None:
     processed = _processed("I need editing and formatting.")
     processed = processed.model_copy(
         update={
-            "deterministic_atoms": {
-                "services": ["editing_proofreading", "interior_formatting"]
-            }
+            "deterministic_atoms": {"services": ["editing_proofreading", "interior_formatting"]}
         }
     )
 

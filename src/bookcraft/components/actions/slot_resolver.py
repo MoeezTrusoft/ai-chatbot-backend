@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.leads.contact_utils import is_real_contact_value
 from bookcraft.components.preprocessor.detectors.date_hint_detector import DATE_HINT_RE
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.domain.state import ThreadState
@@ -23,6 +25,54 @@ YES_CONFIRMATIONS = {
     "yes send it",
 }
 
+# ---------------------------------------------------------------------------
+# Pending confirmation TTLs (seconds)
+# ---------------------------------------------------------------------------
+
+_CONFIRMATION_TTL: dict[str, int] = {
+    "generate_nda": 1800,  # 30 min
+    "generate_agreement": 1800,  # 30 min
+    "schedule_consultation": 3600,  # 60 min
+    "create_lead": 3600,  # 60 min
+    "price_quote": 3600,  # 60 min
+}
+_DEFAULT_TTL = 3600
+
+# ---------------------------------------------------------------------------
+# Action-type → confirmation keywords
+# ---------------------------------------------------------------------------
+
+
+def _c(pat: str) -> re.Pattern[str]:
+    return re.compile(pat, re.I)
+
+
+_ACTION_CONFIRMATION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "schedule_consultation": (
+        _c(r"\b(?:book|schedule|confirm\s+(?:the\s+)?(?:call|consultation|booking))\b"),
+        _c(r"\b(?:yes\s+(?:book|schedule)|tomorrow\s+(?:works?|morning|afternoon|evening))\b"),
+    ),
+    "generate_nda": (
+        _c(
+            r"\b(?:send\s+(?:the\s+)?nda|confirm\s+(?:the\s+)?nda"
+            r"|yes\s+(?:send|generate)\s+(?:the\s+)?nda)\b"
+        ),
+    ),
+    "generate_agreement": (
+        _c(
+            r"\b(?:send\s+(?:the\s+)?agreement|approve\s+(?:the\s+)?agreement"
+            r"|confirm\s+(?:the\s+)?agreement)\b"
+        ),
+    ),
+    "price_quote": (
+        _c(
+            r"\b(?:yes\s+(?:use\s+those|generate\s+(?:the\s+)?estimate|proceed)"
+            r"|approve\s+(?:the\s+)?(?:quote|estimate))\b"
+        ),
+    ),
+    "create_lead": (_c(r"\b(?:yes|confirm|proceed|go\s+ahead)\b"),),
+}
+
 
 TIME_HINT_RE = re.compile(
     r"\b("
@@ -33,11 +83,23 @@ TIME_HINT_RE = re.compile(
 )
 
 
-def is_confirmation_text(text: str) -> bool:
-    normalized = re.sub(r"\s+", " ", text.strip().casefold())
-    normalized = normalized.strip(".! ")
-    normalized = normalized.replace(",", " ")
-    normalized = re.sub(r"\s+", " ", normalized).strip()
+def _normalize_confirmation(text: str) -> str:
+    n = re.sub(r"\s+", " ", text.strip().casefold())
+    n = n.strip(".! ")
+    n = n.replace(",", " ")
+    return re.sub(r"\s+", " ", n).strip()
+
+
+def is_confirmation_text(text: str, pending_action_type: str | None = None) -> bool:
+    """Return True when the text is a valid confirmation for the pending action.
+
+    When *pending_action_type* is given, only accept phrases that are
+    semantically appropriate for that action type — preventing cross-action
+    confirmation (e.g. "schedule it" confirming an NDA).
+
+    If *pending_action_type* is None the legacy broad check is used.
+    """
+    normalized = _normalize_confirmation(text)
 
     non_confirmation_patterns = (
         r"\bsend\s+me\s+(?:pricing|price|samples?|portfolio|nda|agreement|more)\b",
@@ -48,6 +110,21 @@ def is_confirmation_text(text: str) -> bool:
     if any(re.search(pattern, normalized) for pattern in non_confirmation_patterns):
         return False
 
+    # --- Action-specific check (Batch 1 Step 5) ---
+    if pending_action_type is not None:
+        # Truly generic positive words are always acceptable — they carry no
+        # cross-action ambiguity (e.g. "yes" can never mean "book a call"
+        # when pending action is NDA, but it also cannot accidentally trigger
+        # the wrong action because the CALLER already knows what is pending).
+        _GENERIC_POSITIVES = {"yes", "yes please", "confirm", "confirmed"}
+        if normalized in _GENERIC_POSITIVES:
+            return True
+        specific = _ACTION_CONFIRMATION_PATTERNS.get(pending_action_type)
+        if specific:
+            return any(p.search(normalized) for p in specific)
+        # Unknown action type: fall through to broad check.
+
+    # --- Legacy broad check (preserved for backward compat) ---
     if normalized in YES_CONFIRMATIONS:
         return True
 
@@ -58,8 +135,34 @@ def is_confirmation_text(text: str) -> bool:
         r"\bconfirm\s+(?:it|the booking|booking|the consultation)\b",
         r"\bgo\s+ahead\s+and\s+schedule\s+(?:it|the consultation)\b",
     )
-
     return any(re.search(pattern, normalized) for pattern in confirmation_patterns)
+
+
+def is_pending_expired(pending: Any, now: datetime | None = None) -> bool:
+    """Return True when the pending confirmation has passed its expiry time."""
+    if pending is None:
+        return False
+    expires_at = getattr(pending, "expires_at", None)
+    if expires_at is None:
+        return False
+    now = now or datetime.now(UTC)
+    # Ensure both are tz-aware for comparison.
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    return bool(now >= expires_at)
+
+
+def pending_ttl_seconds(action_type: str) -> int:
+    """Return the TTL in seconds for a given pending action type."""
+    return _CONFIRMATION_TTL.get(action_type, _DEFAULT_TTL)
+
+
+def make_pending_expires_at(action_type: str, now: datetime | None = None) -> datetime:
+    """Return the datetime at which a new pending confirmation should expire."""
+    now = now or datetime.now(UTC)
+    return now + timedelta(seconds=pending_ttl_seconds(action_type))
 
 
 def field_value(value: object) -> object | None:
@@ -77,39 +180,82 @@ def first_runtime_value(
     return first if isinstance(first, str) else str(first)
 
 
+def _first_real_contact_value(*values: object) -> str | None:
+    """Return the first genuinely user-provided contact value, skipping redacted sentinels."""
+    for v in values:
+        if isinstance(v, str) and v.strip() and not v.startswith("[REDACTED_"):
+            stripped = v.strip()
+            if stripped and is_real_contact_value(stripped):
+                return stripped
+    return None
+
+
 def contact_slots(
     *,
     state: ThreadState,
     extraction: CombinedExtraction,
     processed: ProcessedMessage,
 ) -> dict[str, str]:
+    """Build contact slot dict from all canonical contact sources in priority order.
+
+    Phase 3 fix: read from state.contact_info (the primary durable store) so that
+    contact captured in a previous turn is available to the action planner even when
+    extraction and runtime atoms are empty.
+
+    Priority (highest → lowest):
+      1. Current-turn extraction (CombinedExtraction)
+      2. Current-turn runtime atoms (deterministic pre-processor)
+      3. state.contact_info (synced by ChatService from ContactCaptureDetector)
+      4. state.sales_actions.lead (set after successful lead creation)
+      5. state.personal FieldMeta (set by state_applier from extraction deltas)
+    """
     atoms = processed.deterministic_atoms
     slots: dict[str, str] = {}
 
-    name = (
-        extraction.contact.full_name
-        or field_value(state.personal.name)
-        or _extract_contact_name(processed.raw or "")
+    # Gather all candidate sources.
+    ci = getattr(state, "contact_info", None) or {}
+    lead = state.sales_actions.lead
+
+    name = _first_real_contact_value(
+        extraction.contact.full_name,
+        _extract_contact_name(processed.raw or ""),
+        ci.get("name"),
+        lead.name,
+        field_value(state.personal.name),
     )
-    email = (
-        extraction.contact.email
-        or first_runtime_value(atoms, "emails")
-        or field_value(state.personal.email)
+    email = _first_real_contact_value(
+        extraction.contact.email,
+        first_runtime_value(atoms, "emails"),
+        ci.get("email"),
+        lead.email,
+        field_value(state.personal.email),
     )
-    phone = (
-        extraction.contact.phone
-        or first_runtime_value(atoms, "phones")
-        or field_value(state.personal.phone)
+    phone = _first_real_contact_value(
+        extraction.contact.phone,
+        first_runtime_value(atoms, "phones"),
+        ci.get("phone"),
+        lead.phone,
+        field_value(state.personal.phone),
     )
 
-    if isinstance(name, str) and name.strip():
-        slots["name"] = name.strip()
-    if isinstance(email, str) and email.strip():
-        slots["email"] = email.strip()
-    if isinstance(phone, str) and phone.strip():
-        slots["phone"] = phone.strip()
+    if name:
+        slots["name"] = name
+    if email:
+        slots["email"] = email
+    if phone:
+        slots["phone"] = phone
 
     return slots
+
+
+def contact_ready_from_slots(slots: dict[str, str]) -> bool:
+    """Return True when slots contain name + (email OR phone)."""
+    return bool(slots.get("name")) and bool(slots.get("email") or slots.get("phone"))
+
+
+def has_real_email_or_phone(contact: dict[str, Any]) -> bool:
+    """Return True when contact dict has at least one real email or phone."""
+    return _first_real_contact_value(contact.get("email"), contact.get("phone")) is not None
 
 
 def _extract_contact_name(text: str) -> str | None:
@@ -314,7 +460,10 @@ def lead_follow_up_slots(contact: dict[str, str]) -> list[str]:
 
 
 def has_email_or_phone(contact: dict[str, str]) -> bool:
-    return bool(contact.get("email") or contact.get("phone"))
+    # Use sentinel-aware check so redacted placeholders don't count as real contact.
+    return is_real_contact_value(contact.get("email")) or is_real_contact_value(
+        contact.get("phone")
+    )
 
 
 def _word_count_from_text(text: str) -> int | None:

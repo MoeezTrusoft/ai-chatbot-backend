@@ -187,4 +187,3 @@ def _tags_for(filename: str, section: str) -> list[str]:
 def _chunk_id(source_id: str, section: str, chunk_index: int, content: str) -> str:
     raw = f"{source_id}:{section}:{chunk_index}:{sha256_text(content)[:12]}"
     return re.sub(r"[^a-zA-Z0-9_.:-]+", "-", raw).lower()
-

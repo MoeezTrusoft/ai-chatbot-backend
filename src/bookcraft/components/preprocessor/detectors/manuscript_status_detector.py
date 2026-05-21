@@ -83,6 +83,9 @@ _COMPLETED_PHRASES = (
     "ready manuscript",
     "manuscript is ready",
     "final draft",
+    "full draft",  # Phase 9 hotfix: "85,000 words, full draft"
+    "fully drafted",
+    "complete draft",
     "manuscript is finalized",
     "manuscript finalized",
     "i've finished my manuscript",

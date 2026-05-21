@@ -6,6 +6,9 @@ from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.leads.contact_utils import (
+    contact_status_from_dict,
+)
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 from bookcraft.domain.meta import FieldMeta
@@ -246,15 +249,8 @@ class ContextPackBuilder:
                     disallowed_next_questions.append(_slot)
         lead_created = bool(getattr(state, "lead_created", False))
         contact_info = getattr(state, "contact_info", None) or {}
-        has_name = bool(contact_info.get("name"))
-        has_email = bool(contact_info.get("email"))
-        has_phone = bool(contact_info.get("phone"))
-        if has_name and (has_email or has_phone):
-            contact_capture_status = "ready"
-        elif has_name or has_email or has_phone:
-            contact_capture_status = "partial"
-        else:
-            contact_capture_status = "missing"
+        # Use sentinel-aware helpers so redacted placeholders never look "ready".
+        contact_capture_status = contact_status_from_dict(contact_info)
 
         # Suppress manuscript_stage re-ask when status is already known.
         if manuscript_status:

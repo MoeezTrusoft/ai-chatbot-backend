@@ -131,10 +131,38 @@ _REASK_PATTERNS: dict[str, re.Pattern[str]] = {
 # Slot-resolution re-ask patterns for delegated/declined/unknown slots.
 _DELEGATED_SLOT_REASK_PATTERNS = _REASK_PATTERNS  # same dict, reused for clarity
 
-# Success-claim patterns — must not appear when a tool action was blocked.
+# Step 13: Action-specific success-claim patterns.
+# Broad words like "ready" should not falsely trigger; we use action-specific phrases.
 _SUCCESS_CLAIM_RE = re.compile(
-    r"\b(?:scheduled|booked|confirmed|created|sent|generated|produced|"
-    r"completed|done|ready|your\s+appointment|your\s+nda|your\s+agreement)\b",
+    r"\b(?:your\s+appointment\s+(?:is|has\s+been)|"
+    r"your\s+nda\s+(?:has\s+been\s+)?(?:sent|generated|created)|"
+    r"your\s+agreement\s+(?:has\s+been\s+)?(?:sent|generated|created)|"
+    r"(?:nda|agreement)\s+(?:has\s+been\s+)?(?:sent|generated)|"
+    r"consultation\s+(?:is\s+|has\s+been\s+)?(?:booked|scheduled|confirmed)|"
+    r"your\s+(?:consultation|call)\s+(?:is|has\s+been)\s+(?:booked|scheduled|confirmed)|"
+    r"(?:lead|record)\s+(?:has\s+been\s+)?(?:created|saved|captured)|"
+    r"i\s+(?:have\s+)?(?:sent|generated|created|booked|scheduled)\s+your)\b",
+    re.IGNORECASE,
+)
+
+# Step 11: stronger next-step — must match planned question, not just any CTA phrase.
+# Generic vague CTAs ("tell me more," "share details") are NOT sufficient next steps.
+_WEAK_PROGRESSION_RE = re.compile(
+    r"^(?:tell\s+me\s+more\.?|share\s+(?:details|more|info)\.?|"
+    r"let\s+me\s+know\.?|which\s+direction\??\s*$|more\s+info\??)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Step 11: strong next-step phrases — contain a specific slot or action.
+_STRONG_PROGRESSION_RE = re.compile(
+    r"\b(?:what\s+(?:word|page|genre|service|format|platform|time|day|email|phone)|"
+    r"which\s+(?:service|format|platform|genre|day)|"
+    r"do\s+you\s+(?:have|want|prefer|need)\s+(?:a|an|the)?\s*\w+|"
+    r"(?:email|phone|name)\s+(?:or|and)\s+(?:email|phone|name)|"
+    r"print(?:ed)?\s+or\s+(?:ebook|digital)|"
+    r"ebook\s+or\s+print|"
+    r"what\s+time\s+(?:tomorrow|works)|"
+    r"could\s+you\s+(?:share|provide|confirm)\s+(?:your|the)\s+\w+)\b",
     re.IGNORECASE,
 )
 
@@ -194,7 +222,6 @@ class ResponseQualityGate:
         response_plan: ResponsePlan | None = None,
         tool_governance: ToolGovernanceDecision | None = None,
     ) -> ResponseQualityReport:
-        del state  # reserved for future checks
         failures: list[str] = []
         audit: list[str] = []
 
@@ -378,6 +405,24 @@ class ResponseQualityGate:
         else:
             audit.append("quality:enforcement:stale_context:ok")
 
+        # Check 21 — PII echo suppression: raw user email/phone must not appear in output.
+        pii_echo_violations = _pii_echo_violations(text, state)
+        if pii_echo_violations:
+            failures.append(f"pii_echo_in_response:{pii_echo_violations[0]}")
+            audit.append(f"quality:pii_echo:FAIL:{pii_echo_violations[0]}")
+        else:
+            audit.append("quality:pii_echo:ok")
+
+        # Check 22 — Scheduling claims must be backed by confirmed appointment evidence.
+        # Phase 7 hotfix: bot must not claim "consultation booked/scheduled" unless
+        # state.sales_actions.consultation.confirmed_appointment_id or
+        # state.consultation_handoff_created is set.
+        if _unverified_scheduling_claim(text, state):
+            failures.append("unverified_scheduling_claim")
+            audit.append("quality:scheduling_claim:FAIL:no_evidence_in_state")
+        else:
+            audit.append("quality:scheduling_claim:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -505,9 +550,14 @@ def _wrong_service_mentions(
     context_pack: ContextPack | None,
     response_plan: ResponsePlan | None,
 ) -> list[str]:
-    """Return wrong service names that appear in text given the active service context."""
+    """Return wrong service names that appear in text given the active service context.
+
+    Step 12: generalised to cover all major service pairs, not just ghostwriting/cover.
+    """
     if context_pack is None or context_pack.active_service is None:
         return []
+
+    active = context_pack.active_service
 
     # Build set of services explicitly allowed by plan acknowledgements.
     allowed_extras: set[str] = set()
@@ -516,18 +566,83 @@ def _wrong_service_mentions(
             if "service" in fact:
                 allowed_extras.add(fact.split(":")[-1].strip())
 
+    # Service conflict groups: active_service → services that should NOT be mentioned.
+    _SERVICE_CONFLICTS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
+        "cover_design_illustration": [
+            ("ghostwriting", re.compile(r"\bghostwriting\b", re.IGNORECASE)),
+            ("editing", re.compile(r"\bediting\s+service\b", re.IGNORECASE)),
+        ],
+        "ghostwriting": [
+            ("cover_design", re.compile(r"\bcover\s+design\b", re.IGNORECASE)),
+            ("publishing", re.compile(r"\bpublishing\s+(?:service|platform)\b", re.IGNORECASE)),
+        ],
+        "editing_proofreading": [
+            ("ghostwriting", re.compile(r"\bghostwriting\b", re.IGNORECASE)),
+            ("marketing", re.compile(r"\bmarketing\s+(?:campaign|service)\b", re.IGNORECASE)),
+        ],
+        "publishing_distribution": [
+            ("ghostwriting", re.compile(r"\bghostwriting\b", re.IGNORECASE)),
+        ],
+        "marketing_promotion": [
+            ("ghostwriting", re.compile(r"\bghostwriting\b", re.IGNORECASE)),
+            ("editing", re.compile(r"\bediting\s+service\b", re.IGNORECASE)),
+        ],
+    }
+
+    conflicts = _SERVICE_CONFLICTS.get(active, [])
     wrong: list[str] = []
-    if context_pack.active_service == "cover_design_illustration":
-        if re.search(r"\bghostwriting\b", text, re.IGNORECASE):
-            if "ghostwriting" not in allowed_extras:
-                wrong.append("ghostwriting_when_cover_design_active")
+    for conflict_name, pattern in conflicts:
+        if conflict_name not in allowed_extras and pattern.search(text):
+            wrong.append(f"{conflict_name}_when_{active}_active")
 
     return wrong
 
 
 def _question_count(text: str) -> int:
-    """Count real question marks in text (abbreviations do not use '?')."""
-    return text.count("?")
+    """Count distinct slot asks — including multi-slot asks with one question mark.
+
+    Step 10: detects sentences that ask for multiple different project slots at once
+    even if punctuated with a single question mark or imperative phrasing.
+    """
+    # Start with literal question marks as baseline.
+    base_count = text.count("?")
+
+    # Detect multi-slot imperative asks (no question mark needed).
+    # e.g. "Share your genre, manuscript stage, and deadline."
+    # Note: email/phone excluded — they are a single contact slot when paired.
+    _SLOT_WORDS = re.compile(
+        r"\b(?:genre|category|word\s+count|page\s+count|manuscript\s+stage|"
+        r"deadline|launch\s+(?:date|window)|budget|platform|format|"
+        r"service\s+type|cover\s+style)\b",
+        re.IGNORECASE,
+    )
+    # "email or phone" / "email and phone" = single contact slot — do not inflate count.
+    _CONTACT_PAIR_RE = re.compile(
+        r"\b(?:email\s+(?:or|and)\s+(?:a\s+)?phone|phone\s+(?:or|and)\s+email|"
+        r"name\s+and\s+(?:email|phone)|email\s+address\s+(?:or|and)\s+phone)\b",
+        re.IGNORECASE,
+    )
+    # Count how many distinct project slots are mentioned in a single sentence.
+    sentences = re.split(r"[.!?]", text)
+    for sentence in sentences:
+        if _CONTACT_PAIR_RE.search(sentence):
+            # Contact alternative pair — counts as one slot; skip slot inflation.
+            continue
+        # "word count or page count" / "word or page count" = single length slot.
+        cleaned = re.sub(
+            r"\b(?:word\s+count\s+(?:or|and)\s+page\s+count|"
+            r"word\s+or\s+page\s+count|page\s+count\s+or\s+word\s+count)\b",
+            "LENGTH",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+        slot_matches = _SLOT_WORDS.findall(cleaned)
+        unique_slots = {m.lower() for m in slot_matches}
+        if len(unique_slots) >= 2:  # noqa: PLR2004
+            # Multi-slot in one sentence — count as extra question.
+            return max(base_count, 2)
+
+    return base_count
 
 
 def _unapproved_price_mentions(
@@ -586,19 +701,49 @@ def _slippy_word_hits(text: str) -> list[str]:
 
 
 def _missing_next_step(text: str, response_plan: ResponsePlan | None) -> bool:
-    """Return True when a next question was planned but the response lacks one."""
+    """Return True when a next question was planned but the response lacks one.
+
+    Step 11: generic vague CTAs ("tell me more") are NOT sufficient when the plan
+    specifies a concrete next question slot.
+    """
     if response_plan is None or response_plan.next_question is None:
         return False
     has_question = "?" in text
     has_progression = bool(_PROGRESSION_RE.search(text))
-    return not has_question and not has_progression
+
+    if not has_question and not has_progression:
+        return True
+
+    # If there IS a question mark or progression, check it's not a weak vague CTA
+    # when the plan has a specific slot question.
+    specific_slot_questions = {
+        "word_or_page_count",
+        "genre",
+        "manuscript_stage",
+        "deadline",
+        "cover_style",
+        "preferred_call_time",
+        "name_and_email_or_phone",
+        "preferred_call_timezone",
+    }
+    if response_plan.next_question in specific_slot_questions:
+        # A vague progression phrase alone is not enough.
+        has_strong_step = has_question or bool(_STRONG_PROGRESSION_RE.search(text))
+        if not has_strong_step:
+            return True
+
+    return False
 
 
 def _blocked_tool_mismatch(
     text: str,
     tool_governance: ToolGovernanceDecision | None,
 ) -> bool:
-    """Return True when the response claims a blocked action succeeded."""
+    """Return True when the response claims a blocked action succeeded.
+
+    Step 13: now uses action-specific success claims — broad words like "ready" or
+    "done" no longer trigger false positives.
+    """
     if tool_governance is None or tool_governance.allowed:
         return False
     return bool(_SUCCESS_CLAIM_RE.search(text))
@@ -788,6 +933,68 @@ _METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
 }
+
+
+def _pii_echo_violations(text: str, state: ThreadState) -> list[str]:
+    """Return labels when the assistant response echoes raw user PII.
+
+    The bot must never repeat a user's raw email or phone number in a
+    customer-facing response unless the user explicitly asked to confirm
+    exact contact details.  Doing so:
+    1. Treats the customer's own PII as if it were company contact info.
+    2. Violates the user's privacy expectations.
+    3. Was the exact failure mode reported in the customer incident.
+
+    Safe alternatives: "I have your contact details", "email on file".
+    """
+    from bookcraft.components.leads.contact_utils import is_real_contact_value
+
+    contact_info: dict[str, object] = getattr(state, "contact_info", None) or {}
+    violations: list[str] = []
+
+    email = contact_info.get("email")
+    phone = contact_info.get("phone")
+
+    if is_real_contact_value(email) and isinstance(email, str):
+        # Check if the raw email appears verbatim in the response text.
+        if email.lower() in text.lower():
+            violations.append("raw_email_echoed")
+
+    if is_real_contact_value(phone) and isinstance(phone, str):
+        # Normalise both to digits only for comparison (handles spacing differences).
+        phone_digits = re.sub(r"\D", "", phone)
+        text_digits = re.sub(r"\D", "", text)
+        if len(phone_digits) >= 7 and phone_digits in text_digits:
+            violations.append("raw_phone_echoed")
+
+    return violations
+
+
+_SCHEDULING_CLAIM_RE = re.compile(
+    r"\b(?:consultation\s+(?:is\s+|has\s+been\s+)?(?:booked|scheduled|confirmed)|"
+    r"your\s+(?:consultation|appointment|call)\s+(?:is|has\s+been)\s+(?:booked|scheduled|confirmed)|"
+    r"i\s+(?:have\s+)?(?:booked|scheduled)\s+(?:your|the)\s+(?:consultation|call|appointment)|"
+    r"(?:appointment|consultation|call)\s+is\s+(?:now\s+)?confirmed)\b",
+    re.IGNORECASE,
+)
+
+
+def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
+    """Return True when the response claims a consultation was scheduled without evidence.
+
+    Phase 7 hotfix: scheduling claims must be backed by a confirmed appointment ID or
+    handoff flag in state. Without this guard the bot can claim it booked a consultation
+    before the action actually completes, confusing the customer.
+    """
+    if not _SCHEDULING_CLAIM_RE.search(text):
+        return False
+
+    # Scheduling claim present — check for backing evidence.
+    consultation = getattr(getattr(state, "sales_actions", None), "consultation", None)
+    confirmed_id = getattr(consultation, "confirmed_appointment_id", None)
+    handoff_created = getattr(state, "consultation_handoff_created", False)
+
+    return not (confirmed_id or handoff_created)
 
 
 def _raw_url_in_text(text: str, context_pack: ContextPack | None) -> bool:
@@ -1005,6 +1212,12 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
                 "- Do not repeat questions or refer to context the user has already overridden. "
                 "Follow the user's most recent correction."
             )
+        elif "pii_echo_in_response" in f:
+            parts.append(
+                "- Do not repeat the user's raw email or phone number. "
+                "Instead say 'I have your contact details already' or 'I'll use the "
+                "contact details you provided.' Never treat user PII as company contact info."
+            )
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."
@@ -1133,6 +1346,13 @@ def _fact_key_to_question(key: str) -> str:
         # Consultation-first questions (PR 2).
         "preferred_call_time": (
             "What's the best time to reach you — morning, afternoon, or evening?"
+        ),
+        # Step 17 (Batch 2): timezone slot name must not appear raw.
+        "preferred_call_timezone": (
+            "What timezone should we use for that time? For example, EST, PST, or PKT."
+        ),
+        "preferred_date_or_time_window": (
+            "What day and time works best for you? For example, tomorrow afternoon or Friday."
         ),
         "consultation_interest": (
             "Would you like to connect with a BookCraft specialist for a free consultation?"

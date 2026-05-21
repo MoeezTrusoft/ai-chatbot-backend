@@ -76,7 +76,9 @@ def compute_complexity(
             option = driver.option_for(selected_value)
             if option is None:
                 continue
-            group_points[option.group] = group_points.get(option.group, Decimal("0")) + option.points
+            group_points[option.group] = (
+                group_points.get(option.group, Decimal("0")) + option.points
+            )
             contributions.append(
                 ComplexityContribution(
                     driver=driver.label,
@@ -156,7 +158,9 @@ def compute_addons(
     return lines, total_price, q2(total_days), total_cp, warnings
 
 
-def _addon_quantity(addon: AddOnConfig, service_inputs: dict[str, Any], global_inputs: dict[str, Any]) -> Decimal:
+def _addon_quantity(
+    addon: AddOnConfig, service_inputs: dict[str, Any], global_inputs: dict[str, Any]
+) -> Decimal:
     if addon.unit_field is None:
         return Decimal("1")
     if addon.unit_field in service_inputs and service_inputs[addon.unit_field] is not None:
@@ -199,8 +203,12 @@ def compute_schedule_multiplier(
     warnings: list[QuoteWarning] = []
     trace: dict[str, Any] = {}
     tuning = service_config.timeline_tuning
-    rush_slope = tuning.rush_slope if tuning and tuning.rush_slope is not None else policy.rush_slope
-    relax_slope = tuning.relax_slope if tuning and tuning.relax_slope is not None else policy.relax_slope
+    rush_slope = (
+        tuning.rush_slope if tuning and tuning.rush_slope is not None else policy.rush_slope
+    )
+    relax_slope = (
+        tuning.relax_slope if tuning and tuning.relax_slope is not None else policy.relax_slope
+    )
     min_schedule_multiplier = (
         tuning.min_tlf if tuning and tuning.min_tlf is not None else policy.min_schedule_multiplier
     )
@@ -226,7 +234,14 @@ def compute_schedule_multiplier(
                 trace["campaign_duration_multiplier"] = str(duration_multiplier)
                 trace["adjusted_complexity_duration_days"] = str(complexity_duration_days)
     if requested_timeline is None:
-        return Decimal("1.00"), ceil_days(complexity_duration_days), "standard", False, warnings, trace
+        return (
+            Decimal("1.00"),
+            ceil_days(complexity_duration_days),
+            "standard",
+            False,
+            warnings,
+            trace,
+        )
     requested_days = requested_timeline.to_business_days()
     schedule_ratio = complexity_duration_days / requested_days
     trace["requested_days"] = str(q2(requested_days))
@@ -289,7 +304,9 @@ def range_for_price(
     else:
         low_width = policy.optional_unclear_low
         high_width = policy.optional_unclear_high
-    return MoneyRange(low=amount * (Decimal("1") - low_width), high=amount * (Decimal("1") + high_width))
+    return MoneyRange(
+        low=amount * (Decimal("1") - low_width), high=amount * (Decimal("1") + high_width)
+    )
 
 
 def human_review_for_value(service_config: ServiceConfig, price: Money) -> QuoteWarning | None:

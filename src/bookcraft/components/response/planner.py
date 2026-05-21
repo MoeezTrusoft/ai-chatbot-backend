@@ -132,6 +132,8 @@ class ResponsePlanner:
         attachment_priority_decision: Any | None = None,
         # Context enforcement (PR: context-enforcement).
         context_enforcement: Any | None = None,
+        # Batch 4: complaint classifier output.
+        complaint_classification: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -204,6 +206,35 @@ class ResponsePlanner:
             for _st in _enf_stale:
                 if _st not in forbidden:
                     forbidden.append(_st)
+
+        # Batch 4: complaint classifier override (second-highest priority after safety/governance).
+        # Only override goal for HIGH-severity complaints (privacy, abusive) to avoid
+        # disrupting normal conversation flow from low-confidence pattern matches.
+        # MEDIUM severity: suppress forbidden questions only; leave goal intact.
+        # LOW severity: no override (context_enforcement handles wrong-service signals).
+        if complaint_classification is not None and getattr(
+            complaint_classification, "detected", False
+        ):
+            _complaint_severity = getattr(complaint_classification, "severity", "low")
+            _complaint_goal = getattr(complaint_classification, "recovery_goal", None)
+            _stop_sales = getattr(complaint_classification, "should_stop_sales_script", False)
+            _complaint_forbidden = list(
+                getattr(complaint_classification, "forbidden_questions", []) or []
+            )
+            if (
+                _complaint_severity == "high"
+                and _complaint_goal
+                and goal not in {"safe_blocked_action", "clarify_intent"}
+            ):
+                goal = str(_complaint_goal)
+                nq = None  # high-severity complaint turns must not ask a discovery question
+            if _stop_sales and _complaint_severity == "high":
+                for item in _LEAD_DISCOVERY_SUPPRESSIONS:
+                    if item not in forbidden:
+                        forbidden.append(item)
+            for _cf in _complaint_forbidden:
+                if _cf not in forbidden:
+                    forbidden.append(_cf)
 
         facts_tag = (
             f"planner:acknowledge_facts:{len(facts)}" if facts else "planner:acknowledge_facts:none"

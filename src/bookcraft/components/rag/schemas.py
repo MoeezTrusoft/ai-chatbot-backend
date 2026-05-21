@@ -78,4 +78,3 @@ class RagRetrievalRequest(BaseModel):
     query_intent: QueryIntentType | None = None
     service_intent: ServiceCategory | None = None
     top_k: int = 8
-

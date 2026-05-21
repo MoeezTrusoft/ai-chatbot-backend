@@ -8,6 +8,22 @@ from prometheus_client import Counter, Histogram
 from bookcraft.components.language_guard.models import LanguageDecision
 from bookcraft.components.language_guard.pii_masking import is_predominantly_pii, mask_pii
 
+# ---------------------------------------------------------------------------
+# Step 14: Roman Urdu / Hinglish lead-gen vocabulary
+# ---------------------------------------------------------------------------
+
+# Common Roman Urdu phrases that indicate a publishing/book service intent.
+# Detected BEFORE the hard language redirect so these customers are not lost.
+_ROMAN_URDU_INTENT_RE = re.compile(
+    r"\b(?:kitab|book\s+publish|meri\s+book|meri\s+kitab|publish\s+karwani|"
+    r"publish\s+karna|editing\s+chahiye|cover\s+design\s+chahiye|"
+    r"ghostwriting\s+chahiye|price\s+kya\s+hai|kitna\s+(?:cost|price)|"
+    r"consultation\s+chahiye|call\s+karein|call\s+karo|"
+    r"writing\s+(?:karwani|karna)|"
+    r"format(?:ting)?\s+chahiye|marketing\s+chahiye|website\s+chahiye)\b",
+    re.IGNORECASE,
+)
+
 LANGUAGE_DETECTION_SECONDS = Histogram(
     "language_detection_seconds",
     "Latency for language detection.",
@@ -63,6 +79,12 @@ class LanguageGuard:
         if len(stripped) < 12:
             language = cached_language or "en"
             return self._record(language, language == "en", 0.9, "short_message", started)
+
+        # Step 14: detect Roman Urdu / Hinglish book-service intent before hard redirect.
+        # These are ASCII (Roman script) so they pass the ascii_ratio check but get
+        # misclassified by lingua as non-English. We route them as English-adjacent.
+        if _ROMAN_URDU_INTENT_RE.search(stripped):
+            return self._record("en", True, 0.8, "roman_urdu_lead_bypass", started)
 
         # PII/contact bypass: messages that are predominantly contact info must not be
         # rejected as non-English (names, emails, phone numbers are language-neutral).

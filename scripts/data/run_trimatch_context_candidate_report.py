@@ -11,8 +11,7 @@ from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 
 DEFAULT_RULE_DIR = Path("data/trimatch/candidates/rules_army_v2_filtered/rules")
 DEFAULT_ADVANCED_EVAL = Path(
-    "data/trimatch/staged/rules_army_v2/eval_advanced/"
-    "context_eval.requires_engine_upgrade.jsonl"
+    "data/trimatch/staged/rules_army_v2/eval_advanced/context_eval.requires_engine_upgrade.jsonl"
 )
 DEFAULT_REPORT_DIR = Path("reports/trimatch")
 
@@ -130,9 +129,7 @@ def main() -> int:
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 
@@ -196,7 +193,7 @@ def _basic_hedge_spans(text: str) -> list[Span]:
             Span(
                 start=match.start(),
                 end=len(text),
-                text=text[match.start():],
+                text=text[match.start() :],
                 cue=match.group(0),
             )
         )
@@ -210,7 +207,7 @@ def _basic_counterfactual_spans(text: str) -> list[Span]:
             Span(
                 start=match.start(),
                 end=len(text),
-                text=text[match.start():],
+                text=text[match.start() :],
                 cue=match.group(0),
             )
         )
@@ -242,9 +239,7 @@ def _actual_context_result(result: Any, message: ProcessedMessage) -> dict[str, 
             services.append(value)
 
     inferred_query = _infer_query_primary(message, services)
-    query_primary = inferred_query or (
-        result.query_primary.value if result.query_primary else None
-    )
+    query_primary = inferred_query or (result.query_primary.value if result.query_primary else None)
 
     service_primary = services[0] if services else None
     service_secondary = services[1:]
@@ -450,7 +445,8 @@ def _evaluate_expected(expected: dict[str, Any], actual: dict[str, Any]) -> list
         actual_services.extend(actual.get("service_secondary", []))
 
         missing = [
-            item for item in expected_secondary
+            item
+            for item in expected_secondary
             if item not in actual_services and item not in actual.get("service_secondary", [])
         ]
 

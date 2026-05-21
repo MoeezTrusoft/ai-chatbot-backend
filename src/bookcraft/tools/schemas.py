@@ -22,4 +22,3 @@ class ToolResultEnvelope(BaseModel):
     status: str
     result: dict[str, object] = Field(default_factory=dict)
     replayed: bool = False
-

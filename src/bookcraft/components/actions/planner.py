@@ -10,15 +10,22 @@ from bookcraft.components.actions.slot_resolver import (
     has_email_or_phone,
     has_time_hint,
     is_confirmation_text,
+    is_pending_expired,
     lead_follow_up_slots,
+    make_pending_expires_at,
     project_slots,
     service_values,
 )
+from bookcraft.components.extraction.extractor import extract_consultation
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
+
+_EXPIRED_CONFIRMATION_RESPONSE = (
+    "That confirmation has expired, so I won't use stale details. I can restart that step for you."
+)
 
 
 @dataclass(slots=True)
@@ -35,7 +42,16 @@ class SalesActionPlanner:
         extraction: CombinedExtraction,
     ) -> ActionPlan:
         pending = state.sales_actions.pending_confirmation
-        if pending.type and is_confirmation_text(processed.normalized):
+        if pending.type and is_confirmation_text(
+            processed.normalized, pending_action_type=pending.type
+        ):
+            # Step 4: reject expired pending confirmations.
+            if is_pending_expired(pending):
+                return ActionPlan(
+                    status=ActionStatus.BLOCKED,
+                    reason="pending_confirmation_expired",
+                    customer_safe_summary=_EXPIRED_CONFIRMATION_RESPONSE,
+                )
             return self._pending_confirmation_plan(
                 pending_type=pending.type, payload=pending.payload
             )
@@ -49,6 +65,7 @@ class SalesActionPlanner:
                 processed=processed,
                 contact=contact,
                 services=services,
+                state=state,
             )
 
         if self._is_pricing_request(intent):
@@ -167,6 +184,7 @@ class SalesActionPlanner:
         processed: ProcessedMessage,
         contact: dict[str, str],
         services: list[str],
+        state: ThreadState | None = None,
     ) -> ActionPlan:
         missing: list[str] = []
 
@@ -176,6 +194,17 @@ class SalesActionPlanner:
             missing.append("email_or_phone")
         if not has_time_hint(processed.normalized):
             missing.append("preferred_date_or_time_window")
+
+        # Steps 13/14/15: extract precise datetime phrase; do not use full message.
+        known_tz = getattr(state, "preferred_timezone", None) if state else None
+        consultation_data = extract_consultation(processed.raw, known_timezone=known_tz)
+        datetime_text = consultation_data.get("requested_datetime_text") or None
+        tz_text = consultation_data.get("timezone_text") or None
+        timezone_unknown = bool(consultation_data.get("timezone_unknown"))
+
+        # Step 15: if relative time given and timezone is unknown, ask for it.
+        if timezone_unknown and datetime_text:
+            missing.append("preferred_call_timezone")
 
         if missing:
             return ActionPlan(
@@ -196,12 +225,16 @@ class SalesActionPlanner:
             status=ActionStatus.NEEDS_CONFIRMATION,
             confirmation_required=True,
             pending_confirmation_key=ActionType.SCHEDULE_CONSULTATION.value,
+            pending_expires_at=make_pending_expires_at(ActionType.SCHEDULE_CONSULTATION.value),
             collected_slots={
                 **contact,
                 "services": services,
                 "duration_minutes": self.consultation_duration_minutes,
-                "business_timezone": self.default_business_timezone,
-                "requested_time_text": processed.normalized,
+                # Step 15: use detected timezone if available, else leave blank for clarification.
+                "business_timezone": tz_text or known_tz or self.default_business_timezone,
+                # Steps 13/14: use extracted datetime phrase, not full message.
+                "requested_time_text": datetime_text or "",
+                "timezone_unknown": timezone_unknown,
             },
             reason="Consultation has enough details to negotiate a slot before booking.",
         )
@@ -223,10 +256,14 @@ class SalesActionPlanner:
             missing.append("genre")
         if "manuscript_status" not in project:
             missing.append("manuscript_status")
-        if "deadline" not in project:
+        # Step 11: only add deadline when truly missing — not unconditionally.
+        if "deadline" not in project and "target_launch_window" not in project:
             missing.append("deadline")
 
+        # Step 10: always increment attempt count so behavior changes after threshold.
         attempt_count = state.sales_actions.pricing.quote_attempt_count
+        state.sales_actions.pricing.quote_attempt_count = attempt_count + 1
+        next_attempt_count = attempt_count + 1
 
         if missing and attempt_count < 1:
             return ActionPlan(
@@ -236,7 +273,7 @@ class SalesActionPlanner:
                 collected_slots={
                     "services": services,
                     **project,
-                    "quote_attempt_count": attempt_count,
+                    "quote_attempt_count": next_attempt_count,
                 },
                 reason="Pricing requires project parameters before a proper quote.",
             )
@@ -249,11 +286,12 @@ class SalesActionPlanner:
                 collected_slots={
                     "services": services,
                     **project,
-                    "quote_attempt_count": attempt_count,
+                    "quote_attempt_count": next_attempt_count,
                     "use_default_assumptions": True,
                 },
                 confirmation_required=True,
                 pending_confirmation_key=ActionType.PRICE_QUOTE.value,
+                pending_expires_at=make_pending_expires_at(ActionType.PRICE_QUOTE.value),
                 reason="User appears to be persisting after missing-info quote request.",
             )
 
@@ -350,6 +388,7 @@ class SalesActionPlanner:
             },
             confirmation_required=True,
             pending_confirmation_key=ActionType.GENERATE_NDA.value,
+            pending_expires_at=make_pending_expires_at(ActionType.GENERATE_NDA.value),
             reason="NDA has enough details and needs send confirmation.",
         )
 
@@ -408,6 +447,7 @@ class SalesActionPlanner:
             collected_slots={**collected_slots, "send_email": False},
             confirmation_required=True,
             pending_confirmation_key=ActionType.GENERATE_AGREEMENT.value,
+            pending_expires_at=make_pending_expires_at(ActionType.GENERATE_AGREEMENT.value),
             reason="Agreement has quote and customer details and needs send confirmation.",
         )
 

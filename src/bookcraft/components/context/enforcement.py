@@ -24,6 +24,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.components.leads.contact_utils import contact_is_ready
+
 # ---------------------------------------------------------------------------
 # Delegation patterns (augmented beyond delegation.py)
 # ---------------------------------------------------------------------------
@@ -485,10 +487,8 @@ def _contact_ready(state: Any, context_pack: Any | None) -> bool:
         if status == "ready":
             return True
     contact_info = getattr(state, "contact_info", None) or {}
-    has_name = bool(contact_info.get("name"))
-    has_email = bool(contact_info.get("email"))
-    has_phone = bool(contact_info.get("phone"))
-    return has_name and (has_email or has_phone)
+    # Use sentinel-aware helper so redacted placeholders never count as "ready".
+    return contact_is_ready(contact_info)
 
 
 def _is_cover_context(text: str, state: Any, context_pack: Any | None, intent: Any) -> bool:

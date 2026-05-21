@@ -26,6 +26,7 @@ from bookcraft.components.attachments.intake import (
     AttachmentIntakeProcessor,
     AttachmentIntakeResult,
 )
+from bookcraft.components.complaints import ComplaintClassifier
 from bookcraft.components.context import ContextEnforcementGate, ContextPackBuilder
 from bookcraft.components.context.project_manager import (
     ProjectContextManager,
@@ -45,6 +46,12 @@ from bookcraft.components.leads import (
     LeadIntakePayload,
     LeadObjectiveEngine,
 )
+from bookcraft.components.leads.contact_recovery import (
+    user_claims_already_shared,
+    user_has_complaint_or_privacy_concern,
+    user_objects_to_pii_misuse,
+)
+from bookcraft.components.leads.contact_utils import contact_is_ready
 from bookcraft.components.metadata import ServiceMetadataExtractor
 from bookcraft.components.portfolio import (
     PortfolioEngine,
@@ -76,6 +83,11 @@ from bookcraft.components.sales import (
     ConsultationObjectiveEngine,
     CurrentQuestionPriorityDetector,
 )
+from bookcraft.components.sales.consultation_state import (
+    ConsultationStage,
+    ConsultationStateDecision,
+    reduce_consultation_state,
+)
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
@@ -94,6 +106,11 @@ from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
 from bookcraft.infra.redaction import redact_mapping, redact_text
+from bookcraft.infra.trace_sanitizer import (
+    safe_contact_capture,
+    safe_lead_intake,
+    sanitize_event_payload,
+)
 from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
@@ -172,6 +189,8 @@ class ChatService:
     )
     # Context enforcement gate (PR: context-enforcement-correction-recovery).
     context_enforcement_gate: ContextEnforcementGate = field(default_factory=ContextEnforcementGate)
+    # Batch 4: complaint classifier — detects frustration/PII/handoff signals.
+    complaint_classifier: ComplaintClassifier = field(default_factory=ComplaintClassifier)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -247,7 +266,8 @@ class ChatService:
                 sequence=event_sequence,
                 previous_hash=previous_event_hash,
                 event_type="user.message",
-                payload={"text": payload.message},
+                # Step 2 (Batch 1): sanitize event payload before persistence.
+                payload=sanitize_event_payload("user.message", {"text": payload.message}),
             )
             event_ids = [event_id]
             if not language.is_english:
@@ -453,32 +473,68 @@ class ChatService:
             event_ids.append(event_id)
             # Phase 13: attachment intake.
             _raw_attachments = list(getattr(payload, "attachments", None) or [])
-            attachment_intake_result: AttachmentIntakeResult = (
-                self.attachment_intake_processor.process(
+            _attachment_parse_error: str | None = None
+            try:
+                attachment_intake_result = self.attachment_intake_processor.process(
                     attachments=_raw_attachments if _raw_attachments else None,
                     message=payload.message,
-                    active_service=None,  # updated after extraction below
+                    active_service=None,  # re-enriched below after extraction (Step 8)
                     manuscript_status=None,
                 )
+            except Exception as _att_exc:  # noqa: BLE001
+                # Step 9: surface attachment errors safely — do not swallow silently.
+                _attachment_parse_error = type(_att_exc).__name__
+                attachment_intake_result = AttachmentIntakeResult(
+                    audit=[f"attachment_parse_error:{_attachment_parse_error}"]
+                )
+
+            extraction = await self.extractor.extract(processed, state)
+            # Step 6: collect rejected delta paths for trace.
+            _rejected_delta_paths: list[str] = []
+            previous_state = state.model_copy(deep=True)
+            state = self.state_applier.apply(
+                state, extraction, rejected_paths=_rejected_delta_paths
             )
+            self._apply_service_focus_to_state(
+                state=state,
+                processed=processed,
+                intent=intent,
+            )
+
+            # Step 8: re-enrich attachment intake now that active service / status is known.
+            if _raw_attachments and attachment_intake_result.attachments:
+                _known_svc = (
+                    state.project.services_discussed[-1].service.value
+                    if state.project.services_discussed
+                    else None
+                )
+                _known_ms = (
+                    str(state.project.manuscript_status.value)
+                    if state.project.manuscript_status.value
+                    else None
+                )
+                try:
+                    attachment_intake_result = self.attachment_intake_processor.process(
+                        attachments=_raw_attachments,
+                        message=payload.message,
+                        active_service=_known_svc,
+                        manuscript_status=_known_ms,
+                    )
+                except Exception as _att_exc2:  # noqa: BLE001
+                    _attachment_parse_error = type(_att_exc2).__name__
+
             if attachment_intake_result.attachments:
                 state.attachments_received = [
                     a.model_dump(mode="json") for a in attachment_intake_result.attachments
                 ]
                 state.latest_assessment_type = attachment_intake_result.assessment_type
                 state.latest_specialist_role = attachment_intake_result.specialist_role
-
-            extraction = await self.extractor.extract(processed, state)
-            previous_state = state.model_copy(deep=True)
-            state = self.state_applier.apply(state, extraction)
-            self._apply_service_focus_to_state(
-                state=state,
-                processed=processed,
-                intent=intent,
-            )
             contact_capture = self.contact_capture_detector.extract(payload.message)
             contact_capture = self.contact_capture_detector.merge_with_state(contact_capture, state)
             state.contact_info = contact_capture.contact.model_dump(mode="json")
+            # Phase 4 hotfix: sync contact_capture into personal + lead state so that
+            # contact_slots() can find the contact on all subsequent turns.
+            _sync_contact_capture_to_state(state, contact_capture)
             STATE_UPDATES.labels(result="applied").inc()
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -571,6 +627,14 @@ class ChatService:
             # Sync consultation_stage from decision.
             if consultation_objective_decision.stage:
                 state.consultation_stage = consultation_objective_decision.stage
+
+            # Contact-recovery signals: detect "already shared" / complaint / PII misuse.
+            _already_shared_signal = user_claims_already_shared(payload.message)
+            _complaint_signal = user_has_complaint_or_privacy_concern(payload.message)
+            _pii_misuse_signal = user_objects_to_pii_misuse(payload.message)
+            _contact_info_ready = contact_is_ready(state.contact_info or {})
+            # Batch 4: structured complaint classification.
+            complaint_classification = self.complaint_classifier.classify(payload.message)
             # Context enforcement gate — converts all signals into an enforceable decision.
             context_enforcement_decision = self.context_enforcement_gate.enforce(
                 text=payload.message,
@@ -619,6 +683,26 @@ class ChatService:
                     contact_capture=contact_capture,
                     intent=intent,
                 )
+            # Phase 6 hotfix: run canonical consultation state reducer BEFORE applying plan.
+            # This overrides the action_planner when all details are now present in state
+            # (contact_slots Phase 3 fix ensures contact is found from state.contact_info).
+            consultation_state_decision = reduce_consultation_state(
+                state=state,
+                message=payload.message,
+                intent=intent,
+                contact_ready=contact_capture.lead_contact_ready,
+                action_plan=action_plan,
+                action_result=None,
+            )
+            if consultation_state_decision.can_schedule:
+                action_plan = _reconcile_consultation_action_plan(
+                    current_plan=action_plan,
+                    consultation_decision=consultation_state_decision,
+                    state=state,
+                    contact_capture=contact_capture,
+                )
+            # Canonical reducer stage overrides the objective engine's earlier sync.
+            state.consultation_stage = str(consultation_state_decision.stage)
             self._apply_sales_action_plan_to_state(state, action_plan)
             governance_decision = self.tool_governance_gate.evaluate(
                 action_plan=action_plan,
@@ -636,6 +720,16 @@ class ChatService:
             else:
                 action_result = None
             self._apply_sales_action_result_to_state(state, action_result)
+            # Phase 6 hotfix: re-run reducer with actual action_result for final stage.
+            consultation_state_decision = reduce_consultation_state(
+                state=state,
+                message=payload.message,
+                intent=intent,
+                contact_ready=contact_capture.lead_contact_ready,
+                action_plan=action_plan,
+                action_result=action_result,
+            )
+            state.consultation_stage = str(consultation_state_decision.stage)
             action_payload = action_trace_payload(action_plan, action_result)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -771,6 +865,7 @@ class ChatService:
                 answer_before_capture_decision=answer_before_capture_decision,
                 attachment_priority_decision=attachment_priority_decision,
                 context_enforcement=context_enforcement_decision,
+                complaint_classification=complaint_classification,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -807,6 +902,7 @@ class ChatService:
                     current_question_priority=current_question_priority,
                     answer_before_capture_decision=answer_before_capture_decision,
                     context_enforcement=context_enforcement_decision,
+                    complaint_classification=complaint_classification,
                 )
 
             # Phase 12 PR 6: flexible intent routing.
@@ -836,7 +932,29 @@ class ChatService:
                     current_question_priority=current_question_priority,
                     answer_before_capture_decision=answer_before_capture_decision,
                     context_enforcement=context_enforcement_decision,
+                    complaint_classification=complaint_classification,
                 )
+
+            # Phase 8 hotfix: override response plan for consultation status questions.
+            # When the user asks "have my consultation been scheduled?", the planner
+            # may not know to answer from state — override primary_goal so the generator
+            # produces a status answer rather than re-asking for contact details.
+            if consultation_state_decision.is_status_question:
+                if consultation_state_decision.stage == ConsultationStage.SCHEDULED:
+                    response_plan = response_plan.model_copy(
+                        update={
+                            "primary_goal": "consultation_status_scheduled",
+                            "next_question": None,
+                        }
+                    )
+                elif consultation_state_decision.stage == ConsultationStage.PENDING_CONFIRMATION:
+                    response_plan = response_plan.model_copy(
+                        update={"primary_goal": "consultation_status_pending"}
+                    )
+                elif consultation_state_decision.consultation_requested:
+                    response_plan = response_plan.model_copy(
+                        update={"primary_goal": "consultation_status_in_progress"}
+                    )
 
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
@@ -846,6 +964,7 @@ class ChatService:
                 response_plan=response_plan,
             )
             rag_chunks: list[RetrievedChunk] = []
+            rag_status: str = "skipped"  # Batch 3 Step 16: trace RAG status
             if self.rag_retriever is not None and _allow_rag_for_intent(intent):
                 # Enrich the processed message with the context-aware query text so
                 # BM25 retrieval benefits from known service/genre/status context
@@ -855,7 +974,9 @@ class ChatService:
                 )
                 try:
                     rag_chunks = await self.rag_retriever.retrieve(processed_for_rag, intent)
+                    rag_status = "success" if rag_chunks else "empty"
                 except Exception as exc:
+                    rag_status = "failed"
                     structlog.get_logger(__name__).warning(
                         "rag_retrieval_failed",
                         thread_id=str(thread_id),
@@ -990,8 +1111,17 @@ class ChatService:
                 elif not production_like:
                     final_draft = _dev_fallback()
                 else:
+                    # Step 1 (Batch 1): Fail-closed in production.
+                    # Do NOT send the blocked draft — use a hardcoded safe response.
                     deterministic_final_text_blocked = True
-                    final_draft = draft
+                    final_draft = ResponseDraft(
+                        text=(
+                            "I want to avoid giving you inaccurate information here. "
+                            "Let me connect this to the right BookCraft specialist "
+                            "so they can review it properly."
+                        ),
+                        source="safe_blocked_fallback",
+                    )
 
             final_text = final_draft.text
             final_source = final_draft.source
@@ -1002,10 +1132,22 @@ class ChatService:
                     response_plan=response_plan,
                     context_pack=context_pack,
                 )
-            bubbles = self.formatter.format(final_text, approved_urls=set(draft.approved_urls))
+            # Step 8 (Batch 1): Use final_draft approved_urls, not original draft.
+            # If repair/fallback changed the draft, the URLs must come from the
+            # final version — not the original potentially-blocked draft.
+            bubbles = self.formatter.format(
+                final_text, approved_urls=set(final_draft.approved_urls)
+            )
+            # Batch 3 Step 3: only show lead form if we should be asking for contact now
+            # (answer-before-capture must not be suppressing contact, and user must not be
+            #  in complaint/non-lead context).
+            _abc_suppresses = answer_before_capture_decision is not None and getattr(
+                answer_before_capture_decision, "suppress_contact_until_answered", False
+            )
             if (
                 lead_objective_decision.objective_move == "ask_contact"
                 and not contact_capture.lead_contact_ready
+                and not _abc_suppresses
                 and bubbles
             ):
                 bubbles[0].rich_segments.append(
@@ -1074,6 +1216,10 @@ class ChatService:
                 },
             )
             event_ids.append(event_id)
+            # Batch 3 Step 4: mark lead confirmation as acknowledged so future turns
+            # can resume normal discovery instead of looping on confirmation.
+            if response_plan.primary_goal == "lead_created_confirmation":
+                state.lead_created_acknowledged = True
             if self.thread_repository is not None:
                 await self.thread_repository.save_state(
                     thread_id=thread_id,
@@ -1112,15 +1258,21 @@ class ChatService:
                     ],
                     "slot_resolution": [s.model_dump(mode="json") for s in slot_statuses],
                     "attachment_intake": attachment_intake_result.model_dump(mode="json"),
-                    "contact_capture": contact_capture.model_dump(mode="json"),
+                    # Batch 2 Step 6/9: rejected delta paths + attachment parse errors.
+                    "rejected_delta_paths": _rejected_delta_paths,
+                    "attachment_parse_error": _attachment_parse_error,
+                    # Step 3 (Batch 1): trace-safe — no raw PII in contact_capture or lead_intake.
+                    "contact_capture": safe_contact_capture(contact_capture),
                     "lead_objective": lead_objective_decision.model_dump(mode="json"),
-                    "lead_intake": state.lead_intake_payload,
+                    "lead_intake": safe_lead_intake(state.lead_intake_payload),
                     # PR 2: consultation-first trace keys.
                     "current_question_priority": current_question_priority.model_dump(mode="json"),
                     "answer_before_capture": answer_before_capture_decision.model_dump(mode="json"),
                     "consultation_objective": consultation_objective_decision.model_dump(
                         mode="json"
                     ),
+                    # Phase 6 hotfix: canonical consultation state reducer output.
+                    "consultation_state": consultation_state_decision.model_dump(mode="json"),
                     # PR 3: attachment assessment priority trace key.
                     "attachment_priority": attachment_priority_decision.model_dump(mode="json"),
                     # PR 4: input safety + metadata extraction trace keys.
@@ -1128,6 +1280,15 @@ class ChatService:
                     "service_metadata_extraction": metadata_result.model_dump(mode="json"),
                     # Context enforcement trace key.
                     "context_enforcement": context_enforcement_decision.model_dump(mode="json"),
+                    # Contact recovery signals (no raw PII — boolean flags only).
+                    "contact_recovery": {
+                        "already_shared_signal": _already_shared_signal,
+                        "complaint_signal": _complaint_signal,
+                        "pii_misuse_signal": _pii_misuse_signal,
+                        "contact_info_ready": _contact_info_ready,
+                    },
+                    # Batch 4: structured complaint classification.
+                    "complaint_classification": complaint_classification.model_dump(mode="json"),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None
@@ -1146,6 +1307,7 @@ class ChatService:
                     },
                     "action_plan": action_trace_payload(action_plan, action_result),
                     "rag_query": rag_query.model_dump(mode="json"),
+                    "rag_status": rag_status,  # Batch 3 Step 16
                     "tool_governance": governance_decision.model_dump(mode="json"),
                     "response_plan": response_plan.model_dump(mode="json"),
                     "response_quality": quality_report.model_dump(mode="json"),
@@ -1172,6 +1334,9 @@ class ChatService:
                         "repair_attempted": repair_attempted,
                         "repair_source": final_draft.source if repair_attempted else None,
                         "deterministic_final_text_blocked": deterministic_final_text_blocked,
+                        # Step 1 (Batch 1): fail-closed trace fields.
+                        "final_response_source": final_source,
+                        "quality_blocked": deterministic_final_text_blocked,
                         "audit": [
                             f"contract:final_source={final_source}",
                             f"contract:allowed={
@@ -1251,6 +1416,9 @@ class ChatService:
             state.sales_actions.pending_confirmation.type = action_plan.pending_confirmation_key
             state.sales_actions.pending_confirmation.payload = action_plan.collected_slots
             state.sales_actions.pending_confirmation.created_at = datetime.now(UTC)
+            # Phase 3 Batch 4: copy planner-computed expiry into state so it
+            # survives DB persistence and is checked correctly on reload.
+            state.sales_actions.pending_confirmation.expires_at = action_plan.pending_expires_at
 
         if action_plan.action_type == ActionType.SCHEDULE_CONSULTATION:
             state.sales_actions.consultation.requested = True
@@ -1518,6 +1686,9 @@ class ChatService:
             state.sales_actions.pending_confirmation.payload = None
             state.sales_actions.pending_confirmation.created_at = None
             state.sales_actions.pending_confirmation.expires_at = None
+            # Step 16: mark handoff as created so it doesn't retrigger on later turns.
+            state.consultation_handoff_created = True
+            state.consultation_handoff_action_id = action_result.result_id
             return
 
         if action_result.action_type == ActionType.GENERATE_NDA:
@@ -2935,6 +3106,131 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _sync_contact_capture_to_state(
+    state: ThreadState,
+    contact_capture: Any,  # ContactCaptureResult
+) -> None:
+    """Sync ContactCaptureResult into personal FieldMeta and sales_actions.lead.
+
+    Phase 4 hotfix: contact_slots() reads from state.personal.* and
+    state.sales_actions.lead.* but these are ONLY written by the state_applier
+    (extraction deltas) — never by contact_capture.merge_with_state().
+    This helper closes that gap so all downstream consumers see the same contact.
+
+    Rules:
+    - Only writes real (non-redacted, non-empty) values.
+    - Never overwrites an existing higher-confidence value.
+    - Does not log raw PII.
+    """
+    from bookcraft.components.leads.contact_utils import is_real_contact_value
+    from bookcraft.domain.enums import Source
+    from bookcraft.domain.meta import FieldMeta
+
+    c = contact_capture.contact
+
+    def _should_write(existing_field_meta: FieldMeta[str], new_value: str | None) -> bool:
+        if not new_value or not is_real_contact_value(new_value):
+            return False
+        existing = getattr(existing_field_meta, "value", None)
+        if existing and is_real_contact_value(existing):
+            return False  # Already have a real value; don't overwrite.
+        return True
+
+    if c.name and _should_write(state.personal.name, c.name):
+        state.personal.name = FieldMeta[str](
+            value=c.name,
+            confidence=0.92,
+            source=Source.USER_STATED,
+            extracted_by="contact_capture_sync",
+        )
+
+    if c.email and _should_write(state.personal.email, c.email):
+        state.personal.email = FieldMeta[str](
+            value=c.email,
+            confidence=0.98,
+            source=Source.USER_STATED,
+            extracted_by="contact_capture_sync",
+        )
+
+    if c.phone and _should_write(state.personal.phone, c.phone):
+        state.personal.phone = FieldMeta[str](
+            value=c.phone,
+            confidence=0.95,
+            source=Source.USER_STATED,
+            extracted_by="contact_capture_sync",
+        )
+
+    # Also sync to sales_actions.lead (used by contact_slots priority 4).
+    if c.name and not state.sales_actions.lead.name:
+        state.sales_actions.lead.name = c.name
+    if c.email and not state.sales_actions.lead.email:
+        state.sales_actions.lead.email = c.email
+    if c.phone and not state.sales_actions.lead.phone:
+        state.sales_actions.lead.phone = c.phone
+
+
+def _reconcile_consultation_action_plan(
+    *,
+    current_plan: ActionPlan,
+    consultation_decision: ConsultationStateDecision,
+    state: Any,  # ThreadState
+    contact_capture: Any,  # ContactCaptureResult
+) -> ActionPlan:
+    """Override action_plan to SCHEDULE_CONSULTATION when reducer says all details are ready.
+
+    Only overrides if the current plan is not already a valid schedule plan.
+    Never touches contact or manuscript discovery — consultation takes priority.
+    """
+    if not consultation_decision.can_schedule:
+        return current_plan
+
+    if current_plan.action_type == ActionType.SCHEDULE_CONSULTATION and current_plan.status in {
+        ActionStatus.READY,
+        ActionStatus.NEEDS_CONFIRMATION,
+    }:
+        return current_plan
+
+    ci = getattr(state, "contact_info", None) or {}
+    c = getattr(contact_capture, "contact", None)
+    name = (
+        (getattr(c, "name", None) if c else None)
+        or ci.get("name")
+        or getattr(getattr(state.personal, "name", None), "value", None)
+        or getattr(state.sales_actions.lead, "name", None)
+    )
+    email = (
+        (getattr(c, "email", None) if c else None)
+        or ci.get("email")
+        or getattr(getattr(state.personal, "email", None), "value", None)
+        or getattr(state.sales_actions.lead, "email", None)
+    )
+    phone = (
+        (getattr(c, "phone", None) if c else None)
+        or ci.get("phone")
+        or getattr(getattr(state.personal, "phone", None), "value", None)
+        or getattr(state.sales_actions.lead, "phone", None)
+    )
+
+    slots: dict[str, Any] = {
+        "requested_time_text": consultation_decision.preferred_call_time or "",
+    }
+    if name:
+        slots["name"] = name
+    if email:
+        slots["email"] = email
+        slots["email_or_phone"] = email
+    elif phone:
+        slots["phone"] = phone
+        slots["email_or_phone"] = phone
+
+    return ActionPlan(
+        action_type=ActionType.SCHEDULE_CONSULTATION,
+        status=ActionStatus.NEEDS_CONFIRMATION,
+        collected_slots=slots,
+        reason="consultation_state_reducer:can_schedule",
+    )
 
 
 def _pricing_result_is_agreement_ready(payload: dict[str, Any]) -> bool:

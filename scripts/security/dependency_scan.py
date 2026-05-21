@@ -28,7 +28,7 @@ def main() -> int:
                 errors.append(f"forbidden direct dependency reference: {dependency}")
     if not Path("uv.lock").exists():
         errors.append("uv.lock is missing")
-    if "requires-python = \">=3.12\"" not in Path("pyproject.toml").read_text(encoding="utf-8"):
+    if 'requires-python = ">=3.12"' not in Path("pyproject.toml").read_text(encoding="utf-8"):
         errors.append("pyproject.toml must require Python >=3.12")
     if errors:
         print("dependency scan failed")

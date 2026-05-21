@@ -386,18 +386,32 @@ def _humanized_template_response(
         )
 
     if intent.query_primary == QueryIntentType.READY_TO_BUY:
+        # Step 19: only acknowledge facts that are actually in known_facts.
+        _known_labels = {f.label for f in context_pack.known_facts} if context_pack else set()
+        _has_stage = "manuscript_status" in _known_labels
+        _has_genre = "genre" in _known_labels
+        if _has_stage and _has_genre:
+            _known_clause = "you’ve already shared the manuscript stage and category"
+        elif _has_stage:
+            _known_clause = "you’ve already shared the manuscript stage"
+        elif _has_genre:
+            _known_clause = "you’ve already shared the category"
+        else:
+            _known_clause = "we have your service interest noted"
         return (
-            f"Perfect — for {service_phrase}, you’re already close to a proper project "
-            "scope because you’ve shared the manuscript stage and category. I’d start "
+            f"Perfect — for {service_phrase}, {_known_clause}. I’d start "
             "by confirming the file condition, deadline, and which services should be "
             f"quoted together. {cta}"
         )
 
     if intent.query_primary == QueryIntentType.NDA_REQUEST:
+        # Step 18: do not hardcode "memoir" — use actual genre or generic placeholder.
+        _genre_val = getattr(getattr(state.project, "genre", None), "value", None)
+        _project_ref = str(_genre_val) if _genre_val else "your project"
         return (
             "Absolutely — confidentiality should be clear before you share sensitive "
             f"manuscript material. Once that’s handled, we can safely scope {service_phrase} "
-            f"around the memoir. {cta}"
+            f"around {_project_ref}. {cta}"
         )
 
     if intent.query_primary in {
@@ -496,6 +510,36 @@ def _service_phrase(services: list[str]) -> str:
     return f"{', '.join(services[:-1])}, and {services[-1]}"
 
 
+def _pricing_single_question_cta(
+    *,
+    has_length: bool,
+    has_genre: bool,
+    has_stage: bool,
+) -> str:
+    """Return the single highest-priority missing pricing slot question.
+
+    Batch 4: ask one slot at a time so the quality gate never has to repair a
+    multi-slot pricing question. Priority order matches what the deterministic
+    quote engine needs first.
+
+    Priority:
+      1. word/page count (treated as one "length" slot)
+      2. genre/category
+      3. manuscript stage
+    """
+    if not has_length:
+        return "What rough word count or page count should I use for the estimate?"
+    if not has_genre:
+        return "Which genre or book category is the manuscript?"
+    if not has_stage:
+        return "What stage is the manuscript at — outline, first draft, or fully written?"
+    # All three known — offer assumptions or specialist.
+    return (
+        "I have the key scoping details. Would you like a rough estimate now, "
+        "or connect with a specialist for an accurate quote?"
+    )
+
+
 def _cta_for_intent(
     intent: IntentVote,
     runtime_atoms: dict[str, Any],
@@ -547,21 +591,10 @@ def _cta_for_intent(
         QueryIntentType.PRICING_QUESTION,
         QueryIntentType.TIMELINE_QUESTION,
     }:
-        pricing_missing_fields: list[str] = []
-        if not has_length:
-            pricing_missing_fields.append("word count or page count")
-        if not has_genre:
-            pricing_missing_fields.append("genre")
-        if not has_stage:
-            pricing_missing_fields.append("manuscript stage")
-        pricing_missing_fields.append("deadline")
-
-        if len(pricing_missing_fields) == 1:
-            return f"What {pricing_missing_fields[0]} should I use for the estimate?"
-
-        return (
-            f"What {', '.join(pricing_missing_fields[:-1])}, and "
-            f"{pricing_missing_fields[-1]} should I use for the estimate?"
+        return _pricing_single_question_cta(
+            has_length=has_length,
+            has_genre=has_genre,
+            has_stage=has_stage,
         )
 
     if intent.query_primary == QueryIntentType.READY_TO_BUY:

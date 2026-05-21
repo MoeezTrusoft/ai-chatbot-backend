@@ -290,6 +290,34 @@ class GraphNodeRecord(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class SalesActionRecord(SQLModel, table=True):
+    """Durable idempotency record for sales action dispatch.
+
+    Batch 4: replaces the in-process _dispatched dict so that multiple workers,
+    containers, and server restarts cannot double-dispatch the same action.
+
+    The unique constraint on idempotency_key is the critical invariant — any
+    attempt to INSERT with a duplicate key raises IntegrityError, which the
+    dispatcher treats as "already dispatched."
+    """
+
+    __tablename__ = "sales_actions"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    action_type: str = Field(max_length=64, index=True)
+    idempotency_key: str = Field(max_length=64, unique=True, index=True)
+    # status: pending | processing | completed | failed
+    status: str = Field(default="pending", max_length=16, index=True)
+    # Sanitized slot snapshot (no raw PII beyond what's already in the DB).
+    slots_hash: str = Field(max_length=64)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    completed_at: datetime | None = Field(default=None)
+    expires_at: datetime | None = Field(default=None)
+    result_summary: str | None = Field(default=None, max_length=512)
+    error_code: str | None = Field(default=None, max_length=64)
+
+
 class GraphEdgeRecord(SQLModel, table=True):
     __tablename__ = "graph_edges"
 
