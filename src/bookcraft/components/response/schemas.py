@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -28,4 +30,4 @@ class FormattedBubble(BaseModel):
 
     text: str
     bubble_index: int
-    rich_segments: list[dict[str, str]] = Field(default_factory=list)
+    rich_segments: list[dict[str, Any]] = Field(default_factory=list)

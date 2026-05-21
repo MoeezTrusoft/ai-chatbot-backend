@@ -171,7 +171,7 @@ async def test_preprocessor_detects_finished_my_manuscript_and_children_fiction(
         "I have finished my manuscript. Its fiction children book as I told you."
     )
 
-    assert result.deterministic_atoms["manuscript_status"] == "completed_draft"
+    assert result.deterministic_atoms["manuscript_status"] == "completed"
     assert result.deterministic_atoms["genre"] == "children's fiction"
 
 

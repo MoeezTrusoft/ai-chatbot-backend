@@ -6,6 +6,7 @@ import structlog
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.language_guard.models import LanguageDecision
+from bookcraft.components.language_guard.pii_masking import is_predominantly_pii, mask_pii
 
 LANGUAGE_DETECTION_SECONDS = Histogram(
     "language_detection_seconds",
@@ -63,13 +64,24 @@ class LanguageGuard:
             language = cached_language or "en"
             return self._record(language, language == "en", 0.9, "short_message", started)
 
-        ascii_ratio = self._ascii_ratio(stripped)
-        english_hint_count = len(set(re.findall(r"[a-zA-Z']+", stripped.lower())) & ENGLISH_HINTS)
+        # PII/contact bypass: messages that are predominantly contact info must not be
+        # rejected as non-English (names, emails, phone numbers are language-neutral).
+        if is_predominantly_pii(stripped):
+            return self._record("en", True, 0.95, "pii_bypass", started)
+
+        # Run detection on PII-masked text to prevent name/email bias.
+        pii_result = mask_pii(stripped)
+        detection_text = pii_result.masked_text if pii_result.has_pii else stripped
+
+        ascii_ratio = self._ascii_ratio(detection_text)
+        english_hint_count = len(
+            set(re.findall(r"[a-zA-Z']+", detection_text.lower())) & ENGLISH_HINTS
+        )
         if ascii_ratio >= 0.95 and english_hint_count > 0:
             return self._record("en", True, 0.95, "ascii_fast_path", started)
 
         try:
-            return self._detect_with_lingua(stripped, started)
+            return self._detect_with_lingua(detection_text, started)
         except Exception as exc:
             structlog.get_logger(__name__).warning("language_detection_failed", error=str(exc))
             return self._record("en", True, 0.5, "failure_default", started)
