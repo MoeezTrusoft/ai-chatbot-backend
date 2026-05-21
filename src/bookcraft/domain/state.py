@@ -193,3 +193,10 @@ class ThreadState(BaseModel):
     preferred_contact_channel: str | None = None
     current_question_type: str | None = None  # last detected priority question type
     answer_before_capture_applied: bool = False
+    # Service metadata (PR 4) — extracted from conversation.
+    publishing_platforms: list[str] = Field(default_factory=list)
+    target_retailers: list[str] = Field(default_factory=list)
+    isbn_status: str | None = None  # has_isbn | needs_isbn | not_sure | None
+    distribution_goal: str | None = None
+    service_metadata: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    metadata_candidates: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)

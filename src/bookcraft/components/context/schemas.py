@@ -69,3 +69,13 @@ class ContextPack(BaseModel):
     consultation_stage: str | None = None
     current_question_type: str | None = None
     answer_before_capture_applied: bool = False
+    # Service metadata (PR 4).
+    publishing_platforms: list[str] = Field(default_factory=list)
+    target_retailers: list[str] = Field(default_factory=list)
+    isbn_status: str | None = None
+    distribution_goal: str | None = None
+    service_metadata: dict[str, dict[str, object]] = Field(default_factory=dict)
+    metadata_candidates: dict[str, list[dict[str, object]]] = Field(default_factory=dict)
+    available_service_metadata_keys: list[str] = Field(default_factory=list)
+    metadata_missing_for_active_service: list[str] = Field(default_factory=list)
+    metadata_confidence_warnings: list[str] = Field(default_factory=list)
