@@ -26,7 +26,7 @@ from bookcraft.components.attachments.intake import (
     AttachmentIntakeProcessor,
     AttachmentIntakeResult,
 )
-from bookcraft.components.context import ContextPackBuilder
+from bookcraft.components.context import ContextEnforcementGate, ContextPackBuilder
 from bookcraft.components.context.project_manager import (
     ProjectContextManager,
     ProjectContextSnapshot,
@@ -170,6 +170,8 @@ class ChatService:
     service_metadata_extractor: ServiceMetadataExtractor = field(
         default_factory=ServiceMetadataExtractor
     )
+    # Context enforcement gate (PR: context-enforcement-correction-recovery).
+    context_enforcement_gate: ContextEnforcementGate = field(default_factory=ContextEnforcementGate)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -569,6 +571,35 @@ class ChatService:
             # Sync consultation_stage from decision.
             if consultation_objective_decision.stage:
                 state.consultation_stage = consultation_objective_decision.stage
+            # Context enforcement gate — converts all signals into an enforceable decision.
+            context_enforcement_decision = self.context_enforcement_gate.enforce(
+                text=payload.message,
+                intent=intent,
+                state=state,
+                processed=processed,
+                context_pack=None,  # pack not yet built; enforcement uses state directly
+                current_question_priority=current_question_priority,
+                consultation_objective=consultation_objective_decision,
+                service_metadata_extraction=metadata_result,
+                negation_targets=processed.negation_targets or None,
+                delegated_decision=self.slot_tracker.last_decision,
+            )
+            # Apply safe state updates from enforcement decision.
+            if context_enforcement_decision.state_updates:
+                upd = context_enforcement_decision.state_updates
+                if upd.get("clear_genre"):
+                    state.project.genre = state.project.genre.model_copy(update={"value": None})
+                    state.project.genre_status = "uncertain"
+                    if upd.get("genre_candidate"):
+                        cands = list(state.project.genre_candidates or [])
+                        cand = str(upd["genre_candidate"])
+                        if cand not in cands:
+                            cands.append(cand)
+                        state.project.genre_candidates = cands
+                if "publishing_platforms" in upd:
+                    state.publishing_platforms = list(upd["publishing_platforms"])
+                if "book_formats" in upd:
+                    state.project.book_formats = list(upd["book_formats"])
             state.lead_intake_payload = self._build_lead_intake_payload(
                 state=state,
                 message=payload.message,
@@ -721,6 +752,7 @@ class ChatService:
                 runtime_atoms=processed.deterministic_atoms,
                 trg_context=trg_context,
                 project_snapshot=project_snapshot,
+                context_enforcement=context_enforcement_decision,
             )
             response_hint = context_pack.response_hint or trg_response_hint
             response_plan = self.response_planner.plan(
@@ -738,6 +770,7 @@ class ChatService:
                 current_question_priority=current_question_priority,
                 answer_before_capture_decision=answer_before_capture_decision,
                 attachment_priority_decision=attachment_priority_decision,
+                context_enforcement=context_enforcement_decision,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -756,6 +789,7 @@ class ChatService:
                     runtime_atoms=processed.deterministic_atoms,
                     trg_context=trg_context,
                     project_snapshot=project_snapshot,
+                    context_enforcement=context_enforcement_decision,
                 )
                 response_hint = context_pack.response_hint or trg_response_hint
                 response_plan = self.response_planner.plan(
@@ -772,6 +806,7 @@ class ChatService:
                     consultation_objective_decision=consultation_objective_decision,
                     current_question_priority=current_question_priority,
                     answer_before_capture_decision=answer_before_capture_decision,
+                    context_enforcement=context_enforcement_decision,
                 )
 
             # Phase 12 PR 6: flexible intent routing.
@@ -800,6 +835,7 @@ class ChatService:
                     consultation_objective_decision=consultation_objective_decision,
                     current_question_priority=current_question_priority,
                     answer_before_capture_decision=answer_before_capture_decision,
+                    context_enforcement=context_enforcement_decision,
                 )
 
             # Phase 9: context-aware RAG retrieval using enriched query.
@@ -1090,6 +1126,8 @@ class ChatService:
                     # PR 4: input safety + metadata extraction trace keys.
                     "input_safety": input_safety_decision.model_dump(mode="json"),
                     "service_metadata_extraction": metadata_result.model_dump(mode="json"),
+                    # Context enforcement trace key.
+                    "context_enforcement": context_enforcement_decision.model_dump(mode="json"),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None

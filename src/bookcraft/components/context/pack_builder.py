@@ -24,6 +24,7 @@ class ContextPackBuilder:
         runtime_atoms: dict[str, Any] | None = None,
         trg_context: TRGContext | None = None,
         project_snapshot: ProjectContextSnapshot | None = None,
+        context_enforcement: Any | None = None,
     ) -> ContextPack:
         runtime_atoms = runtime_atoms or {}
         known_facts: list[KnownFact] = []
@@ -319,6 +320,62 @@ class ContextPackBuilder:
                 if _ct_slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_ct_slot)
 
+        # Context enforcement (PR: context-enforcement).
+        _enforcement_negated_svcs: list[str] = []
+        _enforcement_negated_platforms: list[str] = []
+        _enforcement_negated_formats: list[str] = []
+        _enforcement_stale_terms: list[str] = []
+        _enforcement_warnings: list[str] = []
+
+        if context_enforcement is not None:
+            _enf_forbidden = list(getattr(context_enforcement, "forbidden_reasks", None) or [])
+            for _ef in _enf_forbidden:
+                if _ef not in forbidden_reasks:
+                    forbidden_reasks.append(_ef)
+                if _ef not in disallowed_next_questions:
+                    disallowed_next_questions.append(_ef)
+            # Remove enforcement-declared slots from missing_facts and allowed_next_questions.
+            _all_enf_slots = set(
+                list(getattr(context_enforcement, "delegated_slots", None) or [])
+                + list(getattr(context_enforcement, "unknown_slots", None) or [])
+                + list(getattr(context_enforcement, "declined_slots", None) or [])
+            )
+            missing_facts = [f for f in missing_facts if f not in _all_enf_slots]
+            allowed_next_questions = [q for q in allowed_next_questions if q not in _all_enf_slots]
+            # Clear false facts from known_facts.
+            _cleared = set(getattr(context_enforcement, "cleared_false_facts", None) or [])
+            if _cleared:
+                known_facts = [kf for kf in known_facts if kf.path not in _cleared]
+                if "project.genre" in _cleared:
+                    active_genre = None
+            # Override active_service if enforcement found a replacement.
+            _enf_active_svc = getattr(context_enforcement, "active_service", None)
+            if _enf_active_svc:
+                active_service = str(_enf_active_svc)
+            # Collect enforcement metadata for ContextPack fields.
+            _enforcement_negated_svcs = list(
+                getattr(context_enforcement, "negated_services", None) or []
+            )
+            _enforcement_negated_platforms = list(
+                getattr(context_enforcement, "negated_platforms", None) or []
+            )
+            _enforcement_negated_formats = list(
+                getattr(context_enforcement, "negated_formats", None) or []
+            )
+            _enforcement_stale_terms = list(
+                getattr(context_enforcement, "stale_context_terms", None) or []
+            )
+            # Suppress stale service from active context.
+            _negated_svcs_set = set(_enforcement_negated_svcs)
+            if active_service in _negated_svcs_set:
+                active_service = _enf_active_svc  # replacement (may still be None)
+            known_facts = [
+                kf
+                for kf in known_facts
+                if not (kf.label == "active_service" and kf.value in _negated_svcs_set)
+            ]
+            _enforcement_warnings = getattr(context_enforcement, "audit", None) or []
+
         # PR 4: service metadata fields.
         _pub_platforms = list(getattr(state, "publishing_platforms", None) or [])
         _target_retailers = list(getattr(state, "target_retailers", None) or [])
@@ -405,6 +462,11 @@ class ContextPackBuilder:
             available_service_metadata_keys=_avail_keys,
             metadata_missing_for_active_service=_missing_meta,
             metadata_confidence_warnings=_confidence_warnings,
+            negated_services=_enforcement_negated_svcs,
+            negated_platforms=_enforcement_negated_platforms,
+            negated_formats=_enforcement_negated_formats,
+            stale_context_terms=_enforcement_stale_terms,
+            context_enforcement_warnings=_enforcement_warnings,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 

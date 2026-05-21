@@ -79,3 +79,9 @@ class ContextPack(BaseModel):
     available_service_metadata_keys: list[str] = Field(default_factory=list)
     metadata_missing_for_active_service: list[str] = Field(default_factory=list)
     metadata_confidence_warnings: list[str] = Field(default_factory=list)
+    # Context enforcement (PR: context-enforcement-correction-recovery).
+    negated_services: list[str] = Field(default_factory=list)
+    negated_platforms: list[str] = Field(default_factory=list)
+    negated_formats: list[str] = Field(default_factory=list)
+    stale_context_terms: list[str] = Field(default_factory=list)
+    context_enforcement_warnings: list[str] = Field(default_factory=list)
