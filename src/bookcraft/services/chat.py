@@ -21,6 +21,7 @@ from bookcraft.components.actions import (
     action_trace_payload,
 )
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.attachments.assessment_priority import AttachmentAssessmentPriority
 from bookcraft.components.attachments.intake import (
     AttachmentIntakeProcessor,
     AttachmentIntakeResult,
@@ -52,6 +53,7 @@ from bookcraft.components.portfolio import (
     PortfolioResponse,
 )
 from bookcraft.components.portfolio.fallback_policy import update_portfolio_filter_state
+from bookcraft.components.portfolio.rich_segments import PortfolioRichSegmentBuilder
 from bookcraft.components.preprocessor import SharedPreprocessor
 from bookcraft.components.pricing import (
     PricingQuoteRequest,
@@ -153,6 +155,13 @@ class ChatService:
     )
     consultation_objective_engine: ConsultationObjectiveEngine = field(
         default_factory=ConsultationObjectiveEngine
+    )
+    # PR 3: attachment assessment priority + portfolio rich links.
+    attachment_assessment_priority: AttachmentAssessmentPriority = field(
+        default_factory=AttachmentAssessmentPriority
+    )
+    portfolio_rich_segment_builder: PortfolioRichSegmentBuilder = field(
+        default_factory=PortfolioRichSegmentBuilder
     )
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
@@ -430,6 +439,11 @@ class ChatService:
                 contact_capture=contact_capture,
             )
             state.lead_objective_stage = lead_objective_decision.stage
+            # PR 3: attachment assessment priority.
+            attachment_priority_decision = self.attachment_assessment_priority.decide(
+                attachment_intake_result,
+                contact_ready=contact_capture.lead_contact_ready,
+            )
             # PR 2: consultation-first sales planner.
             current_question_priority = self.current_question_priority_detector.detect(
                 payload.message
@@ -627,6 +641,7 @@ class ChatService:
                 consultation_objective_decision=consultation_objective_decision,
                 current_question_priority=current_question_priority,
                 answer_before_capture_decision=answer_before_capture_decision,
+                attachment_priority_decision=attachment_priority_decision,
             )
 
             # Phase 12 PR 4: detect slot delegation/declination and rebuild if needed.
@@ -868,6 +883,11 @@ class ChatService:
                         "required": ["name", "email_or_phone"],
                     }
                 )
+            # PR 3: inject portfolio rich link segments so URLs are clickable, not raw text.
+            if portfolio_response is not None and bubbles:
+                _port_segs = self.portfolio_rich_segment_builder.build(portfolio_response)
+                if _port_segs:
+                    bubbles[0].rich_segments.extend(_port_segs)
             trg_context_for_trace: TRGContext | None = trg_context
             if self.trg_engine is not None:
                 try:
@@ -969,6 +989,8 @@ class ChatService:
                     "consultation_objective": consultation_objective_decision.model_dump(
                         mode="json"
                     ),
+                    # PR 3: attachment assessment priority trace key.
+                    "attachment_priority": attachment_priority_decision.model_dump(mode="json"),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None

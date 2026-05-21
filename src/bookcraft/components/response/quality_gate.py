@@ -341,6 +341,20 @@ class ResponseQualityGate:
         else:
             audit.append("quality:consultation_first:scoping_after_contact:ok")
 
+        # Check 16 — Attachment turn must not ask manuscript stage / draft status before handoff.
+        if _attachment_asks_manuscript_stage(text, context_pack):
+            failures.append("attachment_turn_asks_manuscript_stage_before_handoff")
+            audit.append("quality:attachment_priority:manuscript_stage_asked:FAIL")
+        else:
+            audit.append("quality:attachment_priority:manuscript_stage_check:ok")
+
+        # Check 17 — Attachment turn must not ask word/page count before handoff.
+        if _attachment_asks_word_count(text, context_pack):
+            failures.append("attachment_turn_asks_word_count_before_handoff")
+            audit.append("quality:attachment_priority:word_count_asked:FAIL")
+        else:
+            audit.append("quality:attachment_priority:word_count_check:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -711,6 +725,39 @@ def _wrong_scoping_after_contact_ready(text: str, context_pack: ContextPack | No
 
 
 # ---------------------------------------------------------------------------
+# Attachment priority quality checks (PR 3)
+# ---------------------------------------------------------------------------
+
+_ATTACHMENT_MANUSCRIPT_STAGE_RE = re.compile(
+    r"\b(?:what\s+stage|manuscript\s+stage|starting\s+from\s+scratch|"
+    r"have\s+(?:a\s+)?draft|written\s+anything|how\s+far\s+along|"
+    r"completed\s+draft|partial\s+draft|how\s+much\s+(?:have\s+you|is)\s+written|"
+    r"is\s+(?:it\s+)?(?:complete|finished|done)\?)\b",
+    re.IGNORECASE,
+)
+
+_ATTACHMENT_WORD_COUNT_RE = re.compile(
+    r"\b(?:word\s+count|page\s+count|how\s+many\s+(?:words|pages)|"
+    r"word\s+or\s+page|how\s+long\s+(?:is\s+)?(?:it|your\s+manuscript|the\s+book))\b",
+    re.IGNORECASE,
+)
+
+
+def _attachment_asks_manuscript_stage(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when the response asks draft/manuscript stage on an attachment turn."""
+    if context_pack is None or not context_pack.attachments_received:
+        return False
+    return bool(_ATTACHMENT_MANUSCRIPT_STAGE_RE.search(text))
+
+
+def _attachment_asks_word_count(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when the response asks word/page count on an attachment turn."""
+    if context_pack is None or not context_pack.attachments_received:
+        return False
+    return bool(_ATTACHMENT_WORD_COUNT_RE.search(text))
+
+
+# ---------------------------------------------------------------------------
 # Repair / fallback helpers
 # ---------------------------------------------------------------------------
 
@@ -753,6 +800,16 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             parts.append(
                 "- Contact is already captured. Ask for preferred call time, "
                 "not genre or word count."
+            )
+        elif "attachment_turn_asks_manuscript_stage" in f:
+            parts.append(
+                "- An attachment was received. Do not ask about manuscript stage or draft status. "
+                "Acknowledge receipt and route to specialist assessment."
+            )
+        elif "attachment_turn_asks_word_count" in f:
+            parts.append(
+                "- An attachment was received. Do not ask for word count or page count. "
+                "Route to specialist assessment instead."
             )
         elif "sales_tone" in f:
             parts.append(
