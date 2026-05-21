@@ -65,3 +65,7 @@ class ContextPack(BaseModel):
     assumption_warnings: list[str] = Field(default_factory=list)
     # Greeting intent guard.
     is_greeting_turn: bool = False
+    # Consultation-first sales planner (PR 2).
+    consultation_stage: str | None = None
+    current_question_type: str | None = None
+    answer_before_capture_applied: bool = False

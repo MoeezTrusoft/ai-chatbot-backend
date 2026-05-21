@@ -186,3 +186,10 @@ class ThreadState(BaseModel):
     pending_question: dict[str, Any] = Field(default_factory=dict)
     # Safety event log — used by input_guard to track recent hostility events.
     safety_events: list[dict[str, Any]] = Field(default_factory=list)
+    # Consultation-first sales planner (PR 2).
+    consultation_stage: str | None = None  # engaging → consultation_pending → etc.
+    preferred_call_time: str | None = None  # e.g. "tomorrow afternoon", "Friday 3pm"
+    preferred_timezone: str | None = None
+    preferred_contact_channel: str | None = None
+    current_question_type: str | None = None  # last detected priority question type
+    answer_before_capture_applied: bool = False

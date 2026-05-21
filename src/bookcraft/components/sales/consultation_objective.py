@@ -1,0 +1,248 @@
+"""ConsultationObjectiveEngine.
+
+Wraps the LeadObjectiveEngine result and applies consultation-first logic:
+ - answer current question before asking for contact
+ - after contact is captured, ask for preferred call time
+ - after call time is captured, create / confirm consultation handoff
+ - do not loop back to word-count / genre / deadline discovery once contact is ready
+
+Engines compute. Claude writes.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from bookcraft.components.sales.current_question_priority import CurrentQuestionPriorityResult
+
+# ---------------------------------------------------------------------------
+# Call-time extraction (simple — used to capture preferred_call_time from
+# the current message when the previous turn asked for it)
+# ---------------------------------------------------------------------------
+
+_CALL_TIME_RE = re.compile(
+    r"\b(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+    r"(?:\s+(?:morning|afternoon|evening|at\s+\d+(?:am|pm)?))?|"
+    r"tomorrow(?:\s+(?:morning|afternoon|evening))?|"
+    r"next\s+(?:week|monday|tuesday|wednesday|thursday|friday)|"
+    r"after\s+\d+(?:\s*(?:am|pm))?|"
+    r"\d+\s*(?:am|pm)|"
+    r"any\s+(?:day|time|morning|afternoon|evening)|"
+    r"(?:this|next)\s+(?:week|weekend)|"
+    r"morning|afternoon|evening|anytime|whenever)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_preferred_call_time(text: str) -> str | None:
+    m = _CALL_TIME_RE.search(text)
+    return m.group(0).strip() if m else None
+
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+
+
+class ConsultationObjectiveDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    objective_move: str
+    consultation_first: bool = True
+    stop_discovery: bool = False
+    ask_contact: bool = False
+    ask_preferred_time: bool = False
+    create_handoff: bool = False
+    recommended_primary_goal: str | None = None
+    next_question: str | None = None
+    extracted_preferred_call_time: str | None = None
+    audit: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Engine
+# ---------------------------------------------------------------------------
+
+
+class ConsultationObjectiveEngine:
+    """
+    Consultation-first wrapper around LeadObjectiveEngine logic.
+
+    Priority cascade (highest to lowest):
+    1. Contact + call time ready → create handoff
+    2. Contact ready but call time missing → ask for call time
+    3. Current question has priority → answer first
+    4. Lead objective says create_lead / ask_contact → honour it
+    5. Continue light discovery
+    """
+
+    def decide(
+        self,
+        *,
+        message: str,
+        state: Any,  # ThreadState
+        lead_objective_decision: Any,  # LeadObjectiveDecision
+        contact_capture: Any | None = None,  # ContactCaptureResult
+        current_question_priority: CurrentQuestionPriorityResult | None = None,
+    ) -> ConsultationObjectiveDecision:
+        audit: list[str] = []
+
+        # ── Gather state signals ──────────────────────────────────────────
+        contact_ready: bool = (
+            contact_capture is not None and contact_capture.lead_contact_ready
+        ) or bool(getattr(state, "lead_created", False))
+
+        preferred_call_time: str | None = getattr(state, "preferred_call_time", None)
+        consultation_stage: str = getattr(state, "consultation_stage", None) or "engaging"
+
+        lead_created: bool = bool(getattr(state, "lead_created", False))
+        lod_move: str = getattr(
+            lead_objective_decision, "objective_move", "continue_light_discovery"
+        )
+        lod_stage: str = getattr(lead_objective_decision, "stage", "engaging")
+
+        audit.append(f"contact_ready:{contact_ready}")
+        audit.append(f"lead_created:{lead_created}")
+        audit.append(f"preferred_call_time_present:{preferred_call_time is not None}")
+        audit.append(f"consultation_stage:{consultation_stage}")
+
+        # Whether the lead was already confirmed from a PREVIOUS turn.
+        # (lead_created on state = persisted; lod_move == "create_lead" means creating *now*)
+        lead_confirmed_prior_turn = lead_created and lod_move not in {"create_lead"}
+
+        # ── Priority 1: contact + call time → handoff ─────────────────────
+        if contact_ready and preferred_call_time:
+            audit.append("move:create_handoff")
+            return ConsultationObjectiveDecision(
+                stage="consultation_pending",
+                objective_move="create_consultation_handoff",
+                consultation_first=True,
+                stop_discovery=True,
+                create_handoff=True,
+                recommended_primary_goal="consultation_handoff_confirmation",
+                next_question=None,
+                audit=audit,
+            )
+
+        # ── Priority 2: contact ready (from a PRIOR turn), call time missing → ask for it ──
+        # If we are creating the lead *this turn* (lod_move == "create_lead"), let the
+        # lead-creation confirmation happen first; the call-time ask comes next turn.
+        if contact_ready and not preferred_call_time and lead_confirmed_prior_turn:
+            # Try to extract call time from the *current* message in case the
+            # user provided it on the same turn as a follow-up.
+            extracted_time = _extract_preferred_call_time(message)
+            if extracted_time:
+                audit.append(f"call_time_extracted_this_turn:{extracted_time}")
+                return ConsultationObjectiveDecision(
+                    stage="consultation_pending",
+                    objective_move="create_consultation_handoff",
+                    consultation_first=True,
+                    stop_discovery=True,
+                    create_handoff=True,
+                    recommended_primary_goal="consultation_handoff_confirmation",
+                    next_question=None,
+                    extracted_preferred_call_time=extracted_time,
+                    audit=audit,
+                )
+            audit.append("move:ask_preferred_call_time")
+            return ConsultationObjectiveDecision(
+                stage="consultation_time_requested",
+                objective_move="ask_preferred_call_time",
+                consultation_first=True,
+                stop_discovery=True,
+                ask_preferred_time=True,
+                recommended_primary_goal="consultation_time_capture",
+                next_question="preferred_call_time",
+                audit=audit,
+            )
+
+        # ── Priority 3: current question has priority → answer first ──────
+        if current_question_priority is not None and current_question_priority.has_priority:
+            qt = current_question_priority.question_type
+            audit.append(f"move:answer_then_consult:{qt}")
+            # Contact refusal: respect — do not push contact capture.
+            if qt == "contact_refusal":
+                return ConsultationObjectiveDecision(
+                    stage="answering_current_question",
+                    objective_move="answer_then_consultation",
+                    consultation_first=True,
+                    stop_discovery=False,
+                    ask_contact=False,
+                    recommended_primary_goal="answer_current_question",
+                    next_question="consultation_interest",
+                    audit=audit,
+                )
+            # Topic correction: suppress old path, answer corrected topic.
+            if qt == "topic_correction" or current_question_priority.suppress_old_sales_path:
+                return ConsultationObjectiveDecision(
+                    stage="answering_current_question",
+                    objective_move="answer_then_consultation",
+                    consultation_first=True,
+                    stop_discovery=False,
+                    recommended_primary_goal="answer_current_question",
+                    next_question="consultation_interest",
+                    audit=audit,
+                )
+            # For other priority questions — answer first, bridge to consultation.
+            return ConsultationObjectiveDecision(
+                stage="answering_current_question",
+                objective_move="answer_then_consultation",
+                consultation_first=True,
+                stop_discovery=False,
+                recommended_primary_goal="answer_current_question",
+                next_question="consultation_interest",
+                audit=audit,
+            )
+
+        # ── Priority 4: honour lead objective decision ────────────────────
+        if lod_move in {"create_lead", "ask_contact"}:
+            audit.append(f"honouring_lead_objective:{lod_move}")
+            # Do NOT set recommended_primary_goal when creating the lead — let the
+            # planner's lead_created_confirmation path handle the response goal.
+            # "ask_contact" can carry the goal from the lead objective decision.
+            rg = (
+                getattr(lead_objective_decision, "recommended_primary_goal", None)
+                if lod_move == "ask_contact"
+                else None  # create_lead: goal determined by planner after action dispatch
+            )
+            return ConsultationObjectiveDecision(
+                stage=lod_stage,
+                objective_move=lod_move,
+                consultation_first=True,
+                stop_discovery=getattr(lead_objective_decision, "stop_discovery", False),
+                ask_contact=True,
+                recommended_primary_goal=rg,
+                next_question=getattr(
+                    lead_objective_decision, "next_question", "name_and_email_or_phone"
+                ),
+                audit=audit,
+            )
+
+        if lod_move in {"offer_consultation", "schedule_consultation"}:
+            audit.append("move:consultation_offer")
+            return ConsultationObjectiveDecision(
+                stage=lod_stage,
+                objective_move=lod_move,
+                consultation_first=True,
+                stop_discovery=getattr(lead_objective_decision, "stop_discovery", False),
+                ask_contact=True,
+                recommended_primary_goal="consultation_offer",
+                next_question="name_and_email_or_phone",
+                audit=audit,
+            )
+
+        # ── Priority 5: continue discovery ───────────────────────────────
+        audit.append("move:continue_conversation")
+        return ConsultationObjectiveDecision(
+            stage=consultation_stage,
+            objective_move="continue_conversation",
+            consultation_first=True,
+            stop_discovery=False,
+            recommended_primary_goal=None,
+            next_question=None,
+            audit=audit,
+        )
