@@ -370,6 +370,14 @@ class ResponseQualityGate:
         else:
             audit.append("quality:pr4:metadata_reask:ok")
 
+        # Check 20 — Stale-context enforcement checks (PR: context-enforcement).
+        stale_violations = _stale_context_violations(text, context_pack, response_plan)
+        if stale_violations:
+            failures.extend(stale_violations)
+            audit.append(f"quality:enforcement:stale_context:FAIL:{stale_violations[0][:50]}")
+        else:
+            audit.append("quality:enforcement:stale_context:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -827,6 +835,97 @@ def _metadata_known_but_reasked(text: str, context_pack: ContextPack | None) -> 
     return violated
 
 
+# ---------------------------------------------------------------------------
+# Context enforcement stale-context checks (PR: context-enforcement)
+# ---------------------------------------------------------------------------
+
+_COVER_STYLE_REASK_RE = re.compile(
+    r"\b(?:cover\s+style|visual\s+direction|design\s+idea|cover\s+illustration|"
+    r"what\s+(?:kind\s+of\s+cover|cover\s+(?:style|look|design))|"
+    r"any\s+(?:cover\s+(?:style|idea)|visual\s+direction))\b",
+    re.IGNORECASE,
+)
+_WORD_COUNT_REASK_RE = re.compile(
+    r"\b(?:word\s+count|page\s+count|how\s+many\s+(?:words|pages)|word\s+or\s+page)\b",
+    re.IGNORECASE,
+)
+_NEGATED_SERVICE_STALE_RE = re.compile(
+    r"\b(?:for\s+your\s+ghostwriting|your\s+ghostwriting\s+project|"
+    r"ghostwriting\s+(?:service|work|project)|as\s+a\s+ghostwriting)\b",
+    re.IGNORECASE,
+)
+_FALSE_FICTION_STALE_RE = re.compile(
+    r"\b(?:since\s+(?:this\s+is|you'?re\s+writing)\s+fiction|"
+    r"for\s+your\s+fiction\s+(?:book|project|novel)|"
+    r"your\s+fiction\s+(?:manuscript|project|book))\b",
+    re.IGNORECASE,
+)
+_NEGATED_PLATFORM_STALE_RE = re.compile(
+    r"\b(?:we\s+can\s+use\s+amazon|publish\s+on\s+amazon\s+kdp|"
+    r"amazon\s+kdp\s+(?:is\s+(?:a\s+)?good|would|will)|"
+    r"set\s+up\s+(?:your\s+)?kdp)\b",
+    re.IGNORECASE,
+)
+
+
+def _stale_context_violations(
+    text: str,
+    context_pack: ContextPack | None,
+    response_plan: ResponsePlan | None,
+) -> list[str]:
+    """Return failure labels for stale-context violations."""
+    if context_pack is None:
+        return []
+
+    violations: list[str] = []
+    primary_goal = getattr(response_plan, "primary_goal", "") if response_plan else ""
+
+    # Check 1: delegated cover_style asked again.
+    _delegated_slots = [s.slot for s in (context_pack.delegated_slots or [])] + list(
+        getattr(context_pack, "unknown_slots", []) or []
+    )
+    if "cover_style" in _delegated_slots and _COVER_STYLE_REASK_RE.search(text):
+        violations.append("stale_context:delegated_cover_style_reasked")
+
+    # Check 2: unknown word_or_page_count asked again.
+    if "word_or_page_count" in _delegated_slots and _WORD_COUNT_REASK_RE.search(text):
+        violations.append("stale_context:unknown_word_count_reasked")
+
+    # Check 3: negated service appears as active context (allow contrast phrases).
+    _negated_svcs = getattr(context_pack, "negated_services", []) or []
+    if "ghostwriting" in _negated_svcs:
+        if _NEGATED_SERVICE_STALE_RE.search(text):
+            # Allow if text also mentions it's not ghostwriting
+            if not re.search(r"\bnot\s+ghostwriting\b|\bno\s+ghostwriting\b", text, re.I):
+                violations.append("stale_context:negated_service_ghostwriting_presented_as_active")
+
+    # Check 4: cleared/uncertain genre confirmed as fiction.
+    _cleared = (
+        getattr(context_pack, "cleared_false_facts", [])
+        if hasattr(context_pack, "cleared_false_facts")
+        else []
+    )
+    genre_uncertain = getattr(context_pack, "genre_status", None) == "uncertain"
+    if (genre_uncertain or "project.genre" in _cleared) and _FALSE_FICTION_STALE_RE.search(text):
+        violations.append("stale_context:cleared_fiction_genre_confirmed")
+
+    # Check 5: consultation request → word count asked.
+    if primary_goal in {
+        "consultation_offer",
+        "contact_capture_for_consultation",
+        "consultation_time_capture",
+    } and _WORD_COUNT_REASK_RE.search(text):
+        violations.append("stale_context:consultation_goal_asks_word_count")
+
+    # Check 6: negated platform presented as recommendation.
+    _negated_platforms = getattr(context_pack, "negated_platforms", []) or []
+    if "amazon_kdp" in _negated_platforms and _NEGATED_PLATFORM_STALE_RE.search(text):
+        if not re.search(r"\bnot\s+amazon\b|\bno\s+amazon\b", text, re.I):
+            violations.append("stale_context:negated_amazon_platform_recommended")
+
+    return violations
+
+
 def _attachment_asks_manuscript_stage(text: str, context_pack: ContextPack | None) -> bool:
     """Fail when the response asks draft/manuscript stage on an attachment turn."""
     if context_pack is None or not context_pack.attachments_received:
@@ -901,6 +1000,11 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             )
         elif "metadata_known_reasked" in f:
             parts.append("- Do not re-ask for metadata the user already provided.")
+        elif "stale_context" in f:
+            parts.append(
+                "- Do not repeat questions or refer to context the user has already overridden. "
+                "Follow the user's most recent correction."
+            )
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."

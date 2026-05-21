@@ -130,6 +130,8 @@ class ResponsePlanner:
         answer_before_capture_decision: Any | None = None,
         # PR 3: attachment assessment priority.
         attachment_priority_decision: Any | None = None,
+        # Context enforcement (PR: context-enforcement).
+        context_enforcement: Any | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -173,6 +175,35 @@ class ResponsePlanner:
             for slot in getattr(attachment_priority_decision, "suppress_slots", []):
                 if slot not in forbidden:
                     forbidden.append(str(slot))
+
+        # Context enforcement overrides (highest priority after governance).
+        if context_enforcement is not None:
+            _enf_goal = getattr(context_enforcement, "forced_primary_goal", None)
+            _enf_nq = getattr(context_enforcement, "forced_next_question", None)
+            _enf_forbidden = list(getattr(context_enforcement, "forbidden_reasks", None) or [])
+            _enf_stale = list(getattr(context_enforcement, "stale_context_terms", None) or [])
+            # Override goal only if governance allows normal operation.
+            if _enf_goal and goal not in {
+                "safe_blocked_action",
+                "clarify_intent",
+                "lead_created_confirmation",
+            }:
+                goal = str(_enf_goal)
+            # Override next question — None is a valid "ask nothing" signal.
+            if _enf_nq is not None or _enf_goal in {
+                "consultation_handoff_confirmation",
+                "correction_recovery",
+            }:
+                if _enf_nq is not None:
+                    nq = str(_enf_nq)
+                elif _enf_goal == "consultation_handoff_confirmation":
+                    nq = None
+            for _ef in _enf_forbidden:
+                if _ef not in forbidden:
+                    forbidden.append(_ef)
+            for _st in _enf_stale:
+                if _st not in forbidden:
+                    forbidden.append(_st)
 
         facts_tag = (
             f"planner:acknowledge_facts:{len(facts)}" if facts else "planner:acknowledge_facts:none"
