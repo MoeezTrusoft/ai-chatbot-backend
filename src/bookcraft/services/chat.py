@@ -45,6 +45,7 @@ from bookcraft.components.leads import (
     LeadIntakePayload,
     LeadObjectiveEngine,
 )
+from bookcraft.components.metadata import ServiceMetadataExtractor
 from bookcraft.components.portfolio import (
     PortfolioEngine,
     PortfolioFallbackDecision,
@@ -69,6 +70,7 @@ from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
 from bookcraft.components.response.schemas import ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
+from bookcraft.components.safety import InputSafetyGuard
 from bookcraft.components.sales import (
     AnswerBeforeCapturePolicy,
     ConsultationObjectiveEngine,
@@ -163,6 +165,11 @@ class ChatService:
     portfolio_rich_segment_builder: PortfolioRichSegmentBuilder = field(
         default_factory=PortfolioRichSegmentBuilder
     )
+    # PR 4: input safety guard + service metadata extractor.
+    input_safety_guard: InputSafetyGuard = field(default_factory=InputSafetyGuard)
+    service_metadata_extractor: ServiceMetadataExtractor = field(
+        default_factory=ServiceMetadataExtractor
+    )
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -178,6 +185,60 @@ class ChatService:
             state = thread.state
             event_sequence = thread.event_count
             previous_event_hash = thread.last_event_hash
+
+            # PR 4: run input safety guard before any processing.
+            input_safety_decision = self.input_safety_guard.evaluate(payload.message, state=state)
+            if input_safety_decision.action in {"warn", "block"}:
+                safety_event = InputSafetyGuard.build_safety_event(
+                    payload.message, input_safety_decision
+                )
+                state.safety_events = list(state.safety_events) + [safety_event]
+                # Persist safety event in-memory so repeated hostility detection works.
+                if thread_id in self.threads:
+                    self.threads[thread_id].state = state
+
+            if input_safety_decision.action == "block":
+                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="user.message",
+                    payload={"text": payload.message},
+                )
+                event_ids = [event_id]
+                self._record_live_trace(
+                    {
+                        "thread_id": str(thread_id),
+                        "customer_id": str(payload.customer_id)
+                        if payload.customer_id is not None
+                        else None,
+                        "correlation_id": payload.correlation_id,
+                        "message_preview": redact_text(payload.message)[:500],
+                        "elapsed_ms": round((time.perf_counter() - turn_started) * 1000, 2),
+                        "language_status": "en",
+                        "input_safety": input_safety_decision.model_dump(mode="json"),
+                        "assistant": {
+                            "source": "input_safety_guard",
+                            "bubble_count": 0,
+                        },
+                        "intent": None,
+                        "decision": None,
+                        "runtime_atoms": {},
+                        "event_ids": self._debug_event_ids(event_ids),
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                return ChatTurnResponse(
+                    thread_id=thread_id,
+                    bubbles=[],
+                    intent=None,
+                    language_status="en",
+                    debug_event_ids=self._debug_event_ids(event_ids),
+                    blocked=True,
+                    input_disabled=input_safety_decision.input_disabled,
+                    system_message=input_safety_decision.system_message,
+                )
+
             language = self.language_guard.detect(payload.message, cached_language="en")
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -439,6 +500,41 @@ class ChatService:
                 contact_capture=contact_capture,
             )
             state.lead_objective_stage = lead_objective_decision.stage
+            # PR 4: service metadata extraction.
+            _active_svc = (
+                state.project.services_discussed[-1].service.value
+                if state.project.services_discussed
+                else None
+            )
+            metadata_result = self.service_metadata_extractor.extract(
+                payload.message,
+                active_service=_active_svc,
+                existing_confirmed=state.service_metadata or {},
+                existing_candidates=state.metadata_candidates or {},
+            )
+            # Apply confirmed platforms/formats/isbn to state (safe merge — no overwrite).
+            if metadata_result.publishing_platforms:
+                _existing_pp = set(state.publishing_platforms or [])
+                for _p in metadata_result.publishing_platforms:
+                    if _p not in _existing_pp:
+                        state.publishing_platforms = list(state.publishing_platforms) + [_p]
+            if metadata_result.book_formats:
+                _existing_bf = set(state.project.book_formats or [])
+                for _f in metadata_result.book_formats:
+                    if _f not in _existing_bf:
+                        state.project.book_formats = list(state.project.book_formats) + [_f]
+            if metadata_result.isbn_status and not state.isbn_status:
+                state.isbn_status = metadata_result.isbn_status
+            for _svc_key, _svc_meta in metadata_result.confirmed.items():
+                if _svc_key not in state.service_metadata:
+                    state.service_metadata[_svc_key] = {}
+                for _mk, _mv in _svc_meta.items():
+                    if _mk not in state.service_metadata[_svc_key]:
+                        state.service_metadata[_svc_key][_mk] = _mv
+            for _svc_key, _cands in metadata_result.candidates.items():
+                if _svc_key not in state.metadata_candidates:
+                    state.metadata_candidates[_svc_key] = []
+                state.metadata_candidates[_svc_key].extend(_cands)
             # PR 3: attachment assessment priority.
             attachment_priority_decision = self.attachment_assessment_priority.decide(
                 attachment_intake_result,
@@ -991,6 +1087,9 @@ class ChatService:
                     ),
                     # PR 3: attachment assessment priority trace key.
                     "attachment_priority": attachment_priority_decision.model_dump(mode="json"),
+                    # PR 4: input safety + metadata extraction trace keys.
+                    "input_safety": input_safety_decision.model_dump(mode="json"),
+                    "service_metadata_extraction": metadata_result.model_dump(mode="json"),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None

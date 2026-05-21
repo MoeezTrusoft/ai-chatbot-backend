@@ -355,6 +355,21 @@ class ResponseQualityGate:
         else:
             audit.append("quality:attachment_priority:word_count_check:ok")
 
+        # Check 18 — Raw portfolio/sample URL in response text (PR 4).
+        if _raw_url_in_text(text, context_pack):
+            failures.append("raw_portfolio_url_in_response_text")
+            audit.append("quality:pr4:raw_url_in_text:FAIL")
+        else:
+            audit.append("quality:pr4:raw_url_in_text:ok")
+
+        # Check 19 — Known metadata re-asked (PR 4).
+        metadata_reasks = _metadata_known_but_reasked(text, context_pack)
+        if metadata_reasks:
+            failures.append(f"metadata_known_reasked:{','.join(metadata_reasks[:2])}")
+            audit.append(f"quality:pr4:metadata_reask:FAIL:{metadata_reasks[:2]}")
+        else:
+            audit.append("quality:pr4:metadata_reask:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -743,6 +758,75 @@ _ATTACHMENT_WORD_COUNT_RE = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# PR 4 quality checks
+# ---------------------------------------------------------------------------
+
+_RAW_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+
+# Metadata fields that have known-value patterns for re-ask detection.
+_METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
+    "publishing_platforms": re.compile(
+        r"\b(?:which\s+platform|what\s+platform|where\s+(?:do\s+you|will\s+you)\s+publish|"
+        r"amazon\s+kdp\s+or|ingramspark\s+or)\b",
+        re.IGNORECASE,
+    ),
+    "isbn_status": re.compile(
+        r"\b(?:do\s+you\s+have\s+(?:an?\s+)?isbn|do\s+you\s+need\s+(?:an?\s+)?isbn)\b",
+        re.IGNORECASE,
+    ),
+    "editing_level": re.compile(
+        r"\b(?:what\s+(?:type|level|kind)\s+of\s+editing|developmental\s+or\s+line)\b",
+        re.IGNORECASE,
+    ),
+}
+
+
+def _raw_url_in_text(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when the response text contains raw portfolio/sample URLs."""
+    if not _RAW_URL_RE.search(text):
+        return False
+    # Raw URLs are allowed in pricing responses or when no portfolio context exists.
+    if context_pack is None:
+        return False
+    # Only flag when we know portfolio samples were expected.
+    has_portfolio_context = any(
+        kf.label == "active_service" and "portfolio" in str(kf.value).lower()
+        for kf in context_pack.known_facts
+    )
+    # Also fail if raw https:// URL appears alongside "sample" or "portfolio" text.
+    lowered = text.casefold()
+    if _RAW_URL_RE.search(text) and any(
+        word in lowered for word in ("sample", "portfolio", "example work", "our work")
+    ):
+        return True
+    return has_portfolio_context and bool(_RAW_URL_RE.search(text))
+
+
+def _metadata_known_but_reasked(text: str, context_pack: ContextPack | None) -> list[str]:
+    """Return metadata keys that are known but are being asked again."""
+    if context_pack is None:
+        return []
+    violated: list[str] = []
+    # Check publishing_platforms.
+    if context_pack.publishing_platforms:
+        pat = _METADATA_REASK_PATTERNS.get("publishing_platforms")
+        if pat and pat.search(text):
+            violated.append("publishing_platforms")
+    # Check isbn_status.
+    if context_pack.isbn_status:
+        pat = _METADATA_REASK_PATTERNS.get("isbn_status")
+        if pat and pat.search(text):
+            violated.append("isbn_status")
+    # Check service_metadata for editing_level.
+    editing_meta = context_pack.service_metadata.get("editing_proofreading", {})
+    if editing_meta.get("editing_level"):
+        pat = _METADATA_REASK_PATTERNS.get("editing_level")
+        if pat and pat.search(text):
+            violated.append("editing_level")
+    return violated
+
+
 def _attachment_asks_manuscript_stage(text: str, context_pack: ContextPack | None) -> bool:
     """Fail when the response asks draft/manuscript stage on an attachment turn."""
     if context_pack is None or not context_pack.attachments_received:
@@ -811,6 +895,12 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
                 "- An attachment was received. Do not ask for word count or page count. "
                 "Route to specialist assessment instead."
             )
+        elif "raw_portfolio_url" in f:
+            parts.append(
+                "- Do not embed raw URLs in the response text. Reference samples naturally."
+            )
+        elif "metadata_known_reasked" in f:
+            parts.append("- Do not re-ask for metadata the user already provided.")
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."

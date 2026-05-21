@@ -34,6 +34,10 @@ class ChatTurnResponse(BaseModel):
     intent: IntentVote | None
     language_status: str
     debug_event_ids: list[str] = Field(default_factory=list)
+    # Safety fields (PR 4).
+    blocked: bool = False
+    input_disabled: bool = False
+    system_message: str | None = None
 
 
 @router.post("/turn", response_model=ChatTurnResponse)

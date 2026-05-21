@@ -319,6 +319,43 @@ class ContextPackBuilder:
                 if _ct_slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_ct_slot)
 
+        # PR 4: service metadata fields.
+        _pub_platforms = list(getattr(state, "publishing_platforms", None) or [])
+        _target_retailers = list(getattr(state, "target_retailers", None) or [])
+        _isbn_status: str | None = getattr(state, "isbn_status", None)
+        _distribution_goal: str | None = getattr(state, "distribution_goal", None)
+        _service_metadata: dict[str, dict[str, object]] = dict(
+            getattr(state, "service_metadata", None) or {}
+        )
+        _metadata_candidates: dict[str, list[dict[str, object]]] = dict(
+            getattr(state, "metadata_candidates", None) or {}
+        )
+
+        # Compute available metadata keys for the active service.
+        from bookcraft.components.metadata.service_metadata import (
+            get_service_keys,
+        )
+
+        _avail_keys: list[str] = get_service_keys(active_service or "") if active_service else []
+        # Compute which keys are missing for the active service.
+        _confirmed_for_svc = _service_metadata.get(active_service or "", {})
+        _missing_meta: list[str] = [k for k in _avail_keys if k not in _confirmed_for_svc]
+        # Suppress metadata keys that are already forbidden reasks.
+        _missing_meta = [k for k in _missing_meta if k not in set(forbidden_reasks)]
+
+        # Confidence warnings for candidates.
+        _confidence_warnings: list[str] = []
+        for svc_key, cands in _metadata_candidates.items():
+            if cands:
+                keys = {c.get("key", "") for c in cands if isinstance(c, dict)}
+                for k in keys:
+                    _confidence_warnings.append(f"{svc_key}.{k}:uncertain_candidate")
+
+        # Suppress metadata keys that are known — add to forbidden reasks.
+        for _known_meta_key in list(_confirmed_for_svc.keys()):
+            if _known_meta_key not in forbidden_reasks:
+                forbidden_reasks.append(_known_meta_key)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -359,6 +396,15 @@ class ContextPackBuilder:
             consultation_stage=consultation_stage,
             current_question_type=current_question_type,
             answer_before_capture_applied=answer_before_capture_applied,
+            publishing_platforms=_pub_platforms,
+            target_retailers=_target_retailers,
+            isbn_status=_isbn_status,
+            distribution_goal=_distribution_goal,
+            service_metadata=_service_metadata,
+            metadata_candidates=_metadata_candidates,
+            available_service_metadata_keys=_avail_keys,
+            metadata_missing_for_active_service=_missing_meta,
+            metadata_confidence_warnings=_confidence_warnings,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
