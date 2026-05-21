@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.components.context.assumption_guard import AssumptionGuard
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.planner import ResponsePlan
@@ -12,6 +13,8 @@ from bookcraft.components.response.style_policy import ResponseStylePolicy, Sale
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
+
+_ASSUMPTION_GUARD = AssumptionGuard()
 
 # Module-level style-policy instance used to drive slippy-word detection.
 _STYLE_POLICY = ResponseStylePolicy.default()
@@ -311,6 +314,18 @@ class ResponseQualityGate:
             audit.append(f"quality:attachment_review_claim:FAIL:{attachment_review_hits[0][:30]}")
         else:
             audit.append("quality:attachment_review_claim:clean")
+
+        # Check 13 — Assumption leaks and greeting scoping violations (PR: coherence).
+        assumption_failures = _ASSUMPTION_GUARD.check_response(
+            text=text,
+            context_pack=context_pack,
+            response_plan=response_plan,
+        )
+        if assumption_failures:
+            failures.extend(assumption_failures)
+            audit.append(f"quality:assumption_guard:FAIL:{assumption_failures[0][:50]}")
+        else:
+            audit.append("quality:assumption_guard:clean")
 
         sales_tone_report = self.style_policy.evaluate(
             text=text,
@@ -657,6 +672,12 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             parts.append("- End with one clear question or next step.")
         elif "blocked_action" in f:
             parts.append("- Do not claim the blocked action completed.")
+        elif "assumption_leak" in f:
+            parts.append(
+                "- Do not assert genre/category as confirmed when the user has not confirmed it."
+            )
+        elif "greeting_asked_scoping" in f:
+            parts.append("- This is a greeting turn. Welcome warmly; do not ask scoping questions.")
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."
@@ -766,9 +787,22 @@ def _fact_key_to_question(key: str) -> str:
         "cover_style": "What cover style or visual direction should I use?",
         "word_or_page_count": "What rough word count or page count should I use?",
         "genre": "What genre or book category should I use?",
+        "genre_options": (
+            "Which best describes your book: fiction, memoir/personal story, "
+            "business/self-help, children's book, or not sure yet?"
+        ),
         "manuscript_stage": "What stage is the manuscript in?",
+        "manuscript_stage_options": (
+            "Where is your manuscript right now: just an idea, rough notes, outline, "
+            "partial draft, full draft, or completed manuscript?"
+        ),
+        "service_options": (
+            "Which of these are you looking for help with: writing, editing, cover design, "
+            "formatting, publishing, marketing, or not sure yet?"
+        ),
         "deadline": "What deadline or launch window should I plan for?",
         "services": "Which services would you like help with?",
+        "how_can_we_help": "What can I help you with today?",
         # Flexible intent routing questions.
         "consultation_interest": "Would you like to schedule a free consultation with our team?",
         "manuscript_stage_or_project_status": (

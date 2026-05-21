@@ -55,6 +55,7 @@ _DEFAULT_PRIORITY: list[str] = [
 ]
 
 _GOAL_BY_QUERY: dict[str, str] = {
+    "greeting": "greeting_welcome",
     "pricing_question": "pricing_scoping",
     "timeline_question": "pricing_scoping",
     "consultation_request": "consultation_scoping",
@@ -271,6 +272,10 @@ def _primary_goal(
     ):
         return "lead_created_confirmation"
 
+    # Greeting-only turns always map to greeting_welcome regardless of classifier output.
+    if getattr(context_pack, "is_greeting_turn", False):
+        return "greeting_welcome"
+
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if lead_objective_decision.recommended_primary_goal:
             return lead_objective_decision.recommended_primary_goal
@@ -350,6 +355,10 @@ def _next_question(
 
     if primary_goal == "lead_created_confirmation":
         return None
+
+    # Greeting-only turns: ask how we can help, never scoping.
+    if primary_goal == "greeting_welcome":
+        return "how_can_we_help"
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:

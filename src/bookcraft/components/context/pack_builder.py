@@ -241,6 +241,46 @@ class ContextPackBuilder:
                 if _ms_slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_ms_slot)
 
+        # Coherence / assumption-guard fields from runtime atoms and state.
+        _genre_status_raw = runtime_atoms.get("genre_status") or getattr(
+            state.project, "genre_status", None
+        )
+        genre_status: str | None = str(_genre_status_raw) if _genre_status_raw else None
+        _genre_candidates_raw = runtime_atoms.get("genre_candidates") or getattr(
+            state.project, "genre_candidates", None
+        )
+        genre_candidates: list[str] = list(_genre_candidates_raw) if _genre_candidates_raw else []
+        _book_formats_raw = runtime_atoms.get("book_formats") or getattr(
+            state.project, "book_formats", None
+        )
+        book_formats: list[str] = list(_book_formats_raw) if _book_formats_raw else []
+        _audience_raw = runtime_atoms.get("audience") or getattr(state.project, "audience", None)
+        audience: str | None = str(_audience_raw) if _audience_raw else None
+        pending_slots: list[str] = list(getattr(state, "pending_slots", None) or [])
+        language_ignored_segments: list[dict[str, str]] = []
+        for seg in getattr(state, "language_ignored_segments", None) or []:
+            if isinstance(seg, dict):
+                language_ignored_segments.append({str(k): str(v) for k, v in seg.items()})
+
+        # Greeting intent guard — suppress scoping when it's a greeting-only turn.
+        is_greeting_only = bool(runtime_atoms.get("is_greeting_only"))
+        if is_greeting_only:
+            for _scope_slot in ("word_or_page_count", "genre", "manuscript_stage", "deadline"):
+                if _scope_slot not in forbidden_reasks:
+                    forbidden_reasks.append(_scope_slot)
+                if _scope_slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_scope_slot)
+
+        # When genre is uncertain, suppress the confirmed genre from known_facts
+        # and add genre to missing_facts to prompt clarification.
+        if genre_status == "uncertain":
+            known_facts = [kf for kf in known_facts if kf.path != "project.genre"]
+            if "genre" not in missing_facts:
+                missing_facts.append("genre")
+            if "genre" in forbidden_reasks:
+                forbidden_reasks.remove("genre")
+            active_genre = None  # uncertain genre must not surface as active_genre
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -270,6 +310,13 @@ class ContextPackBuilder:
             lead_objective_stage=lead_objective_stage,
             contact_capture_status=contact_capture_status,
             lead_created=lead_created,
+            genre_status=genre_status,
+            genre_candidates=genre_candidates,
+            book_formats=book_formats,
+            audience=audience,
+            pending_slots=pending_slots,
+            language_ignored_segments=language_ignored_segments,
+            is_greeting_turn=is_greeting_only,
         )
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
@@ -397,6 +444,25 @@ def _allowed_next_questions(
 
 def _response_hint(pack: ContextPack) -> str | None:
     parts: list[str] = []
+    if pack.is_greeting_turn:
+        parts.append(
+            "This is a greeting-only turn. Welcome the user warmly. "
+            "Do NOT ask about genre, word count, manuscript stage, or any scoping detail."
+        )
+    if pack.genre_status == "uncertain":
+        candidates = ", ".join(pack.genre_candidates) if pack.genre_candidates else "unknown"
+        parts.append(
+            f"Genre is UNCERTAIN — the user mentioned candidates ({candidates}) but has not "
+            f"confirmed a genre. Do NOT assert any genre as established. "
+            f"Offer options (fiction, memoir/personal story, business/self-help, "
+            f"children's book, not sure yet) as a helpful guide."
+        )
+    if pack.book_formats:
+        parts.append(
+            f"Book format detected: {', '.join(pack.book_formats)}. "
+            f"Treat as format/type, not as a genre. "
+            f"{'Audience: ' + pack.audience if pack.audience else 'Audience not yet confirmed'}."
+        )
     if pack.known_facts:
         known = ", ".join(f"{fact.label}={fact.value}" for fact in pack.known_facts)
         parts.append(f"Known facts: {known}.")
@@ -420,6 +486,11 @@ def _response_hint(pack: ContextPack) -> str | None:
         )
     if pack.contradiction_warnings:
         parts.append("There may be contradictory project details; ask one focused question.")
+    if pack.language_ignored_segments:
+        parts.append(
+            "Some non-English segments were ignored. Answer the English portion only. "
+            "Ask the user to continue in English through one gentle prompt."
+        )
     return " ".join(parts) if parts else None
 
 
