@@ -38,6 +38,7 @@ class ChatTurnResponse(BaseModel):
     blocked: bool = False
     input_disabled: bool = False
     system_message: str | None = None
+    action_events: list[dict[str, object]] = Field(default_factory=list)
 
 
 @router.post("/turn", response_model=ChatTurnResponse)

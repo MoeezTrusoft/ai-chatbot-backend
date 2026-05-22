@@ -1532,6 +1532,7 @@ class ChatService:
                 intent=intent,
                 language_status=language.language,
                 debug_event_ids=self._debug_event_ids(event_ids),
+                action_events=self._build_action_events(action_result),
             )
 
     @staticmethod
@@ -1830,6 +1831,50 @@ class ChatService:
             state.sales_actions.pending_confirmation.created_at = None
             state.sales_actions.pending_confirmation.expires_at = None
             return
+
+    @staticmethod
+    def _build_action_events(action_result: ActionResult | None) -> list[dict[str, object]]:
+        if action_result is None or not action_result.success:
+            return []
+
+        if action_result.action_type == ActionType.CREATE_LEAD:
+            lead_payload = action_result.payload.get("lead")
+            if not isinstance(lead_payload, dict):
+                return []
+            return [
+                {
+                    "type": "lead_created",
+                    "lead_id": str(lead_payload.get("id") or action_result.result_id or ""),
+                    "created": bool(action_result.payload.get("created", True)),
+                    "name": _optional_string(lead_payload.get("name")),
+                    "email": _optional_string(lead_payload.get("email")),
+                    "phone": _optional_string(lead_payload.get("phone")),
+                    "preferred_contact_method": _optional_string(
+                        lead_payload.get("preferred_contact_method")
+                    ),
+                }
+            ]
+
+        if action_result.action_type == ActionType.SCHEDULE_CONSULTATION:
+            starts_at = action_result.payload.get("starts_at_utc")
+            ends_at = action_result.payload.get("ends_at_utc")
+            return [
+                {
+                    "type": "consultation_scheduled",
+                    "appointment_id": str(action_result.result_id or ""),
+                    "lead_id": str(action_result.payload.get("lead_id") or ""),
+                    "csr_id": _optional_string(action_result.payload.get("csr_id")),
+                    "csr_name": _optional_string(action_result.payload.get("csr_name")),
+                    "starts_at_utc": str(starts_at) if starts_at is not None else None,
+                    "ends_at_utc": str(ends_at) if ends_at is not None else None,
+                    "customer_timezone": _optional_string(
+                        action_result.payload.get("customer_timezone")
+                    ),
+                    "status": _optional_string(action_result.payload.get("status")),
+                }
+            ]
+
+        return []
 
     @staticmethod
     def _create_lead_action_plan_from_contact(
