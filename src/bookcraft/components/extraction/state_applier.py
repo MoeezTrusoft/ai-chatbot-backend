@@ -20,11 +20,31 @@ EXTRACTION_CONFLICTS = Counter(
 )
 
 
+REJECTED_DELTAS = Counter(
+    "extraction_rejected_deltas_total",
+    "State deltas rejected due to invalid path.",
+    ["reason"],
+)
+
+
 class StateApplier:
-    def apply(self, state: ThreadState, extraction: CombinedExtraction) -> ThreadState:
+    def apply(
+        self,
+        state: ThreadState,
+        extraction: CombinedExtraction,
+        *,
+        rejected_paths: list[str] | None = None,
+    ) -> ThreadState:
         updated = state.model_copy(deep=True)
         for delta in extraction.state_deltas:
-            self._apply_delta(updated, delta)
+            try:
+                self._apply_delta(updated, delta)
+            except (ValueError, AttributeError) as exc:
+                # Step 6: safe path handling — log and skip rather than crash.
+                reason = type(exc).__name__
+                REJECTED_DELTAS.labels(reason=reason).inc()
+                if rejected_paths is not None:
+                    rejected_paths.append(delta.path)
         return updated
 
     def _apply_delta(self, state: ThreadState, delta: StateDelta) -> None:
@@ -46,9 +66,16 @@ class StateApplier:
 
     @staticmethod
     def _get_field(state: ThreadState, path: str) -> FieldMeta[Any]:
-        owner_name, field_name = path.split(".", 1)
-        owner = getattr(state, owner_name)
-        field = getattr(owner, field_name)
+        parts = path.split(".", 1)
+        if len(parts) != 2:  # noqa: PLR2004
+            msg = f"StateDelta path must be 'owner.field', got: {path!r}"
+            raise ValueError(msg)
+        owner_name, field_name = parts
+        owner = getattr(state, owner_name, None)
+        if owner is None:
+            msg = f"State has no attribute {owner_name!r} (path={path!r})"
+            raise AttributeError(msg)
+        field = getattr(owner, field_name, None)
         if not isinstance(field, FieldMeta):
             msg = f"State path does not point to FieldMeta: {path}"
             raise ValueError(msg)

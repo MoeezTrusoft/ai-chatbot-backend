@@ -672,17 +672,14 @@ def analyze_response_quality(text_preview: str) -> dict[str, Any]:
 
     table_warning = False
     if compact.count("|") >= 6:
-        table_warning = (
-            "|---|" in compact
-            or "| ---" in compact
-            or "--- |" in compact
-        )
+        table_warning = "|---|" in compact or "| ---" in compact or "--- |" in compact
 
     return {
         "empty_response": empty_response,
         "possible_fragment_start": starts_mid_fragment,
         "table_format_warning": table_warning,
     }
+
 
 def merge_provider_health(target: dict[str, Any], source: dict[str, Any]) -> None:
     numeric_keys = [

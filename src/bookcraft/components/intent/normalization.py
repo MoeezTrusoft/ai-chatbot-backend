@@ -44,9 +44,7 @@ def normalize_provider_vote_payload(payload: object) -> object:
 
     evidence = as_list(data.get("evidence"))
     data["evidence"] = [
-        item if isinstance(item, str) else str(item)
-        for item in evidence
-        if item is not None
+        item if isinstance(item, str) else str(item) for item in evidence if item is not None
     ]
 
     allowed_query = enum_values_for_field("query_primary")

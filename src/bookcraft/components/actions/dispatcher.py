@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -24,6 +25,18 @@ from bookcraft.components.portfolio_actions import (
     PortfolioActionService,
 )
 from bookcraft.components.pricing_actions import PricingActionRequest, PricingActionService
+from bookcraft.components.storage.action_idempotency_repository import (
+    ActionIdempotencyRepository,
+    make_slots_hash,
+)
+
+
+def _make_idempotency_key(thread_id: UUID, action_type: str, slots: dict[str, object]) -> str:
+    """Stable key: prevents double-dispatch on concurrent/retried confirmations."""
+    # Sort slots for determinism; exclude per-call volatile fields.
+    stable = {k: v for k, v in sorted(slots.items()) if k not in ("requested_time_text",)}
+    raw = f"{thread_id}:{action_type}:{json.dumps(stable, sort_keys=True, default=str)}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 @dataclass(slots=True)
@@ -34,6 +47,12 @@ class SalesActionDispatcher:
     portfolio_action_service: PortfolioActionService | None = None
     nda_action_service: NDAActionService | None = None
     agreement_action_service: AgreementActionService | None = None
+    # Batch 4: durable idempotency repository (DB-backed in prod, in-process fallback in test).
+    # When provided, claim() uses UNIQUE(idempotency_key) INSERT to prevent multi-worker
+    # double-dispatch across restarts, containers, or concurrent workers.
+    action_idempotency_repository: ActionIdempotencyRepository = field(
+        default_factory=ActionIdempotencyRepository
+    )
 
     async def dispatch(
         self,
@@ -45,66 +64,92 @@ class SalesActionDispatcher:
         if plan.action_type is None or plan.status != ActionStatus.READY:
             return None
 
+        # Build or retrieve idempotency key.
+        idem_key = plan.idempotency_key or _make_idempotency_key(
+            thread_id, plan.action_type, plan.collected_slots
+        )
+
+        # Batch 4: durable idempotency claim — prevents double-dispatch across workers.
+        claimed = await self.action_idempotency_repository.claim(
+            idempotency_key=idem_key,
+            thread_id=thread_id,
+            action_type=str(plan.action_type),
+            slots_hash=make_slots_hash(plan.collected_slots),
+        )
+        if not claimed:
+            # Another worker or process already dispatched this action.
+            return None
+
         started = time.perf_counter()
+        result: ActionResult | None = None
 
         if plan.action_type == ActionType.CREATE_LEAD:
-            return await self._create_lead(
+            result = await self._create_lead(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+        elif plan.action_type == ActionType.SCHEDULE_CONSULTATION:
+            result = await self._schedule_consultation(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+        elif plan.action_type == ActionType.PRICE_QUOTE:
+            result = await self._price_quote(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+        elif plan.action_type == ActionType.PORTFOLIO_LOOKUP:
+            result = await self._portfolio_lookup(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+        elif plan.action_type == ActionType.GENERATE_NDA:
+            result = await self._generate_nda(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+        elif plan.action_type == ActionType.GENERATE_AGREEMENT:
+            result = await self._generate_agreement(
                 plan,
                 thread_id=thread_id,
                 customer_id=customer_id,
                 started=started,
             )
 
-        if plan.action_type == ActionType.SCHEDULE_CONSULTATION:
-            return await self._schedule_consultation(
-                plan,
-                thread_id=thread_id,
-                customer_id=customer_id,
-                started=started,
+        if result is None:
+            result = ActionResult(
+                action_type=plan.action_type,
+                success=False,
+                customer_safe_summary="This action is planned but not implemented yet.",
+                internal_summary=(
+                    "Sales action dispatcher foundation only; concrete tools come in later PRs."
+                ),
+                error_code="not_implemented",
+                duration_ms=_elapsed_ms(started),
             )
 
-        if plan.action_type == ActionType.PRICE_QUOTE:
-            return await self._price_quote(
-                plan,
-                thread_id=thread_id,
-                customer_id=customer_id,
-                started=started,
+        # Update durable idempotency record with final status.
+        if result.success:
+            await self.action_idempotency_repository.mark_completed(
+                idempotency_key=idem_key,
+                result_summary=(result.customer_safe_summary or "")[:512],
             )
-
-        if plan.action_type == ActionType.PORTFOLIO_LOOKUP:
-            return await self._portfolio_lookup(
-                plan,
-                thread_id=thread_id,
-                customer_id=customer_id,
-                started=started,
+        else:
+            await self.action_idempotency_repository.mark_failed(
+                idempotency_key=idem_key,
+                error_code=result.error_code or "unknown",
             )
-
-        if plan.action_type == ActionType.GENERATE_NDA:
-            return await self._generate_nda(
-                plan,
-                thread_id=thread_id,
-                customer_id=customer_id,
-                started=started,
-            )
-
-        if plan.action_type == ActionType.GENERATE_AGREEMENT:
-            return await self._generate_agreement(
-                plan,
-                thread_id=thread_id,
-                customer_id=customer_id,
-                started=started,
-            )
-
-        return ActionResult(
-            action_type=plan.action_type,
-            success=False,
-            customer_safe_summary="This action is planned but not implemented yet.",
-            internal_summary=(
-                "Sales action dispatcher foundation only; concrete tools come in later PRs."
-            ),
-            error_code="not_implemented",
-            duration_ms=_elapsed_ms(started),
-        )
+        return result
 
     async def _schedule_consultation(
         self,

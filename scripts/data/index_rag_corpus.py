@@ -57,4 +57,3 @@ async def _ensure_embeddings(chunks, settings):
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

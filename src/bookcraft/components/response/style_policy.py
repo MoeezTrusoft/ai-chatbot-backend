@@ -8,10 +8,10 @@ from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.response.planner import ResponsePlan
 
 PREFERRED_OPENERS: list[str] = [
-    "Based on what you shared",
     "That gives us enough to",
     "The useful next step is",
     "Since your manuscript is finished",
+    "Happy to help with that",
 ]
 
 BANNED_OPENERS: list[str] = [
@@ -67,7 +67,17 @@ SERVICE_GUIDANCE: dict[str, str] = {
 }
 
 PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
-    "continue_discovery": "Acknowledge context, then ask one scoping question.",
+    "greeting_welcome": (
+        "Welcome the author warmly and acknowledge what they shared. "
+        "React to their project or situation first. "
+        "Do NOT ask for name or contact details in the opening reply."
+    ),
+    "answer_current_question": (
+        "Answer the author's actual question clearly and specifically. "
+        "Move one natural step forward after answering. "
+        "Do NOT lead with a contact ask."
+    ),
+    "continue_discovery": "Acknowledge context, then move one natural step forward.",
     "cover_design_scoping": (
         "Anchor on known manuscript status/genre and ask cover style direction."
     ),
@@ -75,7 +85,10 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
     "consultation_scoping": "Propose booking next step and ask one scheduling detail.",
     "document_scoping": "Confirm the exact document and missing legal-safe details.",
     "portfolio_matching": "Ask one clarifier to provide relevant portfolio samples.",
-    "lead_contact_capture": "Ask for name and email or phone in one concise question.",
+    "lead_contact_capture": (
+        "Ask for the author's name and one contact method (email or phone) — not both. "
+        "Frame the ask around the benefit to the author, not the company's need."
+    ),
     "consultation_handoff": (
         "Offer specialist consultation handoff and collect one contact channel."
     ),
@@ -83,6 +96,36 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
     "lead_created_confirmation": "Confirm handoff to a senior specialist and avoid more discovery.",
     "safe_blocked_action": "Do not imply completion. Explain safe next step only.",
     "clarify_intent": "Clarify the request before taking any action-oriented step.",
+    # Gap 1: long-tail intent goals (mission alignment audit)
+    "revision_response": (
+        "Acknowledge the revision request clearly. Ask which version and what changes are needed. "
+        "Offer a specialist review path. Do NOT ask scoping questions about word count or genre."
+    ),
+    "payment_guidance": (
+        "Treat this as a late-funnel buying signal. Explain the booking or payment process "
+        "simply. Offer a consultation to finalise. Do NOT ask scoping questions."
+    ),
+    "celebrate_and_advance": (
+        "Celebrate the author's milestone warmly and specifically. "
+        "Acknowledge the progress. Offer the natural next service step. No scoping questions."
+    ),
+    "complaint_recovery": (
+        "Acknowledge the concern directly and empathetically. Do not dismiss or redirect. "
+        "Offer a human or specialist consultation. Never ask a scoping question on this turn."
+    ),
+    "gentle_clarify": (
+        "Ask exactly one warm, open clarifying question. "
+        "Do not attempt to scope the project or sell. Keep it brief and human."
+    ),
+    "minimal_acknowledge": (
+        "Give a short, neutral acknowledgment. Do not engage the content. "
+        "Do not ask scoping questions. Do not attempt to sell."
+    ),
+    "friendly_redirect": (
+        "Acknowledge the off-topic message warmly. "
+        "Redirect naturally to how BookCraft can help with their book project. "
+        "Do NOT ask a scoping question."
+    ),
 }
 
 _WEAK_PHRASE_LIMIT = 2
@@ -203,8 +246,19 @@ class ResponseStylePolicy:
                 known_values.append(context_pack.active_genre.lower())
             if context_pack.manuscript_status:
                 known_values.append(context_pack.manuscript_status.replace("_", " ").lower())
+            # Use word-level matching so "publishing_distribution" matches a response
+            # that says "publishing and distribution" (template uses human-readable names).
+            def _value_mentioned(value: str, text: str) -> bool:
+                if not value or len(value) <= 2:
+                    return False
+                if value in text:
+                    return True
+                # Word-level: any significant word (>3 chars) from the value appears in text.
+                words = [w for w in value.split() if len(w) > 3]
+                return bool(words) and any(w in text for w in words)
+
             specific_mention = any(
-                value and len(value) > 2 and value in text_lower for value in known_values
+                _value_mentioned(value, text_lower) for value in known_values
             )
             if not specific_mention:
                 failures.append("missing_specificity_known_context")
@@ -275,9 +329,14 @@ class ResponseStylePolicy:
                 guidance = f"\nService guidance: {service_guidance}"
         return (
             "Tone: warm, specific, human, consultative, concise.\n"
-            "Formula: Acknowledge -> Interpret -> Move one step forward.\n"
-            "Acknowledge what the user shared, interpret what it means, "
-            "and ask one clear next-step question.\n"
+            "Approach: react to what the author shared, then move ONE natural step forward.\n"
+            "On a first message — welcome and engage; never lead with a contact ask.\n"
+            "When the author asks a question — answer it fully before anything else.\n"
+            "After deflecting a contact ask — add value; do not repeat the same ask.\n"
+            "Moving forward is not always a question and not always a contact ask. "
+            "Sometimes it is an answer, a next option, or a soft invitation.\n"
+            "If you must ask for contact, ask for name + ONE channel (email or phone), "
+            "framed around the author's benefit.\n"
             f"Avoid openers like: {', '.join(self.banned_openers)}.\n"
             "Avoid fake excitement, hype, and excessive exclamation marks.\n"
             f"Avoid weak wording: {', '.join(self.weak_phrases)}.\n"

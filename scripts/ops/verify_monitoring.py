@@ -69,12 +69,9 @@ def main() -> int:
     if "pricing-alerts.yml" not in prometheus:
         errors.append("prometheus.yml does not load pricing-alerts.yml")
 
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py")
-    )
+    source_text = "\n".join(path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py"))
     dashboard_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in Path("ops/grafana/dashboards").glob("*.json")
+        path.read_text(encoding="utf-8") for path in Path("ops/grafana/dashboards").glob("*.json")
     )
     available_text = source_text + "\n" + dashboard_text + "\n" + alert_text
     missing_metrics = sorted(metric for metric in REQUIRED_METRICS if metric not in available_text)

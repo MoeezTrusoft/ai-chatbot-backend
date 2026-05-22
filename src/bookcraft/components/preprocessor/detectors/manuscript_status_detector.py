@@ -34,13 +34,23 @@ from bookcraft.domain.enums import ManuscriptStatus
 # Publishing goal phrases do NOT imply the manuscript is finished.
 _PUBLISHING_GOAL_RE = re.compile(
     r"\b(?:"
-    # "want/need/... to publish"
+    # "want/need/looking to publish / get published / get my book published"
     r"(?:want|need|would\s+like|looking\s+to|help\s+(?:me\s+)?(?:with\s+)?)"
     r"\s*(?:to\s+)?(?:publish(?:ing|ed)?|self.publish(?:ing|ed)?|"
-    r"get\s+(?:it\s+)?published|publish\s+(?:my|the)\s+book)"
+    r"get\s+(?:it\s+|(?:my|the|a)\s+(?:book|novel|manuscript|journal|story|work)\s+)?published|"
+    r"publish\s+(?:my|the|a)\s+(?:book|novel|manuscript|journal|story))"
     r"|"
     # "help getting published" / "getting published" / "get published"
     r"(?:help\s+)?(?:getting|get)\s+published"
+    r"|"
+    # "get my book/journal/novel published" (no preceding want/looking to)
+    r"get\s+(?:it|(?:my|the|a)\s+(?:book|novel|manuscript|journal|story|work))\s+published"
+    r"|"
+    # "make it published" / "make my book published"
+    r"make\s+(?:it|my\s+\w+|the\s+\w+)\s+published"
+    r"|"
+    # "want to publish it" / "want to make it published"
+    r"want\s+to\s+(?:make\s+it\s+published|publish\s+it)"
     r"|"
     # "self-publish" as a goal
     r"self.publish(?:ing)?"
@@ -83,6 +93,9 @@ _COMPLETED_PHRASES = (
     "ready manuscript",
     "manuscript is ready",
     "final draft",
+    "full draft",  # Phase 9 hotfix: "85,000 words, full draft"
+    "fully drafted",
+    "complete draft",
     "manuscript is finalized",
     "manuscript finalized",
     "i've finished my manuscript",

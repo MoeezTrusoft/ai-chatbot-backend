@@ -110,9 +110,7 @@ def _response_text(body: dict[str, object]) -> str:
     bubbles = body.get("bubbles")
     if not isinstance(bubbles, list):
         return ""
-    return " ".join(
-        bubble.get("text", "") for bubble in bubbles if isinstance(bubble, dict)
-    )
+    return " ".join(bubble.get("text", "") for bubble in bubbles if isinstance(bubble, dict))
 
 
 def _validate_turn(turn: ProbeTurn, text: str) -> None:

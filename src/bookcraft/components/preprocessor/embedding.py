@@ -62,4 +62,3 @@ class EmbeddingClient:
             msg = "TEI embedding vector missing."
             raise ValueError(msg)
         return [float(item) for item in vector][: self.dimensions]
-

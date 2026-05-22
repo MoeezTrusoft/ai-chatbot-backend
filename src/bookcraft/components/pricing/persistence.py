@@ -42,4 +42,6 @@ class InMemoryQuoteRepository:
         return self.quotes.get(quote_id)
 
     def append_event(self, quote_id: UUID, event_type: str, payload: dict[str, Any]) -> None:
-        self.events.append(QuoteAuditEvent(quote_id=quote_id, event_type=event_type, payload=payload))
+        self.events.append(
+            QuoteAuditEvent(quote_id=quote_id, event_type=event_type, payload=payload)
+        )

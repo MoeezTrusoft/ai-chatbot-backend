@@ -50,7 +50,10 @@ class CustomerResponseContract(BaseModel):
     allow_deterministic_customer_text: bool = False
     allow_deterministic_structured_payload: bool = True
     allow_claude_repair: bool = True
-    allowed_final_sources: tuple[str, ...] = ("claude_sonnet", "claude_sonnet_repair")
+    allowed_final_sources: tuple[str, ...] = (
+        "claude_sonnet",
+        "claude_sonnet_repair",
+    )
     dev_allowed_sources: tuple[str, ...] = ("template_no_adapter", "deterministic_greeting")
 
     def _is_production_like(self, app_env: str | None = None) -> bool:

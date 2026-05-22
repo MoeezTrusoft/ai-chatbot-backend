@@ -38,4 +38,3 @@ class ToolGatingPolicy:
         if "agreement" in normalized:
             return self.agreement_mode
         return "manual"
-

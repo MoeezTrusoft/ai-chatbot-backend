@@ -18,10 +18,9 @@ def _trim_leading_sentence_fragment(text: str) -> str:
         for separator in separators:
             index = stripped.find(separator)
             if 0 <= index <= 140:
-                candidate = stripped[index + len(separator):].lstrip()
+                candidate = stripped[index + len(separator) :].lstrip()
                 if candidate and (
-                    candidate[0].isupper()
-                    or candidate.startswith(("-", "*", "#", "|"))
+                    candidate[0].isupper() or candidate.startswith(("-", "*", "#", "|"))
                 ):
                     return candidate
 
@@ -35,11 +34,7 @@ def _flatten_single_line_markdown_table(text: str) -> str:
         return text
 
     cells = [cell.strip() for cell in compact.split("|") if cell.strip()]
-    cells = [
-        cell
-        for cell in cells
-        if not all(character in "-: " for character in cell)
-    ]
+    cells = [cell for cell in cells if not all(character in "-: " for character in cell)]
 
     if len(cells) < 6:
         return text
@@ -49,7 +44,7 @@ def _flatten_single_line_markdown_table(text: str) -> str:
     lines: list[str] = []
 
     for index in range(0, len(rows), len(headers)):
-        row = rows[index:index + len(headers)]
+        row = rows[index : index + len(headers)]
         if len(row) != len(headers):
             continue
 
@@ -69,9 +64,8 @@ def _flatten_single_line_markdown_table(text: str) -> str:
 
 
 def _normalize_response_block(text: str) -> str:
-    return _flatten_single_line_markdown_table(
-        _trim_leading_sentence_fragment(text)
-    )
+    return _flatten_single_line_markdown_table(_trim_leading_sentence_fragment(text))
+
 
 @dataclass(slots=True)
 class ResponseFormatter:

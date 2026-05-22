@@ -37,7 +37,12 @@ class ActionPlan(BaseModel):
     confirmation_required: bool = False
     pending_confirmation_key: str | None = None
     customer_safe_prompt: str | None = None
+    customer_safe_summary: str | None = None  # used by BLOCKED status (e.g. expired)
     reason: str
+    # Idempotency key: stable per (thread, action_type, payload_hash).
+    idempotency_key: str | None = None
+    # Expiry for NEEDS_CONFIRMATION plans.
+    pending_expires_at: datetime | None = None
 
 
 class ActionResult(BaseModel):

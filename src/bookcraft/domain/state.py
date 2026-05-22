@@ -200,3 +200,18 @@ class ThreadState(BaseModel):
     distribution_goal: str | None = None
     service_metadata: dict[str, dict[str, Any]] = Field(default_factory=dict)
     metadata_candidates: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    # Batch 2 Step 16: consultation handoff guard — prevents retrigger on unrelated turns.
+    consultation_handoff_created: bool = False
+    consultation_handoff_action_id: str | None = None
+    # Batch 3 Step 4: lead created acknowledgment guard — prevents looping on confirmation.
+    lead_created_acknowledged: bool = False
+    # Step 2 (tone fix): last prior turn stored so the LLM has conversation context.
+    # Stored as normalized/redacted text — not raw PII-bearing user input.
+    last_user_message: str = ""
+    last_assistant_text: str = ""
+    # Step 3 (tone fix): track whether the bot asked for contact in the last turn,
+    # so LeadObjectiveEngine can back off when the user deflects.
+    last_turn_asked_contact: bool = False
+    # Persona: assigned BookCraft representative name for this thread.
+    # Set on the first identity question; reused for the rest of the conversation.
+    representative_name: str | None = None

@@ -29,10 +29,12 @@ def test_service_request_moves_to_contact_capture() -> None:
 
 
 def test_pricing_request_moves_to_contact_capture_not_quote_loop() -> None:
+    # turn_count=2: pricing intent on non-first turns routes to contact capture.
     d = LeadObjectiveEngine().decide(
         message="How much does ghostwriting cost?",
         intent=_intent(QueryIntentType.PRICING_QUESTION, ServiceCategory.GHOSTWRITING),
         state=ThreadState(),
+        turn_count=2,
     )
     assert d.stop_discovery is True
     assert d.objective_move == "ask_contact"
@@ -66,11 +68,13 @@ def test_flexible_discretion_moves_to_consultation_handoff() -> None:
         detected = True
         mode = "bookcraft_discretion"
 
+    # turn_count=2: discretion delegation on non-first turns routes to consultation.
     d = LeadObjectiveEngine().decide(
         message="you decide what is best",
         intent=_intent(QueryIntentType.SERVICE_QUESTION),
         state=ThreadState(),
         flexible_intent=_F(),
+        turn_count=2,
     )
     assert d.objective_move == "offer_consultation"
 

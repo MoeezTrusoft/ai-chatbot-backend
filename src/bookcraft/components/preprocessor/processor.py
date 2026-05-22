@@ -24,6 +24,138 @@ from bookcraft.domain.enums import ServiceCategory
 
 _NEGATION_RESOLVER = NegationTargetResolver()
 
+# ---------------------------------------------------------------------------
+# Written-number helpers for word/page count extraction
+# ---------------------------------------------------------------------------
+
+_ONES = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+}
+_TENS = {
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+_MAGNITUDES = {"hundred": 100, "thousand": 1_000, "million": 1_000_000}
+
+# Matches written number phrases like "eighty-five thousand" or "three hundred thousand".
+_WRITTEN_NUMBER_RE = re.compile(
+    r"\b(?:"
+    r"(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]"
+    r"(?:one|two|three|four|five|six|seven|eight|nine)|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
+    r"one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)"
+    r"(?:\s+(?:hundred|thousand|million))*"
+    r"(?:\s+(?:and\s+)?(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
+    r"one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen))??"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_written_number(text: str) -> int | None:
+    """Convert an English number phrase to an integer.
+
+    Handles: "three thousand", "eighty-five thousand", "two hundred",
+    "one hundred thousand", "three million". Returns None if unparseable.
+    Max supported value: 999,999,999.
+    """
+    text = text.lower().replace("-", " ").replace(",", "").strip()
+    words = text.split()
+    total = 0
+    current = 0
+    for word in words:
+        if word == "and":
+            continue
+        if word in _ONES:
+            current += _ONES[word]
+        elif word in _TENS:
+            current += _TENS[word]
+        elif word == "hundred":
+            current = (current or 1) * 100
+        elif word == "thousand":
+            total += (current or 1) * 1_000
+            current = 0
+        elif word == "million":
+            total += (current or 1) * 1_000_000
+            current = 0
+        else:
+            return None  # Unknown word — bail out
+    total += current
+    return total if total > 0 else None
+
+
+_NUM_WORDS = frozenset(
+    "zero one two three four five six seven eight nine ten "
+    "eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen "
+    "twenty thirty forty fifty sixty seventy eighty ninety "
+    "hundred thousand million and".split()
+)
+
+
+def _extract_written_counts(text: str) -> tuple[list[int], list[int]]:
+    """Extract word/page counts expressed as English number words followed by 'words'/'pages'.
+
+    Strategy: scan for 'words' and 'pages' label words, then walk backwards
+    to collect all adjacent English number tokens and parse them as a whole phrase.
+    This correctly handles "twelve thousand five hundred words" → 12500.
+
+    Returns (word_counts, page_counts).
+    """
+    written_word: list[int] = []
+    written_page: list[int] = []
+
+    for label, target in ((r"words?\b", "word"), (r"pages?\b", "page")):
+        for m in re.finditer(label, text, re.IGNORECASE):
+            # Collect tokens immediately before the label (up to 12 tokens back).
+            prefix = text[: m.start()].strip()
+            tokens = re.split(r"[\s\-,]+", prefix)
+            phrase_tokens: list[str] = []
+            for tok in reversed(tokens[-12:]):
+                tok_lower = tok.lower().rstrip("s")  # "hundreds" → "hundred"
+                if tok_lower in _NUM_WORDS or tok.lower() in _NUM_WORDS:
+                    phrase_tokens.insert(0, tok.lower())
+                else:
+                    break  # Non-number word — stop collecting
+            if not phrase_tokens:
+                continue
+            candidate = " ".join(phrase_tokens)
+            n = _parse_written_number(candidate)
+            if n is not None and n > 0:
+                if target == "word":
+                    written_word.append(n)
+                else:
+                    written_page.append(n)
+
+    return written_word, written_page
+
+
 PREPROCESSOR_SECONDS = Histogram("preprocessor_seconds", "Preprocessor latency.")
 ATOMS_EXTRACTED = Counter(
     "preprocessor_atoms_extracted_total",
@@ -41,45 +173,44 @@ SERVICE_KEYWORDS = {
     ServiceCategory.GHOSTWRITING: [
         "ghostwriting",
         "ghost writer",
+        "ghost-writer",
         "write my book",
+        "writing my book",
         "writing the story",
         "help writing",
         "help writing the story",
         "help me write",
         "story writing",
         "only have an idea",
-        "idea for a children's",
         "idea for a children’s",
-        "children's picture book",
+        "idea for a children’s",
+        "children’s picture book",
         "children’s picture book",
     ],
     ServiceCategory.EDITING_PROOFREADING: ["editing", "proofreading", "proofread"],
     ServiceCategory.COVER_DESIGN_ILLUSTRATION: [
+        # Explicit cover-design phrases — no standalone "cover" (Step 3)
         "cover design",
-        "illustration",
         "book cover",
-        "professional cover",
+        "front cover",
+        "cover for my book",
         "cover artwork",
         "cover art",
         "cover illustration",
-        "cover",
-        "writing the story",
-        "write the story",
-        "help writing",
-        "help me write",
-        "story writing",
-        "only have an idea",
-        "idea for a children's",
-        "idea for a children’s",
-        "children's picture book",
-        "children’s picture book",
+        "cover designer",
+        "cover design service",
+        # Illustration phrases — NOT writing-related
         "illustrations",
         "creating illustrations",
         "picture book illustrations",
-        "children's book illustrations",
+        "children’s book illustrations",
         "children’s book illustrations",
         "illustrator",
         "book illustration",
+        "illustration service",
+        # Children’s-specific illustration (only when illustration-context present)
+        "children’s picture book illustration",
+        "children’s picture book illustration",
     ],
     ServiceCategory.INTERIOR_FORMATTING: [
         "interior formatting",
@@ -295,6 +426,14 @@ class SharedPreprocessor:
             int(value.replace(",", ""))
             for value in re.findall(r"(\d[\d,]*)\s+pages?\b", text, re.I)
         ]
+        # Also extract English number words: "three thousand words", "eighty-five thousand pages".
+        _written_word, _written_page = _extract_written_counts(text)
+        for _n in _written_word:
+            if _n not in word_counts:
+                word_counts.append(_n)
+        for _n in _written_page:
+            if _n not in page_counts:
+                page_counts.append(_n)
         self._put_all(atoms, "word_counts", word_counts)
         self._put_all(atoms, "page_counts", page_counts)
         service_mentions = _service_mentions(

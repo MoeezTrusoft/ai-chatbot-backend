@@ -51,16 +51,29 @@ def test_allows_casual_what_the_fuck() -> None:
     assert decision.action in {"allow", "warn"}
 
 
-def test_blocks_directed_insult() -> None:
-    """Personal insult directed at the bot or team."""
+def test_warns_directed_insult_first_occurrence() -> None:
+    """First directed insult: softer first-strike → warn, not block (Gap 6 audit fix)."""
     decision = guard.evaluate("You are fucking stupid.")
+    # First occurrence: warn so the LLM can de-escalate; block on second.
+    assert decision.action == "warn"
+    assert decision.severity == 2
+
+
+def test_blocks_directed_insult_second_occurrence() -> None:
+    """Second directed insult (after a prior hostile event) → block."""
+    from bookcraft.domain.state import ThreadState
+
+    state = ThreadState()
+    state.safety_events = [{"action": "warn", "severity": 2, "reason": "prior insult"}]
+    decision = guard.evaluate("You are fucking stupid.", state=state)
     assert decision.action == "block"
     assert decision.system_message is not None
 
 
-def test_blocks_directed_insult_useless_bot() -> None:
+def test_warns_directed_insult_useless_bot() -> None:
+    """First 'useless bot' insult: warn on first occurrence."""
     decision = guard.evaluate("What a useless bot you are.")
-    assert decision.action == "block"
+    assert decision.action == "warn"
 
 
 def test_blocks_threat() -> None:

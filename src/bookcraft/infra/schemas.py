@@ -21,4 +21,3 @@ class ReadinessResponse(BaseModel):
 
     status: str
     dependencies: dict[str, DependencyStatus]
-

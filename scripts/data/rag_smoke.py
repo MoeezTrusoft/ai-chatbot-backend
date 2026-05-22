@@ -35,10 +35,7 @@ async def async_main() -> int:
     )
 
     if len(embedding) != settings.embedding_dimensions:
-        print(
-            f"embedding dimension mismatch: "
-            f"{len(embedding)} != {settings.embedding_dimensions}"
-        )
+        print(f"embedding dimension mismatch: {len(embedding)} != {settings.embedding_dimensions}")
         return 1
 
     client = AsyncElasticsearch(settings.elasticsearch_url)
@@ -86,4 +83,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

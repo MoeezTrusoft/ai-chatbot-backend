@@ -9,4 +9,3 @@ class LanguageDecision(BaseModel):
     confidence: float
     source: str
     redirect_message: str | None = None
-

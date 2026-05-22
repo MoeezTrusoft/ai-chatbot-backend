@@ -365,9 +365,7 @@ class ServiceMetadataExtractor:
             for pat, style in _COVER_STYLE_PATTERNS:
                 _m = pat.search(text)
                 if _m and not _is_negated(text, _m.start()):
-                    _set_confirmed(
-                        confirmed, "cover_design_illustration", "visual_style", style
-                    )
+                    _set_confirmed(confirmed, "cover_design_illustration", "visual_style", style)
                     audit.append(f"cover_style:{style}")
 
         # Interior formatting

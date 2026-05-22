@@ -562,9 +562,7 @@ def _response_text(body: dict[str, Any] | None) -> str:
     bubbles = body.get("bubbles")
     if not isinstance(bubbles, list):
         return ""
-    return " ".join(
-        bubble.get("text", "") for bubble in bubbles if isinstance(bubble, dict)
-    )
+    return " ".join(bubble.get("text", "") for bubble in bubbles if isinstance(bubble, dict))
 
 
 def _safety_findings(text: str) -> list[str]:
@@ -629,16 +627,10 @@ def _expected_findings(
 
 def _build_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     latencies = [
-        turn["latency_ms"]
-        for turn in turns
-        if isinstance(turn.get("latency_ms"), int | float)
+        turn["latency_ms"] for turn in turns if isinstance(turn.get("latency_ms"), int | float)
     ]
-    safety_failures = sum(
-        1 for turn in turns if turn["diagnostics"]["safety_findings"]
-    )
-    expected_failures = sum(
-        1 for turn in turns if turn["diagnostics"]["expected_findings"]
-    )
+    safety_failures = sum(1 for turn in turns if turn["diagnostics"]["safety_findings"])
+    expected_failures = sum(1 for turn in turns if turn["diagnostics"]["expected_findings"])
     http_failures = sum(1 for turn in turns if turn["diagnostics"]["error"])
     return {
         "total_turns": len(turns),
@@ -761,8 +753,7 @@ def _markdown_report(report: dict[str, Any]) -> str:
         if turn["diagnostics"]["error"]:
             findings.append(turn["diagnostics"]["error"])
         row_template = (
-            "| {index} | `{name}` | {passed} | {latency} | `{query}` | "
-            "`{service}` | {findings} |"
+            "| {index} | `{name}` | {passed} | {latency} | `{query}` | `{service}` | {findings} |"
         )
         lines.append(
             row_template.format(
@@ -949,8 +940,8 @@ def _findings_text(turn: dict[str, Any]) -> str:
 def _docx_heading(text: str, *, level: int) -> str:
     size = {1: "32", 2: "26", 3: "22"}.get(level, "22")
     return (
-        "<w:p><w:pPr><w:spacing w:after=\"120\"/></w:pPr>"
-        f"<w:r><w:rPr><w:b/><w:sz w:val=\"{size}\"/></w:rPr>"
+        '<w:p><w:pPr><w:spacing w:after="120"/></w:pPr>'
+        f'<w:r><w:rPr><w:b/><w:sz w:val="{size}"/></w:rPr>'
         f"<w:t>{_xml(text)}</w:t></w:r></w:p>"
     )
 
@@ -958,8 +949,8 @@ def _docx_heading(text: str, *, level: int) -> str:
 def _docx_paragraph(text: Any, *, bold: bool = False) -> str:
     bold_xml = "<w:b/>" if bold else ""
     return (
-        "<w:p><w:pPr><w:spacing w:after=\"80\"/></w:pPr><w:r>"
-        f"<w:rPr>{bold_xml}</w:rPr><w:t xml:space=\"preserve\">{_xml(text)}</w:t>"
+        '<w:p><w:pPr><w:spacing w:after="80"/></w:pPr><w:r>'
+        f'<w:rPr>{bold_xml}</w:rPr><w:t xml:space="preserve">{_xml(text)}</w:t>'
         "</w:r></w:p>"
     )
 
@@ -969,14 +960,14 @@ def _docx_table(*, rows: list[tuple[Any, ...]], headers: tuple[str, ...]) -> str
     table_rows.extend(_docx_row(tuple(row), header=False) for row in rows)
     return (
         "<w:tbl>"
-        "<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>"
+        '<w:tblPr><w:tblW w:w="0" w:type="auto"/>'
         "<w:tblBorders>"
-        "<w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
-        "<w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
-        "<w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
-        "<w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
-        "<w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
-        "<w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"808080\"/>"
+        '<w:top w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
+        '<w:left w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
+        '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
+        '<w:right w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
+        '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
+        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
         "</w:tblBorders></w:tblPr>"
         f"{''.join(table_rows)}"
         "</w:tbl>"
@@ -989,14 +980,14 @@ def _docx_row(values: tuple[Any, ...], *, header: bool) -> str:
 
 
 def _docx_cell(value: Any, *, header: bool) -> str:
-    fill = "<w:shd w:fill=\"D9EAF7\"/>" if header else ""
+    fill = '<w:shd w:fill="D9EAF7"/>' if header else ""
     bold = "<w:b/>" if header else ""
     text = _xml(value)
     return (
         "<w:tc><w:tcPr>"
-        "<w:tcW w:w=\"2400\" w:type=\"dxa\"/>"
+        '<w:tcW w:w="2400" w:type="dxa"/>'
         f"{fill}</w:tcPr><w:p><w:r><w:rPr>{bold}</w:rPr>"
-        f"<w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p></w:tc>"
+        f'<w:t xml:space="preserve">{text}</w:t></w:r></w:p></w:tc>'
     )
 
 

@@ -52,6 +52,8 @@ class PortfolioEngine:
             return response
 
         by_genre = self.registry.for_service(request.service)
+
+        # First pass: try exact genre + aliases + "default" key.
         for candidate in self.registry.candidate_genres(request.genre):
             samples = [
                 sample
@@ -71,6 +73,33 @@ class PortfolioEngine:
                 )
                 self._record(response)
                 return response
+
+        # Second pass: no genre specified or no genre match — return a general selection
+        # from any genre so the user always sees real examples rather than "no samples found".
+        if by_genre:
+            general_samples = []
+            for genre_samples in by_genre.values():
+                for s in genre_samples:
+                    if is_safe_portfolio_url(s.url) and is_safe_portfolio_url(s.cover_image):
+                        general_samples.append(s)
+                    if len(general_samples) >= request.limit:
+                        break
+                if len(general_samples) >= request.limit:
+                    break
+            if general_samples:
+                response = PortfolioResponse(
+                    service=request.service,
+                    requested_genre=request.genre,
+                    status=PortfolioStatus.FOUND,
+                    samples=general_samples[: request.limit],
+                    message="Returned general approved samples for this service.",
+                    registry_version=self.registry.version,
+                    matched_genre=None,
+                    fallback_used=True,
+                )
+                self._record(response)
+                return response
+
         response = PortfolioResponse(
             service=request.service,
             requested_genre=request.genre,

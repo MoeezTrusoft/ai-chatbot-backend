@@ -201,9 +201,11 @@ def test_plan_primary_goal_portfolio_matching() -> None:
 
 
 def test_plan_primary_goal_continue_discovery_default() -> None:
-    pack = _pack()
+    # Gap 1 (mission audit): SERVICE_QUESTION now maps to answer_current_question.
+    # Use cover_design service context to test the service-specific scoping goal.
+    pack = _pack(active_service="cover_design_illustration")
     plan = _planner.plan(intent=_intent(), state=ThreadState(), context_pack=pack)
-    assert plan.primary_goal == "continue_discovery"
+    assert plan.primary_goal == "cover_design_scoping"
 
 
 def test_plan_primary_goal_safe_blocked_action_when_governance_blocked() -> None:
@@ -254,24 +256,35 @@ def test_plan_does_not_ask_genre_when_in_forbidden_reasks() -> None:
 
 
 def test_plan_next_question_from_allowed_list_first() -> None:
+    # Use PRICING_QUESTION which goes through pricing_scoping → priority list.
     pack = _pack(
         missing_facts=["genre", "word_or_page_count"],
         allowed_next_questions=["word_or_page_count", "genre"],
     )
-    plan = _planner.plan(intent=_intent(), state=ThreadState(), context_pack=pack)
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.PRICING_QUESTION),
+        state=ThreadState(),
+        context_pack=pack,
+    )
     assert plan.next_question == "word_or_page_count"
 
 
 def test_plan_next_question_falls_back_to_missing_facts() -> None:
-    # "genre" comes before "manuscript_stage" in the default priority order.
+    # "genre" comes before "manuscript_stage" in the pricing priority order.
     pack = _pack(missing_facts=["manuscript_stage", "genre"])
-    plan = _planner.plan(intent=_intent(), state=ThreadState(), context_pack=pack)
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.PRICING_QUESTION),
+        state=ThreadState(),
+        context_pack=pack,
+    )
     assert plan.next_question == "genre"
 
 
 def test_plan_next_question_none_when_nothing_missing() -> None:
-    pack = _pack()
+    # Use cover_design service to go through cover_design_scoping which uses priority list.
+    pack = _pack(active_service="cover_design_illustration")
     plan = _planner.plan(intent=_intent(), state=ThreadState(), context_pack=pack)
+    # When nothing is missing in the priority list, next_question is None.
     assert plan.next_question is None
 
 
@@ -388,17 +401,23 @@ def test_cover_design_plan_prefers_cover_style() -> None:
 
 def test_empty_discovery_plan_asks_highest_priority_missing_fact() -> None:
     """
-    With no established context, primary_goal is continue_discovery and
-    next_question is the first entry in missing_facts (or allowed_next_questions).
+    With pricing intent and missing context, primary_goal is pricing_scoping and
+    next_question is the first entry in the pricing priority list.
+    Gap 1: SERVICE_QUESTION now maps to answer_current_question, so we use
+    PRICING_QUESTION to test the scoping discovery path.
     """
     pack = _pack(
         missing_facts=["genre", "manuscript_stage", "word_or_page_count"],
         allowed_next_questions=["genre", "manuscript_stage", "word_or_page_count"],
     )
 
-    plan = _planner.plan(intent=_intent(), state=ThreadState(), context_pack=pack)
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.PRICING_QUESTION),
+        state=ThreadState(),
+        context_pack=pack,
+    )
 
-    assert plan.primary_goal == "continue_discovery"
+    assert plan.primary_goal == "pricing_scoping"
     assert plan.next_question in {"genre", "manuscript_stage", "word_or_page_count"}
     assert plan.max_questions == 1
 

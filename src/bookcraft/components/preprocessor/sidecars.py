@@ -56,4 +56,3 @@ def _verify_list(payload: dict[str, Any], key: str) -> None:
     if not isinstance(value, list) or not value or not all(isinstance(item, str) for item in value):
         msg = f"Sidecar key {key} must be a non-empty string list."
         raise ValueError(msg)
-

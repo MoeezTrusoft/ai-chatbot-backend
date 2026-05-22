@@ -76,6 +76,13 @@ class ConsultationRequestExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requested: bool = False
+    # Enriched fields added by deterministic consultation extractor.
+    requested_date_text: str | None = None  # e.g. "tomorrow", "Friday"
+    requested_time_text: str | None = None  # e.g. "4pm", "morning"
+    requested_datetime_text: str | None = None  # combined, e.g. "tomorrow at 4pm"
+    timezone_text: str | None = None  # e.g. "PST", "PKT", "EST"
+    channel_preference: str | None = None  # e.g. "phone", "zoom", "email"
+    timezone_unknown: bool = False  # True when relative time given, no tz known
 
 
 class CombinedExtraction(BaseModel):
@@ -92,4 +99,3 @@ class CombinedExtraction(BaseModel):
     )
     user_questions: list[str] = Field(default_factory=list)
     state_deltas: list[StateDelta] = Field(default_factory=list)
-

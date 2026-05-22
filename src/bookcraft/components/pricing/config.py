@@ -47,7 +47,9 @@ class AddOnConfig(BaseModel):
             raise ValueError(f"Add-on {self.code} requires unit_field")
         if self.duration_type == "fixed_days" and self.duration_days is None:
             raise ValueError(f"Add-on {self.code} requires duration_days")
-        if self.duration_type == "per_unit_pace" and (not self.unit_field or self.pace_per_day is None):
+        if self.duration_type == "per_unit_pace" and (
+            not self.unit_field or self.pace_per_day is None
+        ):
             raise ValueError(f"Add-on {self.code} requires unit_field and pace_per_day")
         if self.price_type == "quote_only" or self.duration_type == "quote_only":
             self.human_review_required = True
@@ -175,14 +177,21 @@ class ServiceConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> ServiceConfig:
-        if self.calculation_model in {"word_rate", "page_rate", "per_finished_hour"} and not self.rate_grid:
+        if (
+            self.calculation_model in {"word_rate", "page_rate", "per_finished_hour"}
+            and not self.rate_grid
+        ):
             raise ValueError(f"{self.service} requires rate_grid")
-        if self.calculation_model in {
-            "package_grid",
-            "package_plus_recurring",
-            "video_length_grid",
-            "campaign_package",
-        } and not self.package_grid:
+        if (
+            self.calculation_model
+            in {
+                "package_grid",
+                "package_plus_recurring",
+                "video_length_grid",
+                "campaign_package",
+            }
+            and not self.package_grid
+        ):
             raise ValueError(f"{self.service} requires package_grid")
         if not self.required_inputs:
             raise ValueError(f"{self.service} requires required_inputs")
@@ -277,7 +286,9 @@ def load_engine_config(config_dir: str | Path) -> EngineConfig:
             _load_yaml(root / "payment_schedule_policy.v2.yaml")
         ),
         quote_policy=QuotePolicy.model_validate(_load_yaml(root / "quote_policy.v2.yaml")),
-        dependency_graph=DependencyGraph.model_validate(_load_yaml(root / "dependency_graph.v2.yaml")),
+        dependency_graph=DependencyGraph.model_validate(
+            _load_yaml(root / "dependency_graph.v2.yaml")
+        ),
     )
 
 
