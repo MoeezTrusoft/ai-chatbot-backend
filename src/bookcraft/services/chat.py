@@ -53,6 +53,7 @@ from bookcraft.components.leads.contact_recovery import (
 )
 from bookcraft.components.leads.contact_utils import contact_is_ready
 from bookcraft.components.metadata import ServiceMetadataExtractor
+from bookcraft.components.persona import BookCraftPersona
 from bookcraft.components.portfolio import (
     PortfolioEngine,
     PortfolioFallbackDecision,
@@ -87,6 +88,11 @@ from bookcraft.components.sales.consultation_state import (
     ConsultationStage,
     ConsultationStateDecision,
     reduce_consultation_state,
+)
+from bookcraft.components.service_workflow import (
+    ServiceWorkflow,
+    is_sequencing_question,
+    resolve_service_aliases,
 )
 from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
@@ -191,9 +197,21 @@ class ChatService:
     context_enforcement_gate: ContextEnforcementGate = field(default_factory=ContextEnforcementGate)
     # Batch 4: complaint classifier — detects frustration/PII/handoff signals.
     complaint_classifier: ComplaintClassifier = field(default_factory=ComplaintClassifier)
+    # Persona: manages the BookCraft representative identity per thread.
+    persona: BookCraftPersona = field(default_factory=BookCraftPersona)
+    # Service workflow: predecessor/successor/parallel sequencing advisor.
+    service_workflow: ServiceWorkflow = field(default_factory=ServiceWorkflow)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
+    response_repair_enabled: bool = False
+    # Configurable production fallback message (override in Settings).
+    production_fallback_message: str = (
+        "That's outside what I can help with directly — BookCraft specialises in helping "
+        "authors publish their own original work. If you have a manuscript or book project "
+        "you'd like to discuss, I'm happy to walk you through our services. "
+        "Or I can connect you with a specialist right now."
+    )
 
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
@@ -556,6 +574,7 @@ class ChatService:
                 state=state,
                 attachment_intake=attachment_intake_result,
                 contact_capture=contact_capture,
+                turn_count=thread.turn_count,
             )
             state.lead_objective_stage = lead_objective_decision.stage
             # PR 4: service metadata extraction.
@@ -635,6 +654,13 @@ class ChatService:
             _contact_info_ready = contact_is_ready(state.contact_info or {})
             # Batch 4: structured complaint classification.
             complaint_classification = self.complaint_classifier.classify(payload.message)
+            # Persona: evaluate identity question and persist name to state.
+            persona_decision = self.persona.evaluate(
+                message=payload.message, state=state
+            )
+            # Persist chosen name into state so it survives across turns.
+            if persona_decision.representative_name and not state.representative_name:
+                state.representative_name = persona_decision.representative_name
             # Context enforcement gate — converts all signals into an enforceable decision.
             context_enforcement_decision = self.context_enforcement_gate.enforce(
                 text=payload.message,
@@ -795,9 +821,17 @@ class ChatService:
             portfolio_response: PortfolioResponse | None = self._portfolio_response_from_action(
                 action_result
             )
+            # Portfolio engine: only fire when the intent is a high-confidence, genuine
+            # portfolio request.  "print a sample" / "sample copy" means the author wants
+            # a proof of their OWN book — that is NOT a portfolio request.
+            _portfolio_request_genuine = (
+                intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and intent.confidence >= 0.85
+                and not _is_proof_copy_request(payload.message)
+            )
             if (
                 portfolio_response is None
-                and intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and _portfolio_request_genuine
                 and portfolio_fallback_decision is not None
                 and portfolio_fallback_decision.strategy != "ask_filter_once"
             ):
@@ -813,7 +847,7 @@ class ChatService:
                 )
             elif (
                 portfolio_response is None
-                and intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and _portfolio_request_genuine
                 and portfolio_fallback_decision is None
             ):
                 portfolio_response = await self._portfolio_turn(
@@ -849,6 +883,45 @@ class ChatService:
                 context_enforcement=context_enforcement_decision,
             )
             response_hint = context_pack.response_hint or trg_response_hint
+
+            # Service workflow: inject rich sequencing advice into the LLM prompt.
+            # Patterns handled:
+            #   a) Sequencing question ("what comes next?", "can I do both at once?")
+            #      → full pipeline or multi-service advice
+            #   b) Single active service → predecessor/successor/parallel facts
+            #   c) Multi-service message → topological order + parallel wins
+            _wf_hint = ""
+            _mentioned_services = resolve_service_aliases(payload.message)
+            _active_svc_raw = (
+                state.project.services_discussed[-1].service.value
+                if state.project.services_discussed
+                else None
+            )
+            _active_svc_str: str | None = str(_active_svc_raw) if _active_svc_raw else None
+
+            if is_sequencing_question(payload.message):
+                # User asked about order/parallel — give full or multi-service advice.
+                _services_to_advise = _mentioned_services or (
+                    [_active_svc_str] if _active_svc_str else []
+                )
+                if len(_services_to_advise) >= 2:
+                    _multi = self.service_workflow.advise_multi(_services_to_advise)
+                    _wf_hint = _multi.as_prompt_facts()
+                elif _services_to_advise:
+                    _wf_hint = self.service_workflow.user_guidance(_services_to_advise[0])
+                else:
+                    _wf_hint = self.service_workflow.full_pipeline_text()
+            elif len(_mentioned_services) >= 2:
+                # User mentioned multiple services — show the sequence.
+                _multi = self.service_workflow.advise_multi(_mentioned_services)
+                _wf_hint = _multi.as_prompt_facts()
+            elif _active_svc_str:
+                # Single active service — show prerequisites, parallel, next steps.
+                _wf_hint = self.service_workflow.user_guidance(_active_svc_str)
+
+            if _wf_hint:
+                response_hint = f"{response_hint}\n{_wf_hint}" if response_hint else _wf_hint
+
             response_plan = self.response_planner.plan(
                 intent=intent,
                 state=state,
@@ -1007,6 +1080,10 @@ class ChatService:
                 document_status_message = self._sales_action_status_message(
                     action_plan, action_result
                 ) or _document_status_message(intent)
+            # Step 2 (tone fix): build recent conversation turns from persisted state.
+            _recent_turns: list[tuple[str, str]] | None = None
+            if state.last_user_message and state.last_assistant_text:
+                _recent_turns = [(state.last_user_message, state.last_assistant_text)]
             draft = await self.response_generator.generate(
                 message=processed,
                 state=state,
@@ -1022,6 +1099,8 @@ class ChatService:
                 response_hint=response_hint,
                 context_pack=context_pack,
                 response_plan=response_plan,
+                recent_turns=_recent_turns,
+                persona_decision=persona_decision,
             )
             quality_report = self.response_quality_gate.evaluate(
                 text=draft.text,
@@ -1068,26 +1147,45 @@ class ChatService:
             ):
                 final_draft = draft
             else:
-                repair_attempted = True
-                repair_method = getattr(self.response_generator, "repair", None)
                 repair_draft: ResponseDraft | None = None
-                if callable(repair_method):
-                    repair_draft = await repair_method(
-                        bad_text=draft.text,
-                        quality_report=quality_report,
-                        response_plan=response_plan,
-                        context_pack=context_pack,
-                        tool_governance=governance_decision,
-                        response_hint=response_hint,
-                    )
-                    response_repair_quality = self.response_quality_gate.evaluate(
-                        text=repair_draft.text,
-                        intent=intent,
-                        state=state,
-                        context_pack=context_pack,
-                        response_plan=response_plan,
-                        tool_governance=governance_decision,
-                    )
+                if self.response_repair_enabled:
+                    repair_attempted = True
+                    repair_method = getattr(self.response_generator, "repair", None)
+                    if callable(repair_method):
+                        repair_draft = await repair_method(
+                            bad_text=draft.text,
+                            quality_report=quality_report,
+                            response_plan=response_plan,
+                            context_pack=context_pack,
+                            tool_governance=governance_decision,
+                            response_hint=response_hint,
+                        )
+                        response_repair_quality = self.response_quality_gate.evaluate(
+                            text=repair_draft.text,
+                            intent=intent,
+                            state=state,
+                            context_pack=context_pack,
+                            response_plan=response_plan,
+                            tool_governance=governance_decision,
+                        )
+                # Separate critical failures (block Claude) from non-critical (style/tone).
+                # Critical: privacy, price invention, unverified scheduling, trust claims.
+                # Non-critical: tone, scoping questions, missing next step, sales_tone.
+                _critical_failures = {
+                    "pii_echo_in_response",
+                    "unapproved_price_figure",
+                    "unapproved_committed_timeline",
+                    "unverified_scheduling_claim",
+                    "blocked_action_claimed_as_success",
+                    "internal_artifact_leak",
+                }
+                _has_critical = any(
+                    f in _critical_failures for f in (quality_report.failures or [])
+                )
+                _claude_source = contract.is_allowed_final_source(
+                    draft.source, app_env=self.environment
+                )
+
                 if (
                     repair_draft is not None
                     and response_repair_quality is not None
@@ -1097,29 +1195,29 @@ class ChatService:
                         app_env=self.environment,
                     )
                 ):
+                    # Repair passed — use it.
                     final_draft = repair_draft
                 elif (
                     fallback_draft is not None
                     and draft.source not in contract.allowed_final_sources
                 ):
+                    # Source not allowed (template) — use quality gate fallback.
                     final_draft = fallback_draft
-                elif not production_like and contract.is_allowed_final_source(
-                    draft.source,
-                    app_env=self.environment,
-                ):
+                elif _claude_source and not _has_critical:
+                    # Claude responded, failures are non-critical style issues.
+                    # Send Claude's draft — it is always better than a hardcoded string.
+                    final_draft = draft
+                elif not production_like and _claude_source:
                     final_draft = draft
                 elif not production_like:
                     final_draft = _dev_fallback()
                 else:
-                    # Step 1 (Batch 1): Fail-closed in production.
-                    # Do NOT send the blocked draft — use a hardcoded safe response.
+                    # True fail-closed: Claude produced a CRITICAL failure
+                    # (PII echo, invented prices, unverified scheduling, etc.).
+                    # The hardcoded fallback is only used here.
                     deterministic_final_text_blocked = True
                     final_draft = ResponseDraft(
-                        text=(
-                            "I want to avoid giving you inaccurate information here. "
-                            "Let me connect this to the right BookCraft specialist "
-                            "so they can review it properly."
-                        ),
+                        text=self.production_fallback_message,
                         source="safe_blocked_fallback",
                     )
 
@@ -1158,7 +1256,24 @@ class ChatService:
                     }
                 )
             # PR 3: inject portfolio rich link segments so URLs are clickable, not raw text.
-            if portfolio_response is not None and bubbles:
+            # Guard: only inject when the intent was genuinely a portfolio request with
+            # sufficient confidence AND the response plan confirms portfolio matching.
+            # This prevents sample links appearing when the user said "print a sample"
+            # (meaning a proof copy of their own book, not BookCraft portfolio samples).
+            # Inject portfolio rich segments when: intent was genuine AND engine found samples.
+            # No goal restriction — if the engine found real samples and intent was high-confidence,
+            # always show them (the planner goal can vary depending on prior conversation state).
+            _portfolio_intent_genuine = (
+                intent.query_primary == QueryIntentType.PORTFOLIO_REQUEST
+                and intent.confidence >= 0.85
+                and not _is_proof_copy_request(payload.message)
+            )
+            from bookcraft.components.portfolio.schemas import PortfolioStatus as _PortfolioStatus
+            _portfolio_found = (
+                portfolio_response is not None
+                and portfolio_response.status == _PortfolioStatus.FOUND
+            )
+            if _portfolio_found and bubbles and _portfolio_intent_genuine:
                 _port_segs = self.portfolio_rich_segment_builder.build(portfolio_response)
                 if _port_segs:
                     bubbles[0].rich_segments.extend(_port_segs)
@@ -1220,6 +1335,16 @@ class ChatService:
             # can resume normal discovery instead of looping on confirmation.
             if response_plan.primary_goal == "lead_created_confirmation":
                 state.lead_created_acknowledged = True
+            # Step 3 (tone fix): record whether this turn asked for contact,
+            # so LeadObjectiveEngine can back off on the next turn if deflected.
+            state.last_turn_asked_contact = (
+                lead_objective_decision.objective_move == "ask_contact"
+                or response_plan.primary_goal in {"lead_contact_capture", "consultation_handoff"}
+            )
+            # Step 2 (tone fix): persist prior turn for conversation history in next turn.
+            # Store normalized message (not raw) to avoid PII in state.
+            state.last_user_message = (processed.normalized or "")[:300]
+            state.last_assistant_text = final_text[:300]
             if self.thread_repository is not None:
                 await self.thread_repository.save_state(
                     thread_id=thread_id,
@@ -1289,6 +1414,8 @@ class ChatService:
                     },
                     # Batch 4: structured complaint classification.
                     "complaint_classification": complaint_classification.model_dump(mode="json"),
+                    # Persona: representative name for this thread.
+                    "persona": persona_decision.model_dump(mode="json"),
                     "lead_created": bool(state.lead_created),
                     "delegated_decision": self.slot_tracker.last_decision.model_dump(mode="json")
                     if self.slot_tracker.last_decision is not None
@@ -3101,6 +3228,27 @@ def _genre_category(genre: str | None) -> str:
     return "fiction_standard"
 
 
+_PROOF_COPY_RE = __import__("re").compile(
+    r"\b(?:"
+    r"print\s+a\s+sample|sample\s+copy|proof\s+copy|physical\s+proof|"
+    r"print\s+(?:my|a\s+copy|copies\s+of\s+my)|"
+    r"sample\s+print|test\s+print|print\s+run|advance\s+copy|advance\s+reader|"
+    r"publish\s+(?:a\s+)?journal|journal\s+publish"
+    r")\b",
+    __import__("re").IGNORECASE,
+)
+
+
+def _is_proof_copy_request(text: str) -> bool:
+    """Return True when the user is asking for a proof/sample of THEIR OWN book.
+
+    These are publishing-service questions, NOT requests to see BookCraft's
+    portfolio samples. Prevents the portfolio engine from firing on:
+    'I want to print a sample', 'sample copy', 'proof copy', 'publish a journal'.
+    """
+    return bool(_PROOF_COPY_RE.search(text))
+
+
 def _optional_string(value: object) -> str | None:
     if value is None:
         return None
@@ -3415,11 +3563,38 @@ def _trg_response_hint_from_context(
             "question again; acknowledge the repeated information and move forward."
         )
 
-    if trg_context is not None and trg_context.contradiction_count:
-        parts.append(
-            "There may be contradictory project details. Ask one focused "
-            "clarifying question instead of assuming."
-        )
+    # Gap 7: surface specific contradiction details so the LLM can reconcile gently.
+    if trg_context is not None and trg_context.contradictions:
+        contradiction_details = []
+        for c in trg_context.contradictions[:2]:  # cap at 2 to stay concise
+            if getattr(c, "resolution_status", "unresolved") == "unresolved":
+                path = getattr(c, "fact_path", "a project detail")
+                old_val = getattr(c, "old_value", None)
+                new_val = getattr(c, "new_value", None)
+                if old_val and new_val:
+                    contradiction_details.append(f"{path}: earlier='{old_val}' vs now='{new_val}'")
+        if contradiction_details:
+            parts.append(
+                "Unresolved contradictions detected — surface gently to reconcile: "
+                + "; ".join(contradiction_details)
+            )
+        elif trg_context.contradiction_count:
+            parts.append(
+                "There may be contradictory project details. Surface them gently "
+                "('Earlier you mentioned X — should I use Y instead?') rather than "
+                "silently picking one value."
+            )
+
+    # Gap 7: note recent service shift so the LLM cleanly switches focus.
+    if trg_context is not None and trg_context.service_shifts:
+        latest_shift = trg_context.service_shifts[-1]
+        old_svc = getattr(latest_shift, "previous_service", None)
+        new_svc = getattr(latest_shift, "new_service", None)
+        if new_svc and old_svc and old_svc != new_svc:
+            parts.append(
+                f"Service focus shifted from '{old_svc}' to '{new_svc}'. "
+                f"Drop scoping for '{old_svc}' and move cleanly into '{new_svc}'."
+            )
 
     if not parts:
         return None

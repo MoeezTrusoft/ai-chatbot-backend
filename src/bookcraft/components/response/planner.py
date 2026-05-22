@@ -60,6 +60,7 @@ _DEFAULT_PRIORITY: list[str] = [
 ]
 
 _GOAL_BY_QUERY: dict[str, str] = {
+    # Core happy-path intents (original 7)
     "greeting": "greeting_welcome",
     "pricing_question": "pricing_scoping",
     "timeline_question": "pricing_scoping",
@@ -67,6 +68,18 @@ _GOAL_BY_QUERY: dict[str, str] = {
     "nda_request": "document_scoping",
     "agreement_request": "document_scoping",
     "portfolio_request": "portfolio_matching",
+    # Gap 1: long-tail intents mapped to real goals (mission alignment audit)
+    "service_question": "answer_current_question",
+    "publishing_platform_question": "answer_current_question",
+    "revision_question": "revision_response",
+    "payment_question": "payment_guidance",
+    "manuscript_status_update": "celebrate_and_advance",
+    "complaint_or_objection": "complaint_recovery",
+    "unclear": "gentle_clarify",
+    "spam_or_abuse": "minimal_acknowledge",
+    "off_topic": "friendly_redirect",
+    "ready_to_buy": "lead_contact_capture",
+    "contact_info_provided": "lead_contact_capture",
 }
 
 # Goals added by PR 2 (consultation-first planner).
@@ -415,6 +428,17 @@ def _primary_goal(
             return "assessment_handoff"
         return "attachment_received_assessment"
 
+    # Step 3 (tone fix): honour recommended_primary_goal from lead_objective even
+    # when stop_discovery=False (welcome-first and answer-before-ask rules).
+    if (
+        lead_objective_decision is not None
+        and not lead_objective_decision.stop_discovery
+        and lead_objective_decision.recommended_primary_goal
+        and lead_objective_decision.recommended_primary_goal
+        in {"greeting_welcome", "answer_current_question"}
+    ):
+        return lead_objective_decision.recommended_primary_goal
+
     # Portfolio fallback goal overrides.
     if portfolio_fallback_decision is not None:
         strategy = getattr(portfolio_fallback_decision, "strategy", None)
@@ -486,6 +510,22 @@ def _next_question(
     # Greeting-only turns: ask how we can help, never scoping.
     if primary_goal == "greeting_welcome":
         return "how_can_we_help"
+
+    # Gap 1: long-tail goal next-question rules — none of these should trigger scoping.
+    if primary_goal == "revision_response":
+        return None  # Answer the revision question; don't scope
+    if primary_goal == "payment_guidance":
+        return None  # Buying-stage signal; route to contact, not scoping
+    if primary_goal == "celebrate_and_advance":
+        return None  # Celebrate the milestone; offer the natural next step
+    if primary_goal == "complaint_recovery":
+        return None  # Complaint: acknowledge and offer handoff, no scoping
+    if primary_goal == "gentle_clarify":
+        return "clarify_intent"  # Ask one warm clarifying question
+    if primary_goal == "minimal_acknowledge":
+        return None  # Spam/abuse: short acknowledgment, no engagement
+    if primary_goal == "friendly_redirect":
+        return None  # Off-topic: warm redirect to BookCraft services
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:

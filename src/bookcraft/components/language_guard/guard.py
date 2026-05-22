@@ -41,28 +41,24 @@ NON_ENGLISH_REDIRECTS = Counter(
 )
 
 ENGLISH_HINTS = {
-    "a",
-    "about",
-    "and",
-    "book",
-    "cover",
-    "editing",
-    "for",
-    "ghostwriting",
-    "hello",
-    "help",
-    "hi",
-    "i",
-    "marketing",
-    "my",
-    "need",
-    "price",
-    "pricing",
-    "publish",
-    "the",
-    "want",
-    "website",
-    "writing",
+    # BookCraft service words
+    "a", "about", "and", "book", "cover", "editing", "for",
+    "ghostwriting", "hello", "help", "hi", "marketing", "my",
+    "need", "price", "pricing", "publish", "the", "want", "website", "writing",
+    # Common English function words that appear in short messages.
+    # Prevents lingua from misclassifying short all-ASCII sentences like
+    # "I'm in EST timezone." or "Yes please book it."
+    "i", "i'm", "i've", "i'll", "i'd", "in", "is", "it", "it's",
+    "am", "are", "at", "be", "been", "by", "can", "could",
+    "do", "does", "from", "get", "have", "how", "if",
+    "just", "like", "me", "more", "not", "of", "on", "or",
+    "out", "please", "so", "that", "this", "to", "up",
+    "was", "we", "what", "when", "will", "with", "would",
+    "yes", "you", "your",
+    # Common timezone/scheduling words to prevent misclassification
+    "timezone", "est", "cst", "pst", "gmt", "utc", "morning",
+    "afternoon", "evening", "friday", "monday", "tuesday", "wednesday",
+    "thursday", "saturday", "sunday",
 }
 
 

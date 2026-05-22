@@ -6,12 +6,21 @@ Engines compute. Claude writes.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from bookcraft.components.leads.contact import ContactCaptureResult
 from bookcraft.domain.enums import QueryIntentType
+
+# Detects that the user's message is itself a direct question the bot should answer.
+_USER_QUESTION_RE = re.compile(
+    r"\b(?:how|what|which|where|when|why|can\s+you|could\s+you|do\s+you|"
+    r"tell\s+me|explain|help\s+me|show\s+me|what'?s|how'?s|"
+    r"what\s+(?:are|is|do|does)|how\s+(?:do|does|can|much))\b",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # Models
@@ -44,6 +53,7 @@ class LeadObjectiveDecision(BaseModel):
         "schedule_consultation",
         "handoff_to_specialist",
         "no_change",
+        "answer_then_consultation",
     ]
     reason: str
     stop_discovery: bool = False
@@ -141,6 +151,7 @@ class LeadObjectiveEngine:
         portfolio_fallback: Any | None = None,
         delegated_decision: Any | None = None,
         contact_capture: ContactCaptureResult | None = None,
+        turn_count: int = 0,
     ) -> LeadObjectiveDecision:
         audit: list[str] = []
 
@@ -194,6 +205,8 @@ class LeadObjectiveEngine:
             "blocked",
         }:
             current_stage = "engaging"
+
+        contact_ready = contact_capture is not None and contact_capture.lead_contact_ready
 
         # Contact ready → create lead ONLY with explicit lead intent (Step 2).
         if contact_capture is not None and contact_capture.lead_contact_ready:
@@ -266,6 +279,78 @@ class LeadObjectiveEngine:
                 recommended_primary_goal="lead_contact_capture",
                 next_question="name_and_email_or_phone",
                 audit=audit,
+            )
+
+        # ── Step 3a: Welcome and engage on the first/second turn ─────────────
+        # Never fire a contact ask on the very first informational message — welcome first.
+        # Bypass conditions (already handled above, or high-intent signals):
+        # - contact already ready → handled above
+        # - attachment assessment → handled above
+        # - explicit contact/readiness phrase → handled above
+        # - high buying-intent intent (PRICING, CONSULTATION, READY_TO_BUY, etc.) → let through
+        # - flexible delegation → let through (checked before this block)
+        _query_for_first_turn = getattr(intent, "query_primary", None)
+        _is_high_intent_first_turn = (
+            _query_for_first_turn in _LEAD_CAPTURE_INTENTS
+            or _query_for_first_turn == QueryIntentType.READY_TO_BUY
+            or bool(_BUYING_INTENT_RE.search(message))
+        )
+        _flexible_detected_first_turn = flexible_intent is not None and getattr(
+            flexible_intent, "detected", False
+        )
+        if (
+            turn_count <= 1
+            and not contact_ready
+            and not _is_high_intent_first_turn
+            and not _flexible_detected_first_turn
+        ):
+            audit.append(f"signal:first_turn_engage:turn={turn_count}")
+            return LeadObjectiveDecision(
+                stage="engaging",
+                objective_move="continue_light_discovery",
+                reason="First turn: welcome and engage before any contact ask.",
+                stop_discovery=False,
+                recommended_primary_goal="greeting_welcome",
+                audit=audit + ["signal:first_turn_engage_before_capture"],
+            )
+
+        # ── Step 3b: Answer the user's direct question before any contact ask ─
+        # When the user has asked a direct question (how/what/tell me) with a
+        # service-question or general intent, answer it before capturing contact.
+        # Bypass: flexible_intent detected (delegation takes priority over answer-first).
+        query_primary_early = getattr(intent, "query_primary", None)
+        _flexible_bypass = flexible_intent is not None and getattr(
+            flexible_intent, "detected", False
+        )
+        if (
+            not contact_ready
+            and not _flexible_bypass
+            and _USER_QUESTION_RE.search(message)
+            and query_primary_early in _SERVICE_QUESTION_INTENTS
+        ):
+            audit.append(f"signal:user_question_before_capture:intent={query_primary_early}")
+            return LeadObjectiveDecision(
+                stage=current_stage,
+                objective_move="answer_then_consultation",
+                reason="User asked a direct question; answer before any contact ask.",
+                stop_discovery=False,
+                recommended_primary_goal="answer_current_question",
+                audit=audit + ["signal:answer_question_before_contact"],
+            )
+
+        # ── Step 3c: Back off after a deflected contact ask ──────────────────
+        # If the bot asked for contact last turn and the user didn't provide it,
+        # back off for one turn to add value instead of demanding again.
+        last_turn_asked = getattr(state, "last_turn_asked_contact", False)
+        if last_turn_asked and not contact_ready:
+            audit.append("signal:contact_ask_backoff:not_provided")
+            return LeadObjectiveDecision(
+                stage=current_stage,
+                objective_move="continue_light_discovery",
+                reason="Contact was just asked and not provided; back off and add value.",
+                stop_discovery=False,
+                recommended_primary_goal="answer_current_question",
+                audit=audit + ["signal:contact_ask_backoff"],
             )
 
         # Pricing / timeline / consultation → stop discovery, capture contact.

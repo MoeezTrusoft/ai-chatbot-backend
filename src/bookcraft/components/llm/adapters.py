@@ -30,7 +30,7 @@ class MockLLMAdapter:
 class AnthropicAdapter:
     api_key: str
     base_url: str
-    timeout_seconds: float
+    timeout_seconds: float  # kept for config compatibility; read timeout is always unlimited
     model: str = "claude-haiku-4-5-20251001"
     name: str = "anthropic"
 
@@ -44,7 +44,10 @@ class AnthropicAdapter:
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            # read=None means wait as long as Claude needs — never cut off mid-response.
+            # connect stays short so we fail fast if Anthropic is unreachable.
+            _timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=5.0)
+            async with httpx.AsyncClient(timeout=_timeout) as client:
                 response = await client.post(
                     f"{self.base_url.rstrip('/')}/v1/messages",
                     headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
@@ -77,7 +80,8 @@ class OpenAIAdapter:
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            _timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=5.0)
+            async with httpx.AsyncClient(timeout=_timeout) as client:
                 payload: dict[str, object] = {
                     "model": self.model,
                     "messages": [

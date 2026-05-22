@@ -9,6 +9,7 @@ Blocked turns return a system UI message, not assistant prose.
 from __future__ import annotations
 
 import re
+import unicodedata as _ud
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -82,6 +83,33 @@ _NORMAL_COMPLAINT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Gap 6 (mission audit): universal high-severity patterns — language-agnostic.
+# These cover Roman-transliterated threats common in Urdu/Hindi chat that
+# bypass the English-only patterns above.
+_UNIVERSAL_THREAT_RE = re.compile(
+    r"\b(?:"
+    r"mar\s+(?:donga|dunga|deta|dalunga)|"  # Urdu: will kill
+    r"jaan\s+(?:se|sey)\s+maar|"  # Urdu: kill from life
+    r"khoon\s+(?:pi|kar)|"  # Urdu: blood threat
+    r"tor\s+(?:dunga|dalunga|donga)|"  # Urdu: will break
+    r"goli\s+maar|"  # Urdu: shoot
+    r"tabah\s+kar"  # Urdu: destroy
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+# Gap 6: detect empty / whitespace-only / emoji-only messages.
+def _is_empty_or_trivial(text: str) -> bool:
+    """Return True when the message has no meaningful text content."""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    # Check if every character is either whitespace, punctuation, or emoji.
+    has_letter_or_digit = any(_ud.category(c).startswith(("L", "N")) for c in stripped)
+    return not has_letter_or_digit
+
+
 # ---------------------------------------------------------------------------
 # Safety event helpers
 # ---------------------------------------------------------------------------
@@ -133,6 +161,8 @@ _SYSTEM_MESSAGE_ESCALATED = (
     "This conversation has been paused after repeated issues. "
     "Please contact BookCraft support directly."
 )
+# Gap 6: warn message for first-strike insult (softer ladder before block).
+_SYSTEM_MESSAGE_INSULT_WARN = None  # warn without system message — let the LLM de-escalate
 
 
 class InputSafetyGuard:
@@ -153,6 +183,16 @@ class InputSafetyGuard:
         recent = _recent_hostility_count(state)
         audit.append(f"recent_hostility:{recent}")
 
+        # Gap 6: empty / whitespace / emoji-only messages — warm allow (no error).
+        if _is_empty_or_trivial(message):
+            audit.append("pattern:empty_or_trivial")
+            return InputSafetyDecision(
+                action="allow",
+                reason="Empty or emoji-only message — proceed with warm invite.",
+                severity=0,
+                audit=audit,
+            )
+
         # Check escalation first — repeated hostility → block regardless of current message.
         if recent >= 3:
             audit.append("escalation:repeated_hostility")
@@ -171,6 +211,18 @@ class InputSafetyGuard:
             return InputSafetyDecision(
                 action="block",
                 reason="Message contains a threat of harm.",
+                severity=4,
+                input_disabled=True,
+                system_message=_SYSTEM_MESSAGE_THREAT,
+                audit=audit,
+            )
+
+        # Gap 6: language-agnostic universal threats (Roman-Urdu/Hindi).
+        if _UNIVERSAL_THREAT_RE.search(message):
+            audit.append("pattern:universal_threat")
+            return InputSafetyDecision(
+                action="block",
+                reason="Message contains a threat of harm (universal pattern).",
                 severity=4,
                 input_disabled=True,
                 system_message=_SYSTEM_MESSAGE_THREAT,
@@ -202,14 +254,26 @@ class InputSafetyGuard:
             )
 
         # Directed insult at the bot / team.
+        # Gap 6: softer first-strike ladder — warn on first, block on second.
         if _DIRECTED_INSULT_RE.search(message):
             audit.append("pattern:directed_insult")
+            if recent >= 1:
+                # Second hostile message — escalate to block.
+                return InputSafetyDecision(
+                    action="block",
+                    reason="Message contains a directed insult (second occurrence).",
+                    severity=3,
+                    input_disabled=False,
+                    system_message=_SYSTEM_MESSAGE_BLOCK,
+                    audit=audit,
+                )
+            # First occurrence — warn and let LLM de-escalate.
             return InputSafetyDecision(
-                action="block",
-                reason="Message contains a directed personal insult.",
-                severity=3,
+                action="warn",
+                reason="Message contains a directed insult (first occurrence — warning).",
+                severity=2,
                 input_disabled=False,
-                system_message=_SYSTEM_MESSAGE_BLOCK,
+                system_message=_SYSTEM_MESSAGE_INSULT_WARN,
                 audit=audit,
             )
 

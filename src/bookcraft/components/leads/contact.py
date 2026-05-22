@@ -48,8 +48,11 @@ class ContactCaptureResult(BaseModel):
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}", re.IGNORECASE)
 
 _PHONE_RE = re.compile(
-    r"(?:\+?\d[\d\s().-]{7,}\d)",
+    r"(?:\+?\d[\d\s().-]{8,}\d)",  # at least 10 digits total
 )
+
+# Bare 10+ digit number (no formatting) — treated as phone when present in contact context.
+_BARE_PHONE_RE = re.compile(r"\b(\d{10,})\b")
 
 # Strong name patterns only — avoid false positives on service/topic phrases.
 _NAME_PATTERNS: list[re.Pattern[str]] = [
@@ -166,11 +169,17 @@ class ContactCaptureDetector:
         if email:
             audit.append(f"email_found:{email}")
 
-        # Phone.
+        # Phone — formatted or bare 10+ digit number.
         phone_match = _PHONE_RE.search(text)
         phone_raw = phone_match.group(0).strip() if phone_match else None
-        # Basic sanity: must have at least 7 digits.
-        phone = phone_raw if phone_raw and sum(c.isdigit() for c in phone_raw) >= 7 else None
+        # Require at least 10 digits for a valid phone number.
+        phone = phone_raw if phone_raw and sum(c.isdigit() for c in phone_raw) >= 10 else None
+        # Fallback: a bare run of 10+ digits is a phone number (e.g. "8889050868").
+        if phone is None:
+            bare_match = _BARE_PHONE_RE.search(text)
+            if bare_match and len(bare_match.group(1)) >= 10:
+                phone = bare_match.group(1)
+                audit.append("phone_bare_digits")
         if phone:
             audit.append(f"phone_found:{phone[:8]}...")
 

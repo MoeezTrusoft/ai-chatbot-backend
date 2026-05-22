@@ -152,9 +152,12 @@ _GENERAL_FRUSTRATION_RE = re.compile(
 )
 
 _ABUSIVE_RE = re.compile(
-    r"\b(?:fuck|shit|damn|asshole|idiot|stupid\s+bot|moron|crap)\b",
+    r"\b(?:fuck|shit|asshole|idiot|moron)\b",
     re.IGNORECASE,
 )
+# Note: "stupid bot", "useless bot", "damn" are handled by _DIRECTED_INSULT_RE
+# and _GENERAL_FRUSTRATION_RE respectively. Keeping _ABUSIVE_RE narrow prevents
+# double-classification that sends conflicting severity signals (warn vs HIGH).
 
 
 # ---------------------------------------------------------------------------

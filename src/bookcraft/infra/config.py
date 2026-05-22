@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     app_port: int = 8000
     readiness_check_externals: bool = False
     language_guard_enabled: bool = True
+    response_repair_enabled: bool = False  # TEMP: LLM repair disabled per product decision
+    # Production fail-closed message — shown when quality gate blocks and repair fails.
+    # Override in .env to match your brand voice without changing code.
+    production_fallback_message: str = (
+        "That's outside what I can help with directly — BookCraft specialises in helping "
+        "authors publish their own original work. If you have a manuscript or book project "
+        "you'd like to discuss, I'm happy to walk you through our services. "
+        "Or I can connect you with a specialist right now."
+    )
 
     database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:55432/bookcraft"
     database_replica_url: str | None = None
@@ -52,7 +61,7 @@ class Settings(BaseSettings):
     deepseek_intent_model: str = "deepseek-chat"
     deepseek_intent_enabled: bool = False
     llm_provider_mode: Literal["mock", "live"] = "mock"
-    llm_request_timeout_seconds: float = 8.0
+    llm_request_timeout_seconds: float = 60.0  # raised: let LLM take its time; no timeout fallback
 
     nda_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
     agreement_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
@@ -123,7 +132,7 @@ class Settings(BaseSettings):
     portfolio_samples_docx_path: str = "data/portfolio/portfolio_samples.docx"
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
-    intent_ensemble_timeout_seconds: float = 6.0
+    intent_ensemble_timeout_seconds: float = 30.0  # raised: don't time out intent classification
     deepseek_timeout_seconds: float = 4.0
     shared_processor_cache_size: int = 1000
     trg_hot_nodes_limit: int = 24
