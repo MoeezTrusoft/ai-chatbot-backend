@@ -26,6 +26,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from bookcraft.components.leads.contact_utils import contact_is_ready
 
+# Detects explicit "not published yet" corrections so we can clear a wrongly
+# inferred "published" manuscript status from state.
+_NOT_PUBLISHED_YET_RE = re.compile(
+    r"\b(?:"
+    r"(?:not|isn'?t|haven'?t|has\s+not|have\s+not)\s+(?:been\s+)?published\s+yet|"
+    r"not\s+(?:yet\s+)?published|"
+    r"book\s+(?:is\s+)?not\s+published|"
+    r"(?:my|the)\s+book\s+(?:hasn'?t|has\s+not|is\s+not|isn'?t)\s+(?:been\s+)?published|"
+    r"i\s+(?:said|told\s+you)\s+(?:my|the)\s+book\s+is\s+not|"
+    r"(?:still\s+)?(?:unpublished|unfinished|not\s+done|not\s+ready\s+to\s+publish)"
+    r")\b",
+    re.IGNORECASE,
+)
+
 # ---------------------------------------------------------------------------
 # Delegation patterns (augmented beyond delegation.py)
 # ---------------------------------------------------------------------------
@@ -441,6 +455,23 @@ class ContextEnforcementGate:
             state_updates["clear_genre"] = True
             state_updates["genre_candidate"] = "memoir"
             audit.append("enforcement:autobiography_not_fiction")
+
+        # ── Manuscript status correction: "not published yet" ─────────────
+        # When the user explicitly says their book is NOT published, clear any
+        # previously extracted "published" status so the bot stops reverting to
+        # "your book is already published" on subsequent turns.
+        _current_ms = getattr(
+            getattr(getattr(state, "project", None), "manuscript_status", None),
+            "value", None,
+        )
+        if (
+            _current_ms in {"published", "already_published"}
+            and _NOT_PUBLISHED_YET_RE.search(text)
+        ):
+            state_updates["clear_manuscript_status"] = True
+            cleared_false_facts.append("project.manuscript_status")
+            stale_context_terms.append("published")
+            audit.append("enforcement:cleared_false_published_status")
 
         # ── Apply removed services to state ────────────────────────────────
         if negated_services:

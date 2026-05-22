@@ -690,6 +690,11 @@ class ChatService:
                     state.publishing_platforms = list(upd["publishing_platforms"])
                 if "book_formats" in upd:
                     state.project.book_formats = list(upd["book_formats"])
+                # Clear wrongly inferred "published" status when user explicitly corrects.
+                if upd.get("clear_manuscript_status"):
+                    state.project.manuscript_status = state.project.manuscript_status.model_copy(
+                        update={"value": None}
+                    )
             state.lead_intake_payload = self._build_lead_intake_payload(
                 state=state,
                 message=payload.message,
