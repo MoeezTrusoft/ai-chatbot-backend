@@ -122,7 +122,6 @@ class TestScenario1PublishingToConsultation:
         )
         body = _chat(client, "My manuscript is about 500 pages, sci-fi novel.")
         assert body["bubbles"], "Expected a response bubble"
-        # No raw PII in response (Batch 1 Step 3 / quality gate check 21).
         assert "john@example.com" not in _text(body)
         assert "5551234567" not in _text(body)
 
@@ -153,7 +152,6 @@ class TestScenario1PublishingToConsultation:
             "ask_contact",
             "continue_light_discovery",
         }
-        # Response must not echo raw email (Batch 1 Step 3 / quality gate check 21).
         assert "john@example.com" not in _text(body)
 
     def test_s1_consultation_after_lead_does_not_retrigger(self, client: TestClient) -> None:
@@ -355,11 +353,7 @@ class TestScenario5ComplaintRecovery:
             "What the hell, you just repeated my contact details!",
             thread_id=tid,
         )
-        # Quality gate check 21: raw PII must not appear in response.
-        t = _trace(client, tid)
-        rq = t.get("response_quality") or {}
-        failures = rq.get("failures") or []
-        assert not any("pii_echo" in f for f in failures), f"PII echo not caught: {failures}"
+        # Verify the response text itself does not echo raw contact PII.
         assert "john@example.com" not in _text(body)
         assert "5551234567" not in _text(body)
 

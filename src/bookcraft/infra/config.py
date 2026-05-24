@@ -19,15 +19,6 @@ class Settings(BaseSettings):
     readiness_check_externals: bool = False
     language_guard_enabled: bool = True
     response_repair_enabled: bool = False  # TEMP: LLM repair disabled per product decision
-    # Production fail-closed message — shown when quality gate blocks and repair fails.
-    # Override in .env to match your brand voice without changing code.
-    production_fallback_message: str = (
-        "That's outside what I can help with directly — BookCraft specialises in helping "
-        "authors publish their own original work. If you have a manuscript or book project "
-        "you'd like to discuss, I'm happy to walk you through our services. "
-        "Or I can connect you with a specialist right now."
-    )
-
     database_url: str = "postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:55432/bookcraft"
     database_replica_url: str | None = None
     database_pool_size: int = 20

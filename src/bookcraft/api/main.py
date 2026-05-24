@@ -403,7 +403,6 @@ def build_chat_service(
         ),
         environment=settings.app_env,
         response_repair_enabled=settings.response_repair_enabled,
-        production_fallback_message=settings.production_fallback_message,
         trg_engine=trg_engine,
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),

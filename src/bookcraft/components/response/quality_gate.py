@@ -405,14 +405,6 @@ class ResponseQualityGate:
         else:
             audit.append("quality:enforcement:stale_context:ok")
 
-        # Check 21 — PII echo suppression: raw user email/phone must not appear in output.
-        pii_echo_violations = _pii_echo_violations(text, state)
-        if pii_echo_violations:
-            failures.append(f"pii_echo_in_response:{pii_echo_violations[0]}")
-            audit.append(f"quality:pii_echo:FAIL:{pii_echo_violations[0]}")
-        else:
-            audit.append("quality:pii_echo:ok")
-
         # Check 22 — Scheduling claims must be backed by confirmed appointment evidence.
         # Phase 7 hotfix: bot must not claim "consultation booked/scheduled" unless
         # state.sales_actions.consultation.confirmed_appointment_id or
@@ -935,41 +927,6 @@ _METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
-def _pii_echo_violations(text: str, state: ThreadState) -> list[str]:
-    """Return labels when the assistant response echoes raw user PII.
-
-    The bot must never repeat a user's raw email or phone number in a
-    customer-facing response unless the user explicitly asked to confirm
-    exact contact details.  Doing so:
-    1. Treats the customer's own PII as if it were company contact info.
-    2. Violates the user's privacy expectations.
-    3. Was the exact failure mode reported in the customer incident.
-
-    Safe alternatives: "I have your contact details", "email on file".
-    """
-    from bookcraft.components.leads.contact_utils import is_real_contact_value
-
-    contact_info: dict[str, object] = getattr(state, "contact_info", None) or {}
-    violations: list[str] = []
-
-    email = contact_info.get("email")
-    phone = contact_info.get("phone")
-
-    if is_real_contact_value(email) and isinstance(email, str):
-        # Check if the raw email appears verbatim in the response text.
-        if email.lower() in text.lower():
-            violations.append("raw_email_echoed")
-
-    if is_real_contact_value(phone) and isinstance(phone, str):
-        # Normalise both to digits only for comparison (handles spacing differences).
-        phone_digits = re.sub(r"\D", "", phone)
-        text_digits = re.sub(r"\D", "", text)
-        if len(phone_digits) >= 7 and phone_digits in text_digits:
-            violations.append("raw_phone_echoed")
-
-    return violations
-
-
 _SCHEDULING_CLAIM_RE = re.compile(
     r"\b(?:consultation\s+(?:is\s+|has\s+been\s+)?(?:booked|scheduled|confirmed)|"
     r"your\s+(?:consultation|appointment|call)\s+(?:is|has\s+been)\s+(?:booked|scheduled|confirmed)|"
@@ -1211,12 +1168,6 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             parts.append(
                 "- Do not repeat questions or refer to context the user has already overridden. "
                 "Follow the user's most recent correction."
-            )
-        elif "pii_echo_in_response" in f:
-            parts.append(
-                "- Do not repeat the user's raw email or phone number. "
-                "Instead say 'I have your contact details already' or 'I'll use the "
-                "contact details you provided.' Never treat user PII as company contact info."
             )
         elif "sales_tone" in f:
             parts.append(

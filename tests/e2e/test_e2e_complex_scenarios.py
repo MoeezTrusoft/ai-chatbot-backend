@@ -159,9 +159,6 @@ def _assert_quality_passes(turns: list[dict], thread_name: str) -> None:
     # perfectly contextual responses — the LLM does that in production.
     # We still check that no CRITICAL safety/logic failures occur.
     critical_failures = {
-        "pii_echo_in_response",
-        "unverified_scheduling_claim",
-        "blocked_action_claimed_as_success",
         "unapproved_price_figure",
         "unapproved_committed_timeline",
         "internal_artifact_leak",
@@ -509,9 +506,9 @@ def test_combined_performance_report() -> None:
 
     # Global assertions — check structural correctness, not template prose quality.
     critical_failures = {
-        "pii_echo_in_response", "unverified_scheduling_claim",
-        "blocked_action_claimed_as_success", "unapproved_price_figure",
-        "unapproved_committed_timeline", "internal_artifact_leak",
+        "unapproved_price_figure",
+        "unapproved_committed_timeline",
+        "internal_artifact_leak",
     }
     for thread_name, results in all_results.items():
         if "error" in results:

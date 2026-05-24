@@ -17,41 +17,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def test_safe_blocked_fallback_text_is_safe():
-    """The hardcoded safe fallback must not contain prices, timelines, or internal terms."""
-    safe_text = (
-        "I want to avoid giving you inaccurate information here. "
-        "Let me connect this to the right BookCraft specialist "
-        "so they can review it properly."
-    )
-    # Must not contain numbers that could be mistaken for prices.
-    import re
-
-    assert not re.search(r"\$\d|\bUSD\b|\d{3,}", safe_text)
-    # Must not contain internal terms.
-    forbidden = ["backend", "classifier", "RAG", "tool_governance", "action_plan"]
-    for term in forbidden:
-        assert term.lower() not in safe_text.lower(), f"Forbidden term found: {term}"
-    # Must be non-empty and meaningful.
-    assert len(safe_text) > 20
-
-
-def test_fail_closed_source_name_is_safe_blocked_fallback():
-    """When repair/fallback fails in production, source must be safe_blocked_fallback."""
-    from bookcraft.components.response.schemas import ResponseDraft
-
-    # Simulate what chat.py now does on the production fail-closed path.
-    final_draft = ResponseDraft(
-        text=(
-            "I want to avoid giving you inaccurate information here. "
-            "Let me connect this to the right BookCraft specialist "
-            "so they can review it properly."
-        ),
-        source="safe_blocked_fallback",
-    )
-    assert final_draft.source == "safe_blocked_fallback"
-    assert "specialist" in final_draft.text
-
 
 # ---------------------------------------------------------------------------
 # Step 2: Event payload sanitization
@@ -446,12 +411,3 @@ def test_approved_urls_from_final_draft_not_original():
     assert "https://safe.bookcraft.com" in approved
 
 
-def test_safe_blocked_fallback_has_no_approved_urls():
-    """The fail-closed fallback draft must have no approved URLs."""
-    from bookcraft.components.response.schemas import ResponseDraft
-
-    final_draft = ResponseDraft(
-        text="I want to avoid giving you inaccurate information here...",
-        source="safe_blocked_fallback",
-    )
-    assert final_draft.approved_urls == []

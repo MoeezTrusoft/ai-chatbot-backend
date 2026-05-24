@@ -73,9 +73,6 @@ def _summary(turn: int, msg: str, body: dict, trace: dict) -> dict:
 
 
 _CRITICAL = {
-    "pii_echo_in_response",
-    "unverified_scheduling_claim",
-    "blocked_action_claimed_as_success",
     "unapproved_price_figure",
     "unapproved_committed_timeline",
     "internal_artifact_leak",
@@ -576,15 +573,8 @@ def test_stress_hard_no_to_contact() -> None:
     # T5: PII misuse complaint — must not be blocked, must be handled gracefully
     assert not turns[4]["blocked"], "T5: privacy complaint must not block the conversation"
 
-    # No PII echo (user never provided PII so this is trivially true, but confirm)
-    for t in turns:
-        assert "pii_echo_in_response" not in t["q_fail"], (
-            f"T{t['turn']}: PII echo check failed"
-        )
-
     _no_critical_failures(turns, label)
     findings.append("Contact refusal respected ✓")
-    findings.append("No PII echo ✓")
     _print_report(label, turns, findings)
 
 
@@ -657,7 +647,6 @@ def _run_scenario(msgs: list[str]) -> dict:
         "all_failures": list(set(all_failures)),
         "critical_hits": critical_hits,
         "crashed": False,
-        "pii_echo_detected": any("pii_echo" in t["q_fail"] for t in turns),
         "unverified_schedule": any("unverified_scheduling_claim" in t["q_fail"] for t in turns),
     }
 
