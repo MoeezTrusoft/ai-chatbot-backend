@@ -1,11 +1,7 @@
 ---
-title: Cover Design & Illustration
 source_id: cover_design_illustration
 service_category: cover_design_illustration
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [cover_design_illustration, overview, rag]
+title: "Cover Design and Illustration at BookCraft"
 ---
 
 # Cover Design & Illustration

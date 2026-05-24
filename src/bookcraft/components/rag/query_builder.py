@@ -19,6 +19,12 @@ _SERVICE_NAMES: dict[str, str] = {
     "audiobook_production": "audiobook production",
     "author_website": "author website",
     "video_trailer": "video trailer",
+    "fine_art_monograph": "fine art monograph publishing",
+    "catalog_transition": "catalog transition rights recovery",
+    "publishing_partnership": "hybrid publishing partnership",
+    "author_brand_platform": "author brand platform strategy",
+    "translation_foreign_rights": "translation foreign rights localization",
+    "special_collector_editions": "special collector editions",
 }
 
 # Fact-key → context phrase for query enrichment.

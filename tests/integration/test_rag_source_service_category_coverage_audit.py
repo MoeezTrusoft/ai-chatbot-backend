@@ -33,7 +33,7 @@ def test_coverage_audit_passes_current_source_corpus() -> None:
     assert report["summary"]["valid"] is True
     assert report["summary"]["coverage_passed"] is True
     assert report["summary"]["error_count"] == 0
-    assert report["summary"]["source_file_count"] == 10
+    assert report["summary"]["source_file_count"] == 28
 
 
 def test_coverage_audit_detects_wrong_service_category(tmp_path: Path) -> None:

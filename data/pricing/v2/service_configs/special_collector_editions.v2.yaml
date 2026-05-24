@@ -1,0 +1,15 @@
+service: special_collector_editions
+version: 1.0.0
+display_name: Special & Collector Editions
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: SCE_CF
+  max_factor: 1.00
+assumptions:
+  - Pricing depends on edition type, print quantity, finishing specifications, and fulfilment needs.
+  - Scope is confirmed on a consultation call before any commitment is made.
+exclusions:
+  - Print production, fulfilment, and storage costs are quoted separately from creative service fees.
+  - No list price applies; fees are confirmed after edition specification is agreed.

@@ -1,3 +1,9 @@
+---
+source_id: publishing_distribution
+service_category: publishing_distribution
+title: "Publishing and Distribution at BookCraft"
+---
+
 # Publishing & Distribution
 
 ***Go Global with Your Book***

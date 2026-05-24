@@ -1,0 +1,15 @@
+service: translation_foreign_rights
+version: 1.0.0
+display_name: Translation & Foreign-Rights Localization
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: TFR_CF
+  max_factor: 1.00
+assumptions:
+  - Pricing depends on target language, word count, subject matter, and rights structure.
+  - BookCraft is not a law firm; foreign-rights contract interpretation should involve the author's attorney.
+exclusions:
+  - Legal fees and rights registration costs are excluded from BookCraft service fees.
+  - No list price applies; fees are confirmed after language pair and scope are reviewed.

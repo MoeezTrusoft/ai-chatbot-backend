@@ -1,3 +1,9 @@
+---
+source_id: ghostwriting
+service_category: ghostwriting
+title: "Ghostwriting at BookCraft"
+---
+
 # Ghostwriting at BookCraft
 
 ***Professional Ghostwriting***

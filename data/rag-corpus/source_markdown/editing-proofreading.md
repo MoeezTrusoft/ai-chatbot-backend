@@ -1,11 +1,7 @@
 ---
-title: Editing & Proofreading
 source_id: editing_proofreading
 service_category: editing_proofreading
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [editing_proofreading, overview, rag]
+title: "Editing and Proofreading at BookCraft"
 ---
 
 # Editing & Proofreading

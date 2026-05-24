@@ -1,3 +1,9 @@
+---
+source_id: formatting
+service_category: interior_formatting
+title: "Interior Formatting at BookCraft"
+---
+
 # Interior Book Formatting
 
 ***Interior Book Formatting***

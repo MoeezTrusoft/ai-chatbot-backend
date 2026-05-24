@@ -619,6 +619,12 @@ def _human_service_name(service: str) -> str:
         "audiobook_production": "audiobook production",
         "author_website": "author website",
         "video_trailer": "video trailer",
+        "fine_art_monograph": "fine-art and premium monograph publishing",
+        "catalog_transition": "catalog transition and rights recovery",
+        "publishing_partnership": "full-service or hybrid publishing partnership",
+        "author_brand_platform": "author brand and platform strategy",
+        "translation_foreign_rights": "translation and foreign-rights localization",
+        "special_collector_editions": "special and collector editions",
     }
     return names.get(service, service.replace("_", " "))
 

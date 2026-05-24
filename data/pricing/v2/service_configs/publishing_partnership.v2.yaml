@@ -1,0 +1,15 @@
+service: publishing_partnership
+version: 1.0.0
+display_name: Full-Service & Hybrid Publishing Partnership
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: PP_CF
+  max_factor: 1.00
+assumptions:
+  - Partnership structure and fee schedule are tailored to catalog size and publication cadence.
+  - Scope is confirmed on a consultation call before any commitment is made.
+exclusions:
+  - No standard list price applies; partnership terms are agreed per engagement.
+  - Individual service fees within the partnership are governed by the partnership agreement.

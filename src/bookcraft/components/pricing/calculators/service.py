@@ -18,7 +18,7 @@ from ..kernel import (
     q2,
     range_for_price,
 )
-from ..models import Money, PricingQuoteRequest, QuoteLineItem, QuoteWarning, UnitType
+from ..models import Money, MoneyRange, PricingQuoteRequest, QuoteLineItem, QuoteWarning, UnitType
 
 
 class CalculationContext(BaseModel):
@@ -34,6 +34,40 @@ def calculate_service_line_item(
     service_inputs: dict[str, Any],
 ) -> QuoteLineItem:
     global_inputs = request.global_inputs.model_dump()
+    if service_config.calculation_model == "consultation_only":
+        zero = money(Decimal("0"), service_config.currency)
+        return QuoteLineItem(
+            service=service_config.service,
+            unit_type=UnitType.PROJECT.value,
+            unit_quantity=Decimal("1"),
+            base_price=zero,
+            complexity_factor=Decimal("1"),
+            complexity_price=zero,
+            schedule_multiplier=Decimal("1"),
+            rush_surcharge=zero,
+            add_on_total=zero,
+            final_price_range=MoneyRange(low=zero, high=zero),
+            base_duration_days=Decimal("0"),
+            complexity_duration_days=Decimal("0"),
+            final_duration_days=Decimal("0"),
+            assumptions=list(service_config.assumptions),
+            warnings=[
+                QuoteWarning(
+                    code="consultation_required",
+                    message=(
+                        "This service is scoped on a consultation call. "
+                        "Pricing is confirmed against final specification — no list price applies."
+                    ),
+                    service=service_config.service,
+                    requires_human_review=True,
+                )
+            ],
+            human_review_required=True,
+            calculation_trace={
+                "model": "consultation_only",
+                "service": service_config.service.value,
+            },
+        )
     base_price, unit_type, unit_quantity, package_label, base_duration_days, trace = (
         _calculate_base(service_config, service_inputs, global_inputs)
     )
@@ -266,6 +300,7 @@ def _calculate_base(
         )
     if model == "cover_illustration":
         return _cover_base(service_config, service_inputs, trace)
+    # consultation_only is handled above in calculate_service_line_item before _calculate_base is called
     raise ValueError(f"Unsupported calculation_model: {model}")
 
 

@@ -1,0 +1,15 @@
+service: fine_art_monograph
+version: 1.0.0
+display_name: Fine-Art & Premium Monograph Publishing
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: FAM_CF
+  max_factor: 1.00
+assumptions:
+  - Pricing is bespoke and confirmed against final specification on a consultation call.
+  - Figures discussed prior to scoping are directional only and not binding.
+exclusions:
+  - No list price applies; all fees are confirmed after project scope is agreed.
+  - Print production costs (paper stock, binding, press proofing) are quoted separately.

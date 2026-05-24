@@ -1,3 +1,9 @@
+---
+source_id: cover_design_illustration
+service_category: cover_design_illustration
+title: "Cover Design and Illustration at BookCraft"
+---
+
 # Cover Design & Illustration
 
 ***Make a Lasting First Impression***
