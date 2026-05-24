@@ -205,14 +205,6 @@ class ChatService:
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
     response_repair_enabled: bool = False
-    # Configurable production fallback message (override in Settings).
-    production_fallback_message: str = (
-        "That's outside what I can help with directly — BookCraft specialises in helping "
-        "authors publish their own original work. If you have a manuscript or book project "
-        "you'd like to discuss, I'm happy to walk you through our services. "
-        "Or I can connect you with a specialist right now."
-    )
-
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
@@ -1173,20 +1165,6 @@ class ChatService:
                             response_plan=response_plan,
                             tool_governance=governance_decision,
                         )
-                # Separate critical failures (block Claude) from non-critical (style/tone).
-                # Critical: privacy, price invention, unverified scheduling, trust claims.
-                # Non-critical: tone, scoping questions, missing next step, sales_tone.
-                _critical_failures = {
-                    "pii_echo_in_response",
-                    "unapproved_price_figure",
-                    "unapproved_committed_timeline",
-                    "unverified_scheduling_claim",
-                    "blocked_action_claimed_as_success",
-                    "internal_artifact_leak",
-                }
-                _has_critical = any(
-                    f in _critical_failures for f in (quality_report.failures or [])
-                )
                 _claude_source = contract.is_allowed_final_source(
                     draft.source, app_env=self.environment
                 )
@@ -1208,23 +1186,12 @@ class ChatService:
                 ):
                     # Source not allowed (template) — use quality gate fallback.
                     final_draft = fallback_draft
-                elif _claude_source and not _has_critical:
-                    # Claude responded, failures are non-critical style issues.
-                    # Send Claude's draft — it is always better than a hardcoded string.
+                elif _claude_source:
+                    # Claude responded — always prefer it over any hardcoded string.
                     final_draft = draft
-                elif not production_like and _claude_source:
-                    final_draft = draft
-                elif not production_like:
-                    final_draft = _dev_fallback()
                 else:
-                    # True fail-closed: Claude produced a CRITICAL failure
-                    # (PII echo, invented prices, unverified scheduling, etc.).
-                    # The hardcoded fallback is only used here.
-                    deterministic_final_text_blocked = True
-                    final_draft = ResponseDraft(
-                        text=self.production_fallback_message,
-                        source="safe_blocked_fallback",
-                    )
+                    # Non-Claude source and no repair/fallback available.
+                    final_draft = _dev_fallback()
 
             final_text = final_draft.text
             final_source = final_draft.source

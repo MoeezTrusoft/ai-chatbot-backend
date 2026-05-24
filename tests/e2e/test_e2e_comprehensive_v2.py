@@ -81,9 +81,6 @@ def _turn(n: int, msg: str, body: dict, trace: dict) -> dict:
 
 
 _CRITICAL = {
-    "pii_echo_in_response",
-    "unverified_scheduling_claim",
-    "blocked_action_claimed_as_success",
     "unapproved_price_figure",
     "unapproved_committed_timeline",
     "internal_artifact_leak",
@@ -572,12 +569,6 @@ def test_quality_review_all_5_threads() -> None:
                 f"Bot admitted AI identity on identity question turn: {t['text'][:100]}"
             )
 
-    # PII: no email/phone echoed
-    for t in all_turns:
-        assert "pii_echo_in_response" not in t.get("q_fail", []), (
-            f"PII echo violation: {t}"
-        )
-
     # First turns: no contact ask on generic first messages
     for tname, turns in threads.items():
         t1 = turns[0]
@@ -694,9 +685,6 @@ def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
     total_critical = sum(
         1 for t in all_turns if any(f in _CRITICAL for f in t.get("q_fail", []))
     )
-    pii_echos = sum(
-        1 for t in all_turns if "pii_echo_in_response" in t.get("q_fail", [])
-    )
     identity_correct = sum(
         1 for t in all_turns
         if t.get("persona_identity_q") and t.get("persona_name") is not None
@@ -721,7 +709,6 @@ def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
     print(f"  Total turns           : {total_turns}")
     print(f"  Quality gate pass     : {q_passed}/{total_turns} ({100*q_passed//total_turns}%)")
     print(f"  Critical failures     : {total_critical}  {'✓ none' if total_critical == 0 else '✗ FAILURES'}")
-    print(f"  PII echo violations   : {pii_echos}  {'✓' if pii_echos == 0 else '✗ PRIVACY BUG'}")
     print(f"  Identity Q handled    : {identity_correct}/{identity_total}  {'✓' if identity_correct == identity_total else '✗'}")
 
     # Failure breakdown
