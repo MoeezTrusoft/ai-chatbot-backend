@@ -1,11 +1,7 @@
 ---
-title: Marketing & Promotion
 source_id: marketing_promotion
 service_category: marketing_promotion
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [marketing_promotion, overview, rag]
+title: "Marketing and Promotion at BookCraft"
 ---
 
 # Marketing & Promotion

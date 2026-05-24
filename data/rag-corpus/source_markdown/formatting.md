@@ -1,11 +1,7 @@
 ---
-title: Interior Book Formatting
 source_id: formatting
 service_category: interior_formatting
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [interior_formatting, overview, rag]
+title: "Interior Formatting at BookCraft"
 ---
 
 # Interior Book Formatting

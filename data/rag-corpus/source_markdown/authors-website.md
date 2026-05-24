@@ -1,11 +1,7 @@
 ---
-title: Author's Website
 source_id: authors_website
 service_category: author_website
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [author_website, overview, rag]
+title: "Author Website Services at BookCraft"
 ---
 
 # Author's Website

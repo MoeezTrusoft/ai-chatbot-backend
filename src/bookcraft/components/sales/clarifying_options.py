@@ -39,6 +39,36 @@ _OPTIONS_REGISTRY: dict[str, list[ClarifyingOption]] = {
         _opt("interior_formatting", "Formatting", "interior layout for print or ebook"),
         _opt("publishing_distribution", "Publishing / distribution", "getting the book to market"),
         _opt("marketing_promotion", "Marketing", "book launch and promotion"),
+        _opt(
+            "fine_art_monograph",
+            "Fine-Art & Monograph Publishing",
+            "coffee-table, art, or photography books",
+        ),
+        _opt(
+            "catalog_transition",
+            "Catalog Transition",
+            "moving your backlist when a publisher closes",
+        ),
+        _opt(
+            "publishing_partnership",
+            "Publishing Partnership",
+            "ongoing hybrid or full-service publishing",
+        ),
+        _opt(
+            "author_brand_platform",
+            "Author Brand & Platform",
+            "newsletter, website, audience building",
+        ),
+        _opt(
+            "translation_foreign_rights",
+            "Translation & Foreign Rights",
+            "publishing in other languages or markets",
+        ),
+        _opt(
+            "special_collector_editions",
+            "Special & Collector Editions",
+            "signed, limited, deluxe, or boxed sets",
+        ),
         _opt("not_sure", "Not sure yet", "need guidance on which service"),
     ],
     "genre_options": [

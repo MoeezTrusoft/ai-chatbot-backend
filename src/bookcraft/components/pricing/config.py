@@ -150,6 +150,7 @@ class ServiceConfig(BaseModel):
         "video_length_grid",
         "cover_illustration",
         "campaign_package",
+        "consultation_only",
     ]
     required_inputs: list[RequiredInputConfig]
     rate_grid: RateGrid | None = None
@@ -177,6 +178,9 @@ class ServiceConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> ServiceConfig:
+        if self.calculation_model == "consultation_only":
+            # No grid or required_inputs needed; pricing is scoped on a call.
+            return self
         if (
             self.calculation_model in {"word_rate", "page_rate", "per_finished_hour"}
             and not self.rate_grid
@@ -311,6 +315,12 @@ def validate_engine_config(config: EngineConfig) -> ConfigValidationResult:
         ServiceCategory.AUTHOR_WEBSITE: "WCF",
         ServiceCategory.AUDIOBOOK_PRODUCTION: "ACF",
         ServiceCategory.VIDEO_TRAILER: "VCF",
+        ServiceCategory.FINE_ART_MONOGRAPH: "FAM_CF",
+        ServiceCategory.CATALOG_TRANSITION: "CAT_CF",
+        ServiceCategory.PUBLISHING_PARTNERSHIP: "PP_CF",
+        ServiceCategory.AUTHOR_BRAND_PLATFORM: "ABP_CF",
+        ServiceCategory.TRANSLATION_FOREIGN_RIGHTS: "TFR_CF",
+        ServiceCategory.SPECIAL_COLLECTOR_EDITIONS: "SCE_CF",
     }
     for service, service_config in config.service_configs.items():
         expected = canonical_factor_names[service]

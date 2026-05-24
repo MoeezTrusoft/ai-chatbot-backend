@@ -22,6 +22,49 @@ SERVICE_BY_FILE = {
     "marketing-promotion.md": ServiceCategory.MARKETING_PROMOTION,
     "authors-website.md": ServiceCategory.AUTHOR_WEBSITE,
     "video-trailers.md": ServiceCategory.VIDEO_TRAILER,
+    # New services — 3 files each (description, process, FAQ)
+    "fine-art-monograph-publishing-service-description.md": (
+        ServiceCategory.FINE_ART_MONOGRAPH
+    ),
+    "our-process-for-fine-art-monograph-publishing.md": ServiceCategory.FINE_ART_MONOGRAPH,
+    "faq-fine-art-monograph-publishing.md": ServiceCategory.FINE_ART_MONOGRAPH,
+    "catalog-transition-and-rights-recovery-service-description.md": (
+        ServiceCategory.CATALOG_TRANSITION
+    ),
+    "our-process-for-catalog-transition-and-rights-recovery.md": (
+        ServiceCategory.CATALOG_TRANSITION
+    ),
+    "faq-catalog-transition-and-rights-recovery.md": ServiceCategory.CATALOG_TRANSITION,
+    "full-service-and-hybrid-publishing-partnership-service-description.md": (
+        ServiceCategory.PUBLISHING_PARTNERSHIP
+    ),
+    "our-process-for-full-service-and-hybrid-publishing-partnership.md": (
+        ServiceCategory.PUBLISHING_PARTNERSHIP
+    ),
+    "faq-full-service-and-hybrid-publishing-partnership.md": (
+        ServiceCategory.PUBLISHING_PARTNERSHIP
+    ),
+    "author-brand-and-platform-strategy-service-description.md": (
+        ServiceCategory.AUTHOR_BRAND_PLATFORM
+    ),
+    "our-process-for-author-brand-and-platform-strategy.md": (
+        ServiceCategory.AUTHOR_BRAND_PLATFORM
+    ),
+    "faq-author-brand-and-platform-strategy.md": ServiceCategory.AUTHOR_BRAND_PLATFORM,
+    "translation-and-foreign-rights-service-description.md": (
+        ServiceCategory.TRANSLATION_FOREIGN_RIGHTS
+    ),
+    "our-process-for-translation-and-foreign-rights.md": (
+        ServiceCategory.TRANSLATION_FOREIGN_RIGHTS
+    ),
+    "faq-translation-and-foreign-rights.md": ServiceCategory.TRANSLATION_FOREIGN_RIGHTS,
+    "special-and-collector-editions-service-description.md": (
+        ServiceCategory.SPECIAL_COLLECTOR_EDITIONS
+    ),
+    "our-process-for-special-and-collector-editions.md": (
+        ServiceCategory.SPECIAL_COLLECTOR_EDITIONS
+    ),
+    "faq-special-and-collector-editions.md": ServiceCategory.SPECIAL_COLLECTOR_EDITIONS,
 }
 
 

@@ -1,0 +1,15 @@
+service: catalog_transition
+version: 1.0.0
+display_name: Catalog Transition & Rights Recovery
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: CAT_CF
+  max_factor: 1.00
+assumptions:
+  - Scope depends on catalog size, rights status, and publisher cooperation — confirmed on a call.
+  - BookCraft is not a law firm; contract interpretation should involve the author's attorney.
+exclusions:
+  - Legal fees, attorney costs, and filing fees are excluded from BookCraft service fees.
+  - No list price applies; fees are confirmed after catalog scope and rights status are reviewed.

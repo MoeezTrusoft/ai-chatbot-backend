@@ -55,6 +55,96 @@ EXPECTED_SOURCE_OWNERSHIP: dict[str, dict[str, str]] = {
         "service_category": "video_trailer",
         "title_contains": "Video",
     },
+    "fine-art-monograph-publishing-service-description.md": {
+        "source_id": "fine_art_monograph",
+        "service_category": "fine_art_monograph",
+        "title_contains": "Fine",
+    },
+    "our-process-for-fine-art-monograph-publishing.md": {
+        "source_id": "fine_art_monograph",
+        "service_category": "fine_art_monograph",
+        "title_contains": "Fine",
+    },
+    "faq-fine-art-monograph-publishing.md": {
+        "source_id": "fine_art_monograph",
+        "service_category": "fine_art_monograph",
+        "title_contains": "Fine",
+    },
+    "catalog-transition-and-rights-recovery-service-description.md": {
+        "source_id": "catalog_transition",
+        "service_category": "catalog_transition",
+        "title_contains": "Catalog",
+    },
+    "our-process-for-catalog-transition-and-rights-recovery.md": {
+        "source_id": "catalog_transition",
+        "service_category": "catalog_transition",
+        "title_contains": "Catalog",
+    },
+    "faq-catalog-transition-and-rights-recovery.md": {
+        "source_id": "catalog_transition",
+        "service_category": "catalog_transition",
+        "title_contains": "Catalog",
+    },
+    "full-service-and-hybrid-publishing-partnership-service-description.md": {
+        "source_id": "publishing_partnership",
+        "service_category": "publishing_partnership",
+        "title_contains": "Publishing",
+    },
+    "our-process-for-full-service-and-hybrid-publishing-partnership.md": {
+        "source_id": "publishing_partnership",
+        "service_category": "publishing_partnership",
+        "title_contains": "Publishing",
+    },
+    "faq-full-service-and-hybrid-publishing-partnership.md": {
+        "source_id": "publishing_partnership",
+        "service_category": "publishing_partnership",
+        "title_contains": "Publishing",
+    },
+    "author-brand-and-platform-strategy-service-description.md": {
+        "source_id": "author_brand_platform",
+        "service_category": "author_brand_platform",
+        "title_contains": "Author",
+    },
+    "our-process-for-author-brand-and-platform-strategy.md": {
+        "source_id": "author_brand_platform",
+        "service_category": "author_brand_platform",
+        "title_contains": "Author",
+    },
+    "faq-author-brand-and-platform-strategy.md": {
+        "source_id": "author_brand_platform",
+        "service_category": "author_brand_platform",
+        "title_contains": "Author",
+    },
+    "translation-and-foreign-rights-service-description.md": {
+        "source_id": "translation_foreign_rights",
+        "service_category": "translation_foreign_rights",
+        "title_contains": "Translation",
+    },
+    "our-process-for-translation-and-foreign-rights.md": {
+        "source_id": "translation_foreign_rights",
+        "service_category": "translation_foreign_rights",
+        "title_contains": "Translation",
+    },
+    "faq-translation-and-foreign-rights.md": {
+        "source_id": "translation_foreign_rights",
+        "service_category": "translation_foreign_rights",
+        "title_contains": "Translation",
+    },
+    "special-and-collector-editions-service-description.md": {
+        "source_id": "special_collector_editions",
+        "service_category": "special_collector_editions",
+        "title_contains": "Special",
+    },
+    "our-process-for-special-and-collector-editions.md": {
+        "source_id": "special_collector_editions",
+        "service_category": "special_collector_editions",
+        "title_contains": "Special",
+    },
+    "faq-special-and-collector-editions.md": {
+        "source_id": "special_collector_editions",
+        "service_category": "special_collector_editions",
+        "title_contains": "Special",
+    },
 }
 
 GLOBAL_SOURCE_ALLOWLIST: dict[str, dict[str, str]] = {

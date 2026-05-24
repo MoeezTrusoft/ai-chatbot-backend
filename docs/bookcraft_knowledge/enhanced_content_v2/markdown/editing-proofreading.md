@@ -1,3 +1,9 @@
+---
+source_id: editing_proofreading
+service_category: editing_proofreading
+title: "Editing and Proofreading at BookCraft"
+---
+
 # Editing & Proofreading
 
 ***Editing & Proofreading Services***

@@ -1,0 +1,15 @@
+service: author_brand_platform
+version: 1.0.0
+display_name: Author Brand & Platform Strategy
+currency: USD
+calculation_model: consultation_only
+required_inputs: []
+complexity:
+  factor_name: ABP_CF
+  max_factor: 1.00
+assumptions:
+  - Scope depends on current platform state, goals, and desired channels — confirmed on a call.
+  - Ongoing retainer vs. one-time engagement structure is agreed during consultation.
+exclusions:
+  - Paid advertising spend and third-party platform subscription fees are excluded.
+  - No list price applies; fees are confirmed after goals and scope are reviewed.

@@ -19,6 +19,12 @@ class ServiceCategory(StrEnum):
     AUTHOR_WEBSITE = "author_website"
     AUDIOBOOK_PRODUCTION = "audiobook_production"
     VIDEO_TRAILER = "video_trailer"
+    FINE_ART_MONOGRAPH = "fine_art_monograph"
+    CATALOG_TRANSITION = "catalog_transition"
+    PUBLISHING_PARTNERSHIP = "publishing_partnership"
+    AUTHOR_BRAND_PLATFORM = "author_brand_platform"
+    TRANSLATION_FOREIGN_RIGHTS = "translation_foreign_rights"
+    SPECIAL_COLLECTOR_EDITIONS = "special_collector_editions"
 
 
 class QuoteStatus(StrEnum):

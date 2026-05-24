@@ -306,6 +306,58 @@ SERVICE_METADATA_REGISTRY: dict[str, dict[str, dict[str, Any]]] = {
         },
         "deadline": {"accepted": "string", "priority": 2},
     },
+    "fine_art_monograph": {
+        "print_format": {
+            "accepted": ["trade_edition", "collector_edition", "limited_edition", "not_sure"],
+            "priority": 2,
+        },
+        "imagery_ready": {"accepted": [True, False], "priority": 1},
+        "deadline": {"accepted": "string", "priority": 3},
+    },
+    "catalog_transition": {
+        "book_count": {"accepted": "string", "priority": 1},
+        "publisher_status": {
+            "accepted": ["closing", "closed", "in_dispute", "other", "not_sure"],
+            "priority": 1,
+        },
+        "rights_status": {
+            "accepted": ["rights_reverted", "rights_pending", "unknown"],
+            "priority": 2,
+        },
+    },
+    "publishing_partnership": {
+        "catalog_size": {"accepted": "string", "priority": 2},
+        "partnership_type": {
+            "accepted": ["hybrid", "full_service", "not_sure"],
+            "priority": 1,
+        },
+    },
+    "author_brand_platform": {
+        "platform_goal": {
+            "accepted": ["newsletter", "website", "social_media", "all", "not_sure"],
+            "priority": 1,
+        },
+        "current_audience_size": {"accepted": "string", "priority": 2},
+    },
+    "translation_foreign_rights": {
+        "target_language": {"accepted": "string", "priority": 1},
+        "target_market": {"accepted": "string", "priority": 2},
+        "rights_status": {
+            "accepted": ["author_holds_rights", "rights_unclear", "not_sure"],
+            "priority": 1,
+        },
+    },
+    "special_collector_editions": {
+        "edition_type": {
+            "accepted": [
+                "signed", "limited_numbered", "deluxe",
+                "boxed_set", "anniversary", "not_sure",
+            ],
+            "priority": 1,
+        },
+        "print_quantity": {"accepted": "string", "priority": 2},
+        "finishing_spec": {"accepted": "string", "priority": 3},
+    },
 }
 
 

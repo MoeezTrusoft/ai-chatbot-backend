@@ -1,11 +1,7 @@
 ---
-title: Ghostwriting at BookCraft
 source_id: ghostwriting
 service_category: ghostwriting
-section: overview
-content_version: v1
-allowed_for_response: true
-tags: [ghostwriting, overview, rag]
+title: "Ghostwriting at BookCraft"
 ---
 
 # Ghostwriting at BookCraft

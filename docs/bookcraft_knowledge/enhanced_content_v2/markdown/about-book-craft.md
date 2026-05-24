@@ -1,3 +1,9 @@
+---
+source_id: about_book_craft
+service_category: marketing_promotion
+title: "About BookCraft Publishers"
+---
+
 # About BookCraft Publishers
 
 ***Where every story finds its readers, and every author finds their voice.***

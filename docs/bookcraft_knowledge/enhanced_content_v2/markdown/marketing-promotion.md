@@ -1,3 +1,9 @@
+---
+source_id: marketing_promotion
+service_category: marketing_promotion
+title: "Marketing and Promotion at BookCraft"
+---
+
 # Marketing & Promotion
 
 ***From Hidden Gem to Bestseller***

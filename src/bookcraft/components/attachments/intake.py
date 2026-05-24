@@ -135,6 +135,27 @@ _ASSESSMENT_MAP: dict[str, dict[str, str]] = {
     "audiobook_production": {"audio": "audiobook_assessment", "manuscript": "audiobook_assessment"},
     "author_website": {},
     "video_trailer": {},
+    "fine_art_monograph": {
+        "manuscript": "manuscript_assessment",
+        "brief": "manuscript_assessment",
+    },
+    "catalog_transition": {
+        "manuscript": "manuscript_assessment",
+        "brief": "manuscript_assessment",
+    },
+    "publishing_partnership": {
+        "manuscript": "manuscript_assessment",
+        "brief": "manuscript_assessment",
+    },
+    "author_brand_platform": {"brief": "manuscript_assessment"},
+    "translation_foreign_rights": {
+        "manuscript": "manuscript_assessment",
+        "brief": "manuscript_assessment",
+    },
+    "special_collector_editions": {
+        "manuscript": "manuscript_assessment",
+        "brief": "manuscript_assessment",
+    },
 }
 
 _SERVICE_DEFAULT_ASSESSMENT: dict[str, str] = {

@@ -1,11 +1,7 @@
 ---
-title: About BookCraft Publishers
 source_id: about_book_craft
 service_category: marketing_promotion
-section: timeline_context
-content_version: v1
-allowed_for_response: true
-tags: [marketing_promotion, timeline_context, rag]
+title: "About BookCraft Publishers"
 ---
 
 # About BookCraft Publishers

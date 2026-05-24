@@ -90,11 +90,20 @@ def test_pricing_verifier_accepts_v2_config_without_value_approval() -> None:
 
 
 def test_required_inputs_are_available_for_all_services() -> None:
+    from bookcraft.components.pricing.config import load_engine_config
+
     engine = PricingTimelineEngine.from_config_dir(V2_DIR, values_approved=True)
     required = engine.list_required_inputs(list(ServiceCategory))
+    cfg = load_engine_config(V2_DIR)
 
     assert set(required) == set(ServiceCategory)
-    assert all(items for items in required.values())
+    # consultation_only services have no required inputs by design — they route
+    # straight to human review rather than collecting parameters.
+    non_consultation = [
+        svc for svc in ServiceCategory
+        if cfg.service_configs[svc].calculation_model != "consultation_only"
+    ]
+    assert all(required[svc] for svc in non_consultation)
 
 
 def test_v2_2_editing_service_specific_complexity_multipliers_apply() -> None:
