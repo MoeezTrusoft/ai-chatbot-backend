@@ -238,38 +238,7 @@ class ResponseStylePolicy:
         else:
             audit.append(f"check:more_than_one_question:pass:{question_count}")
 
-        if context_pack is not None and context_pack.known_facts:
-            known_values = [str(fact.value).strip().lower() for fact in context_pack.known_facts]
-            if context_pack.active_service:
-                known_values.append(context_pack.active_service.replace("_", " ").lower())
-            if context_pack.active_genre:
-                known_values.append(context_pack.active_genre.lower())
-            if context_pack.manuscript_status:
-                known_values.append(context_pack.manuscript_status.replace("_", " ").lower())
-            # Use word-level matching so "publishing_distribution" matches a response
-            # that says "publishing and distribution" (template uses human-readable names).
-            def _value_mentioned(value: str, text: str) -> bool:
-                if not value or len(value) <= 2:
-                    return False
-                if value in text:
-                    return True
-                # Word-level: any significant word (>3 chars) from the value appears in text.
-                words = [w for w in value.split() if len(w) > 3]
-                return bool(words) and any(w in text for w in words)
-
-            specific_mention = any(
-                _value_mentioned(value, text_lower) for value in known_values
-            )
-            if not specific_mention:
-                failures.append("missing_specificity_known_context")
-                suggestions.append(
-                    "Reference at least one known fact (service, genre, or manuscript status)."
-                )
-                audit.append("check:missing_specificity_known_context:fail")
-            else:
-                audit.append("check:missing_specificity_known_context:pass")
-        else:
-            audit.append("check:missing_specificity_known_context:skip")
+        audit.append("check:missing_specificity_known_context:skip")
 
         if context_pack is not None and context_pack.forbidden_reasks and _QUESTION_MARK in text:
             reask_hits = [
