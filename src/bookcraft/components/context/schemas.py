@@ -53,6 +53,7 @@ class ContextPack(BaseModel):
     attachment_policy: str = "metadata_only_no_content_analysis"
     lead_objective_stage: str | None = None
     contact_capture_status: str | None = None
+    contact_complete: bool = False  # name + email + phone all present
     lead_created: bool = False
     # Coherence / assumption-guard fields (PR: conversation-coherence).
     genre_status: str | None = None  # "uncertain" | "confirmed" | None

@@ -787,7 +787,18 @@ def _question_for_missing_fact(
         ),
         "preferred_call_time": "What day and time works best for a call?",
         "preferred_call_timezone": "What timezone are you in so I can confirm the time slot?",
-        "name_and_email_or_phone": "Could I get your name and best email or phone number?",
+        "name_and_email_or_phone": (
+            "Could I get your name, email address, and a phone number? "
+            "Either one works if you only have one handy."
+        ),
+        "missing_phone": (
+            "Got it — do you also have a phone number I can note as a backup? "
+            "Totally optional, but helpful in case email doesn't reach you."
+        ),
+        "missing_email": (
+            "Thanks — do you also have an email address I can add? "
+            "Totally optional, but useful for sending confirmations."
+        ),
         "clarify_intent": "Could you tell me a bit more about what you're looking for?",
     }
     question = questions.get(missing_fact)
@@ -1087,7 +1098,12 @@ def _response_user_prompt(
     _bare_number_note = ""
     if (
         response_plan is not None
-        and response_plan.next_question in {"name_and_email_or_phone", "preferred_call_time"}
+        and response_plan.next_question in {
+            "name_and_email_or_phone",
+            "missing_phone",
+            "missing_email",
+            "preferred_call_time",
+        }
         and not _contact_atoms
     ):
         # Bare 10+ digit number in this message is almost certainly a phone number.
@@ -1308,7 +1324,7 @@ def _response_plan_prompt_section(response_plan: ResponsePlan | None) -> str:
         "consultation_handoff",
         "specialist_handoff",
     }:
-        parts.append("- Ask for name and ONE contact channel only (email OR phone, not both).")
+        parts.append("- Ask for name, email, and phone. You may settle for one of email or phone number but tactfully attempt to acquire both.")
         parts.append("- Do not provide final pricing or timeline commitments in this step.")
         parts.append("- Do not act as the final consultant; route to senior specialist follow-up.")
 

@@ -90,6 +90,15 @@ def contact_is_ready(contact_info: dict[str, Any]) -> bool:
     )
 
 
+def contact_is_complete(contact_info: dict[str, Any]) -> bool:
+    """Return True when name + email + phone are all real values (fully enriched)."""
+    return (
+        has_real_name(contact_info)
+        and has_real_email(contact_info)
+        and has_real_phone(contact_info)
+    )
+
+
 def contact_status_from_dict(contact_info: dict[str, Any]) -> str:
     """Return a human-readable contact completeness status.
 

@@ -212,6 +212,9 @@ class ThreadState(BaseModel):
     # Step 3 (tone fix): track whether the bot asked for contact in the last turn,
     # so LeadObjectiveEngine can back off when the user deflects.
     last_turn_asked_contact: bool = False
+    # Contact enrichment: set after the bot has asked once for the missing second
+    # contact method (phone or email). Prevents asking more than once.
+    contact_second_method_requested: bool = False
     # Persona: assigned BookCraft representative name for this thread.
     # Set on the first identity question; reused for the rest of the conversation.
     representative_name: str | None = None

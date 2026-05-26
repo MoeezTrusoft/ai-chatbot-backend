@@ -7,6 +7,7 @@ from bookcraft.components.context.delegation import SlotResolutionStatus, load_s
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads.contact_utils import (
+    contact_is_complete,
     contact_status_from_dict,
 )
 from bookcraft.components.trg.schemas import TRGContext
@@ -251,6 +252,7 @@ class ContextPackBuilder:
         contact_info = getattr(state, "contact_info", None) or {}
         # Use sentinel-aware helpers so redacted placeholders never look "ready".
         contact_capture_status = contact_status_from_dict(contact_info)
+        contact_complete = contact_is_complete(contact_info)
 
         # Suppress manuscript_stage re-ask when status is already known.
         if manuscript_status:
@@ -437,6 +439,7 @@ class ContextPackBuilder:
             specialist_role=specialist_role,
             lead_objective_stage=lead_objective_stage,
             contact_capture_status=contact_capture_status,
+            contact_complete=contact_complete,
             lead_created=lead_created,
             genre_status=genre_status,
             genre_candidates=genre_candidates,

@@ -26,6 +26,22 @@ class ChatTurnRequest(BaseModel):
     attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
+class ChatGreetRequest(BaseModel):
+    """Proactive greeting request — sent when the chat widget opens.
+
+    The frontend passes the page the visitor landed on and any keyword signal
+    (e.g. UTM keyword or SEO search term) so the first message is personalised.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID | None = None
+    customer_id: UUID | None = None
+    landing_page: str | None = Field(default=None, max_length=200)
+    landing_keyword: str | None = Field(default=None, max_length=200)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
 class ChatTurnResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,6 +86,38 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
     )
     service: ChatService = request.app.state.chat_service
     return await service.handle_turn(payload)
+
+
+@router.post("/greet", response_model=ChatTurnResponse)
+async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnResponse:
+    """Generate a proactive personalised first message when the chat widget opens."""
+    settings: Settings = request.app.state.settings
+    principal = require_http_auth(request, settings)
+    if payload.customer_id is None and principal.customer_id is not None:
+        payload = payload.model_copy(update={"customer_id": principal.customer_id})
+
+    limiter: RateLimiter = request.app.state.rate_limiter
+    client_host = request.client.host if request.client else None
+    decision = await limiter.check(
+        f"http:chat_greet:{client_ip_from_scope(client_host)}",
+        scope="http_chat_turn",
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "limit": decision.limit,
+                "reset_after_seconds": decision.reset_after_seconds,
+            },
+            headers={"Retry-After": str(decision.reset_after_seconds)},
+        )
+
+    payload = payload.model_copy(
+        update={"correlation_id": sanitize_correlation_id(payload.correlation_id)}
+    )
+    service: ChatService = request.app.state.chat_service
+    return await service.handle_greet(payload)
 
 
 @router.websocket("/ws/{thread_id}")

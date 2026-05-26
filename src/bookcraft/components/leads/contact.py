@@ -37,6 +37,7 @@ class ContactCaptureResult(BaseModel):
     has_email: bool
     has_phone: bool
     lead_contact_ready: bool
+    contact_complete: bool = False  # name + email + phone all present
     missing_contact_fields: list[str] = Field(default_factory=list)
     audit: list[str] = Field(default_factory=list)
 
@@ -210,16 +211,21 @@ class ContactCaptureDetector:
 
         # Lead contact ready: name + (email OR phone).
         lead_contact_ready = has_name and (has_email or has_phone)
+        # Contact complete: name + email + phone (used for second-method enrichment).
+        contact_complete = has_name and has_email and has_phone
 
         missing: list[str] = []
         if not has_name:
             missing.append("name")
         if not has_email and not has_phone:
             missing.append("email_or_phone")
-        elif has_name and not has_email and not has_phone:
-            missing.append("email_or_phone")
+        elif has_email and not has_phone:
+            missing.append("phone")
+        elif has_phone and not has_email:
+            missing.append("email")
 
         audit.append(f"lead_contact_ready:{lead_contact_ready}")
+        audit.append(f"contact_complete:{contact_complete}")
 
         return ContactCaptureResult(
             contact=ContactInfo(name=name, email=email, phone=phone, source="chat"),
@@ -227,6 +233,7 @@ class ContactCaptureDetector:
             has_email=has_email,
             has_phone=has_phone,
             lead_contact_ready=lead_contact_ready,
+            contact_complete=contact_complete,
             missing_contact_fields=missing,
             audit=audit,
         )
@@ -255,12 +262,17 @@ class ContactCaptureDetector:
         has_email = email is not None
         has_phone = phone is not None
         lead_contact_ready = has_name and (has_email or has_phone)
+        contact_complete = has_name and has_email and has_phone
 
         missing: list[str] = []
         if not has_name:
             missing.append("name")
-        if not (has_email or has_phone):
+        if not has_email and not has_phone:
             missing.append("email_or_phone")
+        elif has_email and not has_phone:
+            missing.append("phone")
+        elif has_phone and not has_email:
+            missing.append("email")
 
         return ContactCaptureResult(
             contact=ContactInfo(name=name, email=email, phone=phone, source="chat_merged"),
@@ -268,6 +280,7 @@ class ContactCaptureDetector:
             has_email=has_email,
             has_phone=has_phone,
             lead_contact_ready=lead_contact_ready,
+            contact_complete=contact_complete,
             missing_contact_fields=missing,
             audit=result.audit + ["merged_with_state"],
         )

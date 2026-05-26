@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import structlog
 from prometheus_client import Counter, Histogram
+from pydantic import BaseModel
 
 from bookcraft.components.actions import (
     ActionPlan,
@@ -1313,6 +1314,9 @@ class ChatService:
                 lead_objective_decision.objective_move == "ask_contact"
                 or response_plan.primary_goal in {"lead_contact_capture", "consultation_handoff"}
             )
+            # Mark that we asked for the second contact method so we never ask again.
+            if lead_objective_decision.objective_move == "request_second_contact_method":
+                state.contact_second_method_requested = True
             # Step 2 (tone fix): persist prior turn for conversation history in next turn.
             # Store normalized message (not raw) to avoid PII in state.
             state.last_user_message = (processed.normalized or "")[:300]
@@ -1506,6 +1510,65 @@ class ChatService:
                 debug_event_ids=self._debug_event_ids(event_ids),
                 action_events=self._build_action_events(action_result),
             )
+
+    async def handle_greet(self, payload: Any) -> Any:
+        """Generate a personalised proactive first message when the chat widget opens.
+
+        ``payload`` is a ``ChatGreetRequest``.  Imported lazily to avoid a circular
+        import at module load time (same pattern as ``handle_turn``).
+        """
+        from bookcraft.api.chat import ChatTurnResponse  # noqa: F401
+
+        thread = await self._load_greet_thread(payload)
+        thread_id = thread.thread_id
+
+        if self.response_generator.adapter is not None:
+            greeting_text = await _llm_proactive_greeting(
+                adapter=self.response_generator.adapter,
+                landing_page=payload.landing_page,
+                landing_keyword=payload.landing_keyword,
+            )
+        else:
+            greeting_text = _GREET_FALLBACK
+
+        bubbles = self.formatter.format(greeting_text)
+        self._record_live_trace(
+            {
+                "thread_id": str(thread_id),
+                "customer_id": str(payload.customer_id) if payload.customer_id else None,
+                "correlation_id": payload.correlation_id,
+                "event": "proactive_greet",
+                "landing_page": payload.landing_page,
+                "landing_keyword": payload.landing_keyword,
+                "greeting_preview": greeting_text[:200],
+            }
+        )
+        return ChatTurnResponse(
+            thread_id=thread_id,
+            bubbles=bubbles,
+            intent=None,
+            language_status="en",
+            debug_event_ids=[],
+            action_events=[],
+        )
+
+    async def _load_greet_thread(self, payload: Any) -> LoadedThread:
+        """Load or create a thread for the proactive greet flow."""
+        if self.thread_repository is None:
+            thread_id = payload.thread_id or uuid4()
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            return LoadedThread(
+                thread_id=thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=len(memory.events),
+                event_count=len(memory.events),
+                last_event_hash=str(memory.events[-1]["event_hash"]) if memory.events else None,
+            )
+        return await self.thread_repository.load_or_create(
+            thread_id=payload.thread_id,
+            customer_id=payload.customer_id,
+        )
 
     @staticmethod
     def _apply_sales_action_plan_to_state(
@@ -3681,3 +3744,83 @@ def _build_delegations(
         status=str(getattr(delegated_decision, "status", "not_delegated")),
     )
     return [ev.model_dump(mode="json")]
+
+
+# ---------------------------------------------------------------------------
+# Proactive greeting helpers (used by ChatService.handle_greet)
+# ---------------------------------------------------------------------------
+
+# Single fallback used ONLY when the LLM call fails entirely.
+_GREET_FALLBACK = (
+    "Hello there! Are you exploring professional publishing services? "
+    "I'd be happy to help you find the right publishing plan for your manuscript."
+)
+
+
+def _normalise_page_slug(page: str | None) -> str | None:
+    """Strip protocol, domain, leading slashes, and query string from a URL."""
+    if not page:
+        return None
+    import re as _re
+    slug = _re.sub(r"^https?://[^/]+", "", page.strip().lower())
+    slug = slug.strip("/").split("?")[0].split("#")[0]
+    return slug.replace("_", "-") or None
+
+
+class _GreetingResponse(BaseModel):
+    """Thin wrapper so the structured LLM adapter can return a plain text greeting."""
+
+    text: str = ""
+
+
+async def _llm_proactive_greeting(
+    *,
+    adapter: Any,
+    landing_page: str | None,
+    landing_keyword: str | None,
+) -> str:
+    """Generate a personalised first message via the LLM.
+
+    Always attempts the LLM call.  Only falls back to ``_GREET_FALLBACK`` when
+    the call raises or returns an unusable response.
+    """
+    page_label = _normalise_page_slug(landing_page) or "homepage"
+    keyword_line = (
+        f"\nSearch keyword that brought them here: {landing_keyword}"
+        if landing_keyword
+        else ""
+    )
+
+    system = (
+        "You are a BookCraft AI chat assistant. "
+        "BookCraft is a full-service publishing company that helps authors write, edit, design, "
+        "format, and publish their books.\n\n"
+        "Your task: write ONE warm, professional opening message for a visitor who just opened "
+        "the chat widget. Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+        "Rules:\n"
+        "- 1–2 sentences, 30 words maximum.\n"
+        "- Never quote a price or make a commitment.\n"
+        "- No markdown, bullet points, or headings.\n"
+        "- Sound like a knowledgeable, friendly colleague — not a sales bot.\n"
+        "- End with one open question inviting the visitor to share what they need.\n"
+        "- Do not start with 'I'."
+    )
+    user = (
+        f"Landing page: {page_label}{keyword_line}\n\n"
+        "Return the JSON greeting now."
+    )
+
+    try:
+        result = await adapter.structured(
+            system=system,
+            user=user,
+            output_model=_GreetingResponse,
+            purpose="proactive_greeting",
+        )
+        text = (getattr(result, "text", None) or "").strip()
+        if text and len(text) > 10:
+            return text
+    except Exception:
+        pass
+
+    return _GREET_FALLBACK

@@ -54,6 +54,7 @@ class LeadObjectiveDecision(BaseModel):
         "handoff_to_specialist",
         "no_change",
         "answer_then_consultation",
+        "request_second_contact_method",
     ]
     reason: str
     stop_discovery: bool = False
@@ -159,6 +160,31 @@ class LeadObjectiveEngine:
         # Step 4: lead_created loop guard — after acknowledgment, resume normal help.
         if getattr(state, "lead_created", False):
             audit.append("signal:lead_already_created")
+            # Contact enrichment: if lead is created but only has one contact method,
+            # ask once for the missing second method (email or phone).
+            contact_capture_arg = contact_capture
+            _contact_complete = (
+                contact_capture_arg is not None and contact_capture_arg.contact_complete
+            )
+            _second_already_requested = getattr(state, "contact_second_method_requested", False)
+            if not _contact_complete and not _second_already_requested:
+                audit.append("signal:contact_enrichment_opportunity")
+                # Determine which method is missing from contact_capture.missing_contact_fields.
+                _missing = (
+                    contact_capture_arg.missing_contact_fields
+                    if contact_capture_arg is not None
+                    else []
+                )
+                _next_q = "missing_phone" if "phone" in _missing else "missing_email"
+                return LeadObjectiveDecision(
+                    stage="lead_created",
+                    objective_move="request_second_contact_method",
+                    reason="Lead created; politely asking once for the missing second contact method.",
+                    stop_discovery=True,
+                    recommended_primary_goal="lead_contact_capture",
+                    next_question=_next_q,
+                    audit=audit,
+                )
             # If the user is asking a new question (not lead-related), let them.
             # lead_created_acknowledged prevents perpetual "lead_created_confirmation" loops.
             lead_acknowledged = getattr(state, "lead_created_acknowledged", False)
