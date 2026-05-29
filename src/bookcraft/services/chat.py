@@ -29,12 +29,14 @@ from bookcraft.components.attachments.intake import (
 )
 from bookcraft.components.complaints import ComplaintClassifier
 from bookcraft.components.context import ContextEnforcementGate, ContextPackBuilder
+from bookcraft.components.context.entity_index import ConversationEntityIndex
 from bookcraft.components.context.project_manager import (
     ProjectContextManager,
     ProjectContextSnapshot,
 )
 from bookcraft.components.context.slot_tracker import SlotTracker
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
+from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
 from bookcraft.components.intent.context_arbiter import ContextArbiter
@@ -101,7 +103,11 @@ from bookcraft.components.storage.thread_repository import (
     ThreadRepository,
 )
 from bookcraft.components.tools.governance import ToolGovernanceGate
+from bookcraft.components.csr.commitment_detector import detect_commitments
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.trg import TemporalRelationGraphEngine
+from bookcraft.components.trg.checkpointer import ConversationCheckpointer
+from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.trg.schemas import (
     DelegationEvent,
     ProjectShiftEvent,
@@ -202,6 +208,15 @@ class ChatService:
     persona: BookCraftPersona = field(default_factory=BookCraftPersona)
     # Service workflow: predecessor/successor/parallel sequencing advisor.
     service_workflow: ServiceWorkflow = field(default_factory=ServiceWorkflow)
+    # LLM metadata extractor — runs synchronously before response generation.
+    llm_metadata_extractor: LLMMetadataExtractor | None = None
+    # PostgreSQL persistence for TRG facts + milestone checkpoints.
+    trg_fact_store: TRGFactStore | None = None
+    conversation_checkpointer: ConversationCheckpointer | None = None
+    # ES entity memory index — entity-centric semantic memory per conversation.
+    entity_index: ConversationEntityIndex | None = None
+    # CSR context ingestion components.
+    csr_summarizer: CsrContextSummarizer = field(default_factory=CsrContextSummarizer)
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -512,6 +527,65 @@ class ChatService:
                 intent=intent,
             )
 
+            # LLM metadata extraction — synchronous, runs before response generation so the
+            # current response already benefits from richer facts (book title, cover preferences,
+            # section structure, page dimensions, etc.) that regex cannot capture.
+            _llm_extraction_delta_count = 0
+            if self.llm_metadata_extractor is not None:
+                try:
+                    _llm_result = await self.llm_metadata_extractor.extract(
+                        user_text=payload.message,
+                        assistant_text=state.last_assistant_text or "",
+                        state=state,
+                    )
+                    if _llm_result.state_deltas:
+                        _llm_extraction_delta_count = len(_llm_result.state_deltas)
+                        _llm_combined = CombinedExtraction(
+                            state_deltas=_llm_result.state_deltas
+                        )
+                        state = self.state_applier.apply(
+                            state, _llm_combined, rejected_paths=_rejected_delta_paths
+                        )
+                        # Propagate deltas to deterministic extraction so TRG sees them.
+                        extraction.state_deltas.extend(_llm_result.state_deltas)
+                    if _llm_result.rich_metadata:
+                        if "book_specs" not in state.service_metadata:
+                            state.service_metadata["book_specs"] = {}
+                        for _k, _v in _llm_result.rich_metadata.items():
+                            if _k not in state.service_metadata["book_specs"]:
+                                state.service_metadata["book_specs"][_k] = _v
+                    # Upsert extracted facts into ES entity memory index.
+                    if self.entity_index is not None:
+                        for _delta in _llm_result.state_deltas:
+                            try:
+                                await self.entity_index.upsert_structured_fact(
+                                    thread_id=thread_id,
+                                    entity_path=_delta.path,
+                                    entity_value=str(_delta.value),
+                                    confidence=_delta.confidence,
+                                    source_extraction=True,
+                                    turn_index=event_sequence,
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
+                        for _rk, _rv in _llm_result.rich_metadata.items():
+                            try:
+                                await self.entity_index.upsert_free_text_fact(
+                                    thread_id=thread_id,
+                                    key=_rk,
+                                    value=_rv,
+                                    confidence=0.9,
+                                    turn_index=event_sequence,
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
+                except Exception as _llm_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "llm_metadata_extraction_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_llm_exc.__class__.__name__,
+                    )
+
             # Step 8: re-enrich attachment intake now that active service / status is known.
             if _raw_attachments and attachment_intake_result.attachments:
                 _known_svc = (
@@ -552,7 +626,10 @@ class ChatService:
                 sequence=event_sequence,
                 previous_hash=previous_event_hash,
                 event_type="extraction.applied",
-                payload={"delta_count": len(extraction.state_deltas)},
+                payload={
+                    "delta_count": len(extraction.state_deltas),
+                    "llm_delta_count": _llm_extraction_delta_count,
+                },
             )
             event_ids.append(event_id)
             action_plan = self.action_planner.plan(
@@ -863,6 +940,25 @@ class ChatService:
                 intent=intent,
                 trg_context=trg_context,
             )
+
+            # Retrieve semantically relevant entity memory and build a context delta hint.
+            # Only inject facts that are NOT already present in the current thread state.
+            _entity_hint: str | None = None
+            if self.entity_index is not None:
+                try:
+                    _entity_docs = await self.entity_index.retrieve_relevant(
+                        thread_id=thread_id,
+                        query_text=payload.message,
+                        top_k=6,
+                    )
+                    _entity_hint = _build_entity_context_hint(_entity_docs, state)
+                except Exception as _ei_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).debug(
+                        "entity_retrieval_skipped",
+                        thread_id=str(thread_id),
+                        exception_class=_ei_exc.__class__.__name__,
+                    )
+
             project_snapshot: ProjectContextSnapshot = self.project_context_manager.decide(
                 message=payload.message,
                 state=state,
@@ -881,6 +977,14 @@ class ChatService:
                 context_enforcement=context_enforcement_decision,
             )
             response_hint = context_pack.response_hint or trg_response_hint
+            if _entity_hint:
+                response_hint = f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
+
+            # CSR context injection: if a CSR conversation has been ingested, give the bot
+            # the abstract + recent verbatim turns + commitment list as read-only context.
+            _csr_hint = _build_csr_context_hint(state)
+            if _csr_hint:
+                response_hint = f"{response_hint}\n{_csr_hint}" if response_hint else _csr_hint
 
             # Service workflow: inject rich sequencing advice into the LLM prompt.
             # Patterns handled:
@@ -1330,6 +1434,39 @@ class ChatService:
                 )
             else:
                 self.threads[thread_id].state = state
+
+            # Persist TRG facts to PostgreSQL so cold-start reload works after Redis TTL.
+            if self.trg_fact_store is not None and self.trg_engine is not None:
+                try:
+                    _pg_graph = await self.trg_engine.repository.load(thread_id)
+                    if _pg_graph is not None and _pg_graph.semantic_facts:
+                        await self.trg_fact_store.upsert_facts(
+                            thread_id=thread_id,
+                            facts=_pg_graph.semantic_facts,
+                            turn_index=event_sequence,
+                        )
+                except Exception as _tfs_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "trg_fact_store_persist_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_tfs_exc.__class__.__name__,
+                    )
+
+            # Write milestone checkpoint if newly reached.
+            if self.conversation_checkpointer is not None:
+                try:
+                    await self.conversation_checkpointer.maybe_checkpoint(
+                        thread_id=thread_id,
+                        state=state,
+                        turn_index=event_sequence,
+                    )
+                except Exception as _cp_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "conversation_checkpoint_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_cp_exc.__class__.__name__,
+                    )
+
             self._record_live_trace(
                 {
                     "thread_id": str(thread_id),
@@ -1550,6 +1687,163 @@ class ChatService:
             language_status="en",
             debug_event_ids=[],
             action_events=[],
+        )
+
+    async def handle_csr_turn(self, payload: Any) -> None:
+        """Ingest a CSR message for context — no bot response is generated.
+
+        ``payload`` is a ``CsrTurnRequest``. The method:
+        1. Detects and stores price/timeline commitments separately.
+        2. Compresses the CSR message into the sliding-window abstract.
+        3. Runs LLM metadata extraction on the *user* side of the conversation only.
+        4. Persists updated state.
+        """
+        from bookcraft.api.chat import CsrTurnRequest as _CsrReq
+
+        if not isinstance(payload, _CsrReq):
+            return
+
+        if self.thread_repository is not None:
+            thread = await self.thread_repository.load_or_create(
+                thread_id=payload.thread_id,
+                customer_id=None,
+            )
+        else:
+            memory = self.threads.setdefault(payload.thread_id, ThreadMemory())
+            thread = LoadedThread(
+                thread_id=payload.thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=0,
+                event_count=0,
+                last_event_hash=None,
+            )
+
+        state = thread.state
+
+        # 1. Detect commitments (price/timeline) — kept separate from summary.
+        new_commitments = detect_commitments(payload.csr_message)
+        if new_commitments:
+            state.csr_commitments = list(state.csr_commitments) + [
+                {
+                    "type": c.commitment_type,
+                    "text": c.text,
+                    "turn_index": state.csr_turns_ingested,
+                    "csr_name": payload.csr_name,
+                }
+                for c in new_commitments
+            ]
+
+        # 2. Sliding-window summarization (commitment text excluded from abstract).
+        await self.csr_summarizer.ingest(
+            state=state,
+            user_message=payload.user_message,
+            csr_message=payload.csr_message,
+            csr_name=payload.csr_name,
+        )
+
+        # 3. LLM extraction on user side only (CSR claims must not update state facts).
+        if self.llm_metadata_extractor is not None and payload.user_message:
+            try:
+                _llm_result = await self.llm_metadata_extractor.extract(
+                    user_text=payload.user_message,
+                    assistant_text=payload.csr_message,
+                    state=state,
+                )
+                if _llm_result.state_deltas:
+                    from bookcraft.components.extraction.schemas import CombinedExtraction as _CE
+
+                    state = self.state_applier.apply(state, _CE(state_deltas=_llm_result.state_deltas))
+            except Exception as _exc:  # noqa: BLE001
+                structlog.get_logger(__name__).warning(
+                    "csr_turn_llm_extraction_failed",
+                    thread_id=str(payload.thread_id),
+                    exception_class=_exc.__class__.__name__,
+                )
+
+        state.csr_turns_ingested = state.csr_turns_ingested + 1
+
+        # 4. Persist.
+        if self.thread_repository is not None:
+            await self.thread_repository.save_state(
+                thread_id=thread.thread_id,
+                state=state,
+                expected_version=thread.version,
+                language="en",
+            )
+        else:
+            self.threads[thread.thread_id].state = state
+
+    async def handle_handover(self, payload: Any) -> Any:
+        """Signal a handover between bot and CSR.
+
+        ``payload`` is a ``HandoverRequest``.
+        direction=to_csr: activate CSR handover mode.
+        direction=to_bot: deactivate and write a permanent checkpoint.
+        """
+        from bookcraft.api.chat import HandoverRequest as _HR
+        from bookcraft.api.chat import HandoverResponse as _HResp
+
+        if not isinstance(payload, _HR):
+            return
+
+        if self.thread_repository is not None:
+            thread = await self.thread_repository.load_or_create(
+                thread_id=payload.thread_id,
+                customer_id=None,
+            )
+        else:
+            memory = self.threads.setdefault(payload.thread_id, ThreadMemory())
+            thread = LoadedThread(
+                thread_id=payload.thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=0,
+                event_count=0,
+                last_event_hash=None,
+            )
+
+        state = thread.state
+
+        if payload.direction == "to_csr":
+            state.csr_handover_active = True
+            if payload.csr_id:
+                state.sales_actions.consultation.csr_id = payload.csr_id
+            if payload.csr_name:
+                state.sales_actions.consultation.csr_name = payload.csr_name
+
+        elif payload.direction == "to_bot":
+            state.csr_handover_active = False
+            state.csr_handover_returned_at = datetime.now(UTC)
+            # Write permanent checkpoint so bot retains all CSR-gathered context.
+            if self.conversation_checkpointer is not None:
+                try:
+                    await self.conversation_checkpointer.force_checkpoint(
+                        thread_id=thread.thread_id,
+                        state=state,
+                        milestone="csr_handover_returned",
+                    )
+                except Exception as _cp_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "handover_checkpoint_failed",
+                        thread_id=str(payload.thread_id),
+                        exception_class=_cp_exc.__class__.__name__,
+                    )
+
+        if self.thread_repository is not None:
+            await self.thread_repository.save_state(
+                thread_id=thread.thread_id,
+                state=state,
+                expected_version=thread.version,
+                language="en",
+            )
+        else:
+            self.threads[thread.thread_id].state = state
+
+        return _HResp(
+            thread_id=thread.thread_id,
+            direction=payload.direction,
+            csr_handover_active=state.csr_handover_active,
         )
 
     async def _load_greet_thread(self, payload: Any) -> LoadedThread:
@@ -2017,6 +2311,30 @@ class ChatService:
             return None
 
         graph = await self.trg_engine.repository.load(thread_id)
+
+        # Cold-start reload: if the hot graph is absent or has no semantic facts,
+        # restore persisted facts from PostgreSQL so the bot retains context after
+        # Redis TTL expiry.
+        if (
+            self.trg_fact_store is not None
+            and (graph is None or not graph.semantic_facts)
+        ):
+            try:
+                from bookcraft.components.trg.schemas import TemporalRelationGraph
+
+                persisted_facts = await self.trg_fact_store.load_active_facts(thread_id)
+                if persisted_facts:
+                    if graph is None:
+                        graph = TemporalRelationGraph(thread_id=thread_id)
+                    graph.semantic_facts = persisted_facts
+                    await self.trg_engine.repository.save(graph)
+            except Exception as _csr_exc:  # noqa: BLE001
+                structlog.get_logger(__name__).warning(
+                    "trg_cold_start_reload_failed",
+                    thread_id=str(thread_id),
+                    exception_class=_csr_exc.__class__.__name__,
+                )
+
         if graph is None:
             return None
 
@@ -3680,6 +3998,82 @@ def _trg_response_hint_from_context(
         return None
 
     return " ".join(parts)
+
+
+def _build_csr_context_hint(state: ThreadState) -> str | None:
+    """Build a CSR context section for the response prompt.
+
+    Includes the abstract, last 3 verbatim turns, and commitments (read-only).
+    Only injected when CSR turns have been ingested.
+    """
+    if not state.csr_turns_ingested:
+        return None
+
+    parts: list[str] = ["--- CSR Conversation Context ---"]
+
+    if state.csr_context_abstract:
+        parts.append(f"[Summary of earlier CSR conversation]: {state.csr_context_abstract}")
+
+    if state.csr_context_recent_verbatim:
+        parts.append("Recent CSR exchanges (verbatim):")
+        for turn in state.csr_context_recent_verbatim[-3:]:
+            csr_name = turn.get("csr_name", "CSR")
+            csr_msg = turn.get("csr_message", "")
+            user_msg = turn.get("user_message", "")
+            line = f"  {csr_name}: {csr_msg[:200]}"
+            if user_msg:
+                line += f" | User: {user_msg[:100]}"
+            parts.append(line)
+
+    if state.csr_commitments:
+        parts.append("CSR Commitments (do NOT re-commit or contradict — acknowledge as agreed):")
+        for c in state.csr_commitments[:5]:
+            ctype = c.get("type", "commitment")
+            text = c.get("text", "")
+            parts.append(f"  • {ctype.replace('_', ' ').title()}: \"{text}\"")
+
+    return "\n".join(parts)
+
+
+def _build_entity_context_hint(
+    entity_docs: list[dict[str, object]],
+    state: ThreadState,
+) -> str | None:
+    """Build a prompt hint from retrieved entity memory, injecting only NEW facts.
+
+    Skips facts already present in thread state to prevent prompt bloat.
+    """
+    if not entity_docs:
+        return None
+
+    # Collect state paths already in known_facts via FieldMeta
+    known_paths: set[str] = set()
+    for owner_name in ("personal", "project", "commercial"):
+        owner = getattr(state, owner_name, None)
+        if owner is None:
+            continue
+        for field_name in vars(owner):
+            fm = getattr(owner, field_name, None)
+            val = getattr(fm, "value", None) if fm is not None else None
+            if val is not None:
+                known_paths.add(f"{owner_name}.{field_name}")
+
+    new_facts: list[str] = []
+    for doc in entity_docs:
+        path = str(doc.get("entity_path", ""))
+        value = str(doc.get("entity_value_text", ""))
+        if not path or not value:
+            continue
+        if path in known_paths:
+            continue
+        label = path.split(".")[-1].replace("_", " ")
+        new_facts.append(f"{label}: {value}")
+
+    if not new_facts:
+        return None
+
+    lines = "; ".join(new_facts[:5])  # cap at 5 to avoid prompt bloat
+    return f"Additional recalled facts (from conversation memory): {lines}."
 
 
 # ---------------------------------------------------------------------------

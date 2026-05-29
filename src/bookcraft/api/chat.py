@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
@@ -55,6 +56,40 @@ class ChatTurnResponse(BaseModel):
     input_disabled: bool = False
     system_message: str | None = None
     action_events: list[dict[str, object]] = Field(default_factory=list)
+
+
+class CsrTurnRequest(BaseModel):
+    """A single CSR + optional user message to be ingested for context (no bot response)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    csr_id: str = Field(max_length=128)
+    csr_name: str = Field(max_length=255)
+    user_message: str | None = Field(default=None, max_length=8000)
+    csr_message: str = Field(min_length=1, max_length=8000)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
+class HandoverRequest(BaseModel):
+    """Signals a handover between bot and CSR in either direction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    direction: Literal["to_csr", "to_bot"]
+    csr_id: str | None = Field(default=None, max_length=128)
+    csr_name: str | None = Field(default=None, max_length=255)
+    handover_note: str | None = Field(default=None, max_length=1000)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
+class HandoverResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    direction: str
+    csr_handover_active: bool
 
 
 @router.post("/turn", response_model=ChatTurnResponse)
@@ -118,6 +153,24 @@ async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnRes
     )
     service: ChatService = request.app.state.chat_service
     return await service.handle_greet(payload)
+
+
+@router.post("/csr-turn", status_code=204)
+async def chat_csr_turn(payload: CsrTurnRequest, request: Request) -> None:
+    """Ingest a CSR message for context gathering — no bot response is generated."""
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    await service.handle_csr_turn(payload)
+
+
+@router.post("/handover", response_model=HandoverResponse)
+async def chat_handover(payload: HandoverRequest, request: Request) -> HandoverResponse:
+    """Signal a handover between bot and CSR."""
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    return await service.handle_handover(payload)
 
 
 @router.websocket("/ws/{thread_id}")

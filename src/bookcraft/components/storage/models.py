@@ -334,3 +334,47 @@ class GraphEdgeRecord(SQLModel, table=True):
         sa_column=Column("metadata", JSON, nullable=False),
     )
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class TRGFactRecord(SQLModel, table=True):
+    """Persistent store for semantic TRG facts.
+
+    Survives Redis TTL expiry — used to cold-start reload the TRG when
+    the hot graph store misses. One row per unique (thread_id, fact_path);
+    rows are upserted (updated in place) when a fact changes value.
+    """
+
+    __tablename__ = "trg_fact_records"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    fact_path: str = Field(max_length=200, index=True)
+    fact_value: str  # JSON-serialised value
+    confidence: float = 1.0
+    source_extraction: bool = False  # True when produced by LLM extractor
+    turn_index: int = 0
+    raw_excerpt: str | None = None
+    active: bool = True
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ConversationCheckpoint(SQLModel, table=True):
+    """Permanent state snapshots at key sales milestones.
+
+    Persisted indefinitely — not subject to any TTL. Survives multiple
+    Redis cycles and gives the bot permanent memory of milestone events.
+    """
+
+    __tablename__ = "conversation_checkpoints"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    # milestone: lead_created | service_confirmed | consultation_scheduled | csr_handover_returned
+    milestone: str = Field(max_length=64, index=True)
+    state_snapshot: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    turn_index: int = 0
+    created_at: datetime = Field(default_factory=utc_now, index=True)

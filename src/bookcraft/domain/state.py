@@ -218,3 +218,11 @@ class ThreadState(BaseModel):
     # Persona: assigned BookCraft representative name for this thread.
     # Set on the first identity question; reused for the rest of the conversation.
     representative_name: str | None = None
+    # CSR handover context — populated when a CSR takes over and sends messages.
+    csr_handover_active: bool = False
+    csr_context_abstract: str = ""        # LLM-compressed summary of oldest CSR turns
+    csr_context_recent_verbatim: list[dict[str, str]] = Field(default_factory=list)
+    csr_turns_ingested: int = 0
+    csr_handover_returned_at: datetime | None = None
+    # Typed CSR commitments (price, timeline) — never mixed into the narrative summary.
+    csr_commitments: list[dict[str, Any]] = Field(default_factory=list)

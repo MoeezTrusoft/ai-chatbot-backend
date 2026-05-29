@@ -34,6 +34,11 @@ from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
+from bookcraft.components.context.entity_index import ConversationEntityIndex
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
+from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
+from bookcraft.components.trg.checkpointer import ConversationCheckpointer
+from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.intent import (
     EnsembleIntentClassifier,
     LLMIntentProvider,
@@ -204,6 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory=session_factory,
         rag_retriever=rag_retriever,
         trg_engine=trg_engine,
+        elasticsearch_client=elasticsearch_client if resolved_settings.app_env != "test" else None,
     )
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
@@ -293,6 +299,7 @@ def build_chat_service(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     rag_retriever: RagRetriever | None = None,
     trg_engine: TemporalRelationGraphEngine | None = None,
+    elasticsearch_client: AsyncElasticsearch | None = None,
 ) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
     cache_client = None
@@ -384,13 +391,40 @@ def build_chat_service(
             repository=ConsultationRepository(session_factory=session_factory)
         )
     )
+    response_generator = build_response_generator(settings)
+    _rg_adapter = getattr(response_generator, "adapter", None)
+    llm_metadata_extractor = (
+        LLMMetadataExtractor(adapter=_rg_adapter) if _rg_adapter is not None else None
+    )
+    trg_fact_store = (
+        TRGFactStore(session_factory=session_factory) if session_factory is not None else None
+    )
+    conversation_checkpointer = (
+        ConversationCheckpointer(session_factory=session_factory)
+        if session_factory is not None
+        else None
+    )
+    entity_index = (
+        ConversationEntityIndex(
+            client=elasticsearch_client,
+            embedding_client=embedding_client,
+        )
+        if elasticsearch_client is not None
+        else None
+    )
+    csr_summarizer = CsrContextSummarizer(adapter=_rg_adapter)
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
         intent_classifier=build_intent_classifier(settings),
         extractor=CombinedExtractor(),
         state_applier=StateApplier(),
-        response_generator=build_response_generator(settings),
+        response_generator=response_generator,
+        llm_metadata_extractor=llm_metadata_extractor,
+        trg_fact_store=trg_fact_store,
+        conversation_checkpointer=conversation_checkpointer,
+        entity_index=entity_index,
+        csr_summarizer=csr_summarizer,
         formatter=ResponseFormatter(),
         rag_retriever=rag_retriever,
         pricing_engine=pricing_engine,

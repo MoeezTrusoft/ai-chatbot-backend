@@ -70,6 +70,12 @@ class ContextPackBuilder:
                 "page_count",
                 state.project.page_count,
             )
+
+        # Contact facts — always surface regardless of project_event so the bot
+        # never re-asks for name / email / phone it already has in state.
+        _append_field_fact(known_facts, "personal.name", "author_name", state.personal.name)
+        _append_field_fact(known_facts, "personal.email", "author_email", state.personal.email)
+        _append_field_fact(known_facts, "personal.phone", "author_phone", state.personal.phone)
         if active_service is not None:
             _is_new_proj = project_event == "new_project"
             known_facts.append(
@@ -94,6 +100,7 @@ class ContextPackBuilder:
             active_service=active_service,
             active_genre=active_genre,
             manuscript_status=manuscript_status,
+            state=state,
         )
         allowed_next_questions = _allowed_next_questions(
             missing_facts=missing_facts,
@@ -564,6 +571,7 @@ def _forbidden_reasks(
     active_service: str | None,
     active_genre: str | int | float | bool | None,
     manuscript_status: str | int | float | bool | None,
+    state: Any | None = None,
 ) -> list[str]:
     forbidden: list[str] = []
     if active_genre is not None:
@@ -572,6 +580,14 @@ def _forbidden_reasks(
         forbidden.extend(["manuscript_stage", "draft status", "starting from scratch"])
     if active_service is not None:
         forbidden.append("unrelated service drift")
+    # Contact fields already in state must never be re-asked.
+    if state is not None:
+        if getattr(getattr(state, "personal", None), "name", None) and getattr(state.personal.name, "value", None):
+            forbidden.extend(["name", "author_name", "your name"])
+        if getattr(getattr(state, "personal", None), "email", None) and getattr(state.personal.email, "value", None):
+            forbidden.extend(["email", "author_email", "your email"])
+        if getattr(getattr(state, "personal", None), "phone", None) and getattr(state.personal.phone, "value", None):
+            forbidden.extend(["phone", "author_phone", "your phone", "phone number"])
     return _ordered_unique(forbidden)
 
 

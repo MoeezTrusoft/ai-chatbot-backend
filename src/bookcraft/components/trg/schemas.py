@@ -35,6 +35,8 @@ class GraphNode(BaseModel):
     turn_sequence: int
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Importance-weighted compaction: higher weight → retained longer under pressure.
+    engagement_weight: float = 1.0
 
 
 class GraphEdge(BaseModel):
@@ -114,6 +116,8 @@ class TRGFactNode(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     active: bool = True
     superseded_by: str | None = None
+    # True when this fact was produced by LLM extraction (Source.AI_EXTRACTED).
+    source_extraction: bool = False
 
 
 class AnsweredQuestion(BaseModel):

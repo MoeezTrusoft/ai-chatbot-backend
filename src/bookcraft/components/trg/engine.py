@@ -9,6 +9,7 @@ from uuid import UUID
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction.schemas import StateDelta
+from bookcraft.domain.enums import Source
 from bookcraft.domain.state import ThreadState
 
 from .repository import GraphRepository, InMemoryGraphRepository
@@ -119,6 +120,9 @@ class TemporalRelationGraphEngine:
                     )
                 )
 
+            # Compute engagement weight for this user turn and store on the node.
+            user_node.engagement_weight = _compute_engagement_weight(user_text)
+
             # Phase 8: semantic memory updates.
             turn_id = str(user_node.id)
             _update_semantic_facts(graph, delta_list, turn_id=turn_id)
@@ -173,17 +177,41 @@ class TemporalRelationGraphEngine:
     def compact(self, graph: TemporalRelationGraph) -> None:
         if len(graph.nodes) <= self.compact_keep:
             return
-        keep_nodes = graph.nodes[-self.compact_keep :]
-        keep_ids = {node.id for node in keep_nodes}
-        keep_ids.update(
-            question.node_id for question in graph.unresolved_questions if not question.resolved
-        )
-        graph.nodes = [node for node in graph.nodes if node.id in keep_ids]
+
+        # STATE_FACT nodes are always retained — they carry durable extracted facts.
+        fact_nodes = [n for n in graph.nodes if n.node_type == GraphNodeType.STATE_FACT]
+        non_fact_nodes = [n for n in graph.nodes if n.node_type != GraphNodeType.STATE_FACT]
+
+        # Among non-fact nodes, score by recency × engagement_weight.
+        # Higher-scored nodes survive; lowest-scored are dropped first.
+        total = len(graph.nodes)
+        slots_for_non_fact = max(0, self.compact_keep - len(fact_nodes))
+        if len(non_fact_nodes) > slots_for_non_fact:
+            scored = sorted(
+                enumerate(non_fact_nodes),
+                key=lambda iv: (iv[0] / max(len(non_fact_nodes) - 1, 1))
+                * iv[1].engagement_weight,
+                reverse=True,
+            )
+            non_fact_nodes = [n for _, n in scored[:slots_for_non_fact]]
+
+        # Always keep nodes anchoring unresolved questions.
+        unresolved_ids = {
+            q.node_id for q in graph.unresolved_questions if not q.resolved
+        }
+        for n in graph.nodes:
+            if n.id in unresolved_ids and n not in non_fact_nodes and n not in fact_nodes:
+                non_fact_nodes.append(n)
+
+        keep_nodes = fact_nodes + non_fact_nodes
+        keep_ids = {n.id for n in keep_nodes}
+        graph.nodes = [n for n in graph.nodes if n.id in keep_ids]
         graph.edges = [
             edge
             for edge in graph.edges
             if edge.source_node_id in keep_ids and edge.target_node_id in keep_ids
         ]
+        _ = total  # suppress unused-variable lint
 
     def _track_assistant_questions(
         self,
@@ -368,9 +396,45 @@ def semantic_facts_from_deltas(state_deltas: Iterable[StateDelta]) -> list[TRGFa
                 raw_excerpt=delta.raw_excerpt,
                 confidence=delta.confidence,
                 active=True,
+                source_extraction=delta.source == Source.AI_EXTRACTED,
             )
         )
     return facts
+
+
+# Correction-phrase signals that raise engagement weight.
+_CORRECTION_KEYWORDS = frozenset([
+    "actually", "correction", "i meant", "not that", "wait no", "i was wrong",
+    "let me correct", "change it to", "i decided", "now it's",
+])
+
+
+def _compute_engagement_weight(user_text: str) -> float:
+    """Score a user turn by how much it engages with the conversation.
+
+    Higher score = retain longer under compaction pressure.
+    Range: 1.0 (plain statement) → 3.0 (high-engagement correction + questions).
+    """
+    text_lower = user_text.lower()
+    weight = 1.0
+
+    # Questions asked by the user (genuine information-seeking)
+    question_count = user_text.count("?")
+    if question_count >= 2:  # noqa: PLR2004
+        weight += 1.0
+    elif question_count == 1:
+        weight += 0.5
+
+    # Explicit correction signals raise stakes — this turn overrides prior facts
+    if any(kw in text_lower for kw in _CORRECTION_KEYWORDS):
+        weight += 1.0
+
+    # Long messages tend to carry more information
+    word_count = len(user_text.split())
+    if word_count > 60:  # noqa: PLR2004
+        weight += 0.5
+
+    return min(3.0, weight)
 
 
 def forbidden_reasks_from_facts(active_facts: list[TRGFactNode]) -> list[str]:
