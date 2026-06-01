@@ -198,6 +198,7 @@ class ConversationEntityIndex:
         if not query_text.strip():
             return []
 
+        await self._ensure_index()
         try:
             with ENTITY_RETRIEVAL_SECONDS.time():
                 embedding = await self.embedding_client.embed(query_text, language="en")

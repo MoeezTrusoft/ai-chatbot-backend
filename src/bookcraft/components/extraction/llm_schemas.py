@@ -21,7 +21,7 @@ class LLMExtractedFacts(BaseModel):
     are stored in state.service_metadata["book_specs"].
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     # Personal info → personal.* FieldMeta paths
     name: ExtractedValue | None = None
