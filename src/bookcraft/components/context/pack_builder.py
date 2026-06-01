@@ -577,7 +577,13 @@ def _forbidden_reasks(
     if active_genre is not None:
         forbidden.extend(["genre", "what genre"])
     if manuscript_status is not None:
-        forbidden.extend(["manuscript_stage", "draft status", "starting from scratch"])
+        forbidden.extend([
+            "manuscript_stage", "manuscript_status", "manuscript stage",
+            "draft status", "draft stage", "starting from scratch",
+            "have you started", "do you have a manuscript", "do you have notes",
+            "written anything", "have anything written", "where is the manuscript",
+            "manuscript stand",
+        ])
     if active_service is not None:
         forbidden.append("unrelated service drift")
     # Contact fields already in state must never be re-asked.

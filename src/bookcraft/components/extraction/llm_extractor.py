@@ -84,6 +84,22 @@ EXTRACTION RULES:
 6. For word_count and page_count: value must be an integer, not a string.
 7. Do not extract information that was already in the known state UNLESS the user is
    explicitly correcting or updating it.
+8. For manuscript_status: extract a short descriptive string using these mappings.
+   Each phrase below IS an explicit statement — not an inference — extract with confidence 0.92:
+   - "no manuscript", "don't have a manuscript", "haven't written anything",
+     "starting from scratch", "start from scratch", "started from scratch",
+     "just an idea", "still in my head", "all in my head", "living in my head",
+     "haven't started", "haven't started yet", "first time putting on paper",
+     "putting it on paper for the first time" → value: "not_started"
+   - "writing notes", "have some notes", "have an outline", "just notes",
+     "rough notes", "bullet points", "working on notes", "will be writing notes"
+     → value: "notes_only"
+   - "early draft", "first draft", "rough draft", "partial draft",
+     "in progress", "writing it now", "working on it" → value: "early_draft"
+   - "complete draft", "full draft", "full manuscript", "finished draft",
+     "it's done", "completed", "ready to publish" → value: "full_draft"
+9. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
+   cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
 """
 
 _EXTRACTION_USER_TEMPLATE = """\

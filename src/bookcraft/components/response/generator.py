@@ -1098,14 +1098,25 @@ def _response_user_prompt(
         known.append(f"page count: {state.project.page_count.value}")
     if getattr(state.project.manuscript_status, "value", None):
         known.append(f"manuscript status: {state.project.manuscript_status.value}")
+    # Always surface captured contact info so the LLM never re-asks for it.
+    if getattr(state.personal.name, "value", None):
+        known.append(f"author name: {state.personal.name.value}")
+    if getattr(state.personal.email, "value", None):
+        known.append(f"author email: {state.personal.email.value}")
+    if getattr(state.personal.phone, "value", None):
+        known.append(f"author phone: {state.personal.phone.value}")
     known_str = "; ".join(known) if known else "nothing confirmed yet"
 
+    _cp_forbidden: set[str] = set(context_pack.forbidden_reasks) if context_pack else set()
     missing: list[str] = []
     if state.project.word_count.value is None and state.project.page_count.value is None:
         missing.append("word or page count")
     if not getattr(state.project.genre, "value", None):
         missing.append("genre")
-    if not getattr(state.project.manuscript_status, "value", None):
+    # Only list manuscript stage as missing if it is genuinely missing AND not suppressed.
+    if not getattr(state.project.manuscript_status, "value", None) and not (
+        _cp_forbidden & {"manuscript_stage", "manuscript_status", "manuscript stage"}
+    ):
         missing.append("manuscript stage")
     missing_str = ", ".join(missing) if missing else "no major basics missing"
 

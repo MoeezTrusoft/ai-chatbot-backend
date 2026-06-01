@@ -533,7 +533,7 @@ def _next_question(
             if not context_pack.preferred_call_time:
                 return "preferred_call_time"
             return None
-        return lead_objective_decision.next_question or "name_and_email_or_phone"
+        return lead_objective_decision.next_question or _contact_next_question(context_pack)
 
     # Project-scope clarification: ask Claude to resolve same vs. new project.
     if primary_goal == "clarify_project_scope":
@@ -618,6 +618,30 @@ def _customer_safe_tool_summary(
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
+
+
+def _contact_next_question(context_pack: ContextPack) -> str:
+    """Return the most specific contact question given what's already captured.
+
+    Avoids asking for name/email/phone that already appear in known_facts,
+    preventing the consultation flow from re-asking captured contact details.
+    """
+    known_paths = {kf.path for kf in context_pack.known_facts}
+    has_name = "personal.name" in known_paths
+    has_email = "personal.email" in known_paths
+    has_phone = "personal.phone" in known_paths
+
+    if not has_name:
+        return "name_and_email_or_phone"
+    if not has_email and not has_phone:
+        # Name known, but neither email nor phone — ask for email first.
+        return "missing_email"
+    if not has_email:
+        return "missing_email"
+    if not has_phone:
+        return "missing_phone"
+    # All three captured but contact not yet marked ready — ask for call time.
+    return "preferred_call_time"
 
 
 def _ordered_unique(items: list[str]) -> list[str]:
