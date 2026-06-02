@@ -299,12 +299,12 @@ class TestContactNextQuestion:
         pack = _pack_with_known_facts([])
         assert _contact_next_question(pack) == "name_and_email_or_phone"
 
-    def test_name_captured_returns_missing_email(self):
-        """When name is known but email and phone are not, ask for email."""
+    def test_name_captured_returns_missing_phone(self):
+        """When name is known but phone is not, ask for phone (phone is required)."""
         pack = _pack_with_known_facts([
             _known_fact("personal.name", "author_name", "Christopher James"),
         ])
-        assert _contact_next_question(pack) == "missing_email"
+        assert _contact_next_question(pack) == "missing_phone"
 
     def test_name_and_email_captured_returns_missing_phone(self):
         """When name and email are known but phone is not, ask for phone."""
@@ -332,8 +332,9 @@ class TestContactNextQuestion:
         assert _contact_next_question(pack) == "preferred_call_time"
 
     def test_planner_uses_smart_contact_question_not_name_when_name_known(self):
-        """The planner's _next_question must route to missing_email, not name_and_email_or_phone,
-        when name is already in known_facts and lead_objective says stop_discovery."""
+        """The planner's _next_question must route to missing_phone, not name_and_email_or_phone,
+        when name is already in known_facts and lead_objective says stop_discovery.
+        Phone is required; email is optional."""
         planner = ResponsePlanner()
         pack = _pack_with_known_facts(
             [_known_fact("personal.name", "author_name", "Christopher James")],
@@ -348,7 +349,7 @@ class TestContactNextQuestion:
         )
         # Must NOT ask for name again.
         assert plan.next_question != "name_and_email_or_phone"
-        assert plan.next_question == "missing_email"
+        assert plan.next_question == "missing_phone"
 
     def test_planner_asks_name_when_name_not_captured(self):
         """When name is absent from known_facts, planner must ask for name."""

@@ -788,12 +788,12 @@ def _question_for_missing_fact(
         "preferred_call_time": "What day and time works best for a call?",
         "preferred_call_timezone": "What timezone are you in so I can confirm the time slot?",
         "name_and_email_or_phone": (
-            "Could I get your name, email address, and a phone number? "
-            "Either one works if you only have one handy."
+            "Could I get your name and a phone number? "
+            "An email address is welcome too if you have one handy."
         ),
         "missing_phone": (
-            "Got it — do you also have a phone number I can note as a backup? "
-            "Totally optional, but helpful in case email doesn't reach you."
+            "I also need a phone number to complete your booking — "
+            "that's how our specialist will reach you."
         ),
         "missing_email": (
             "Thanks — do you also have an email address I can add? "
@@ -986,16 +986,20 @@ def _response_system_prompt(
         "When an author asks to schedule a consultation, collect their details in this chat — "
         "do NOT tell them to email or call us instead.\n\n"
         "Consultation scheduling flow:\n"
-        "When the author requests a consultation (in any phrasing), your job is to collect "
-        "three things directly in the chat: (1) their name, (2) their email or phone number, "
-        "(3) their preferred date and time. If any of these are missing, ask for them one at a "
-        "time — acknowledge what they gave (e.g. 'Tomorrow 2 PM works') and ask for the next "
-        "missing piece. Never redirect them to contact BookCraft manually.\n\n"
+        "When the author requests a consultation (in any phrasing), collect these in order:\n"
+        "(1) Their name — if not yet captured.\n"
+        "(2) Their phone number — REQUIRED. Do not confirm a call time without it. "
+        "Email is welcome but optional; phone is mandatory.\n"
+        "(3) Their preferred date and time.\n"
+        "Ask for one missing piece at a time. Do NOT confirm any call time or say 'confirmed' / "
+        "'see you then' until you have the phone number. "
+        "If you have email but not phone, say: 'I also need a phone number to complete your booking.'\n"
+        "Never redirect them to contact BookCraft manually.\n\n"
         "After a lead is created:\n"
         "Once a lead is confirmed, immediately suggest scheduling a free consultation and ask "
-        "for any contact detail still missing (name, email, or phone). Frame it as the natural "
+        "for the phone number if not yet captured. Frame it as the natural "
         "next step: 'Would you like to lock in a quick call with one of our specialists? "
-        "I just need your [missing detail] to set that up.'\n\n"
+        "I just need your phone number to set that up.'\n\n"
         "Language disambiguation:\n"
         "- 'print a sample' or 'sample copy' or 'proof copy' in the context of publishing "
         "means the author wants a physical proof of THEIR OWN book — this is an Interior "

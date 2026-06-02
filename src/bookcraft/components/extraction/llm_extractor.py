@@ -98,6 +98,11 @@ EXTRACTION RULES:
      "in progress", "writing it now", "working on it" → value: "early_draft"
    - "complete draft", "full draft", "full manuscript", "finished draft",
      "it's done", "completed", "ready to publish" → value: "full_draft"
+   - "done with editing", "editing done", "editing is done", "editing complete",
+     "finished editing", "already edited", "done with proofreading",
+     "editing and proofreading done" → value: "editing_complete"
+     Note: "editing_complete" means the author finished their own editing — they do NOT
+     want an editing service; treat editing as already completed and negated.
 9. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
    cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
 """

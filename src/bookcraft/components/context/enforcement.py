@@ -118,12 +118,32 @@ _SERVICE_CORRECTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bmarketing\b", re.I), "marketing_promotion"),
 ]
 
-# Negated service patterns
+# Negated service patterns — explicit "not X" style
 _NEGATED_SERVICE_RE = re.compile(
     r"\b(?:not|no|don'?t\s+(?:want|need)|forget|instead\s+of)\s+"
     r"(?:ghostwriting|editing|cover\s+design|formatting|publishing|marketing)\b",
     re.IGNORECASE,
 )
+
+# Completion-style service negations — "done with editing", "already edited", etc.
+# These mean the author has ALREADY completed that service and doesn't need it.
+_COMPLETED_SERVICE_RE = re.compile(
+    r"\b(?:"
+    r"done\s+with\s+(?:editing|proofreading|ghostwriting|formatting|writing)|"
+    r"(?:editing|proofreading|writing|formatting)\s+(?:is\s+)?(?:done|complete|finished|ready)|"
+    r"already\s+(?:edited|proofread|written|formatted|published)|"
+    r"finished\s+(?:editing|proofreading|writing|formatting)|"
+    r"editing\s+(?:and\s+proofreading\s+)?(?:is\s+)?(?:done|complete|finished)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPLETED_SERVICE_MAP: dict[re.Pattern[str], str] = {
+    re.compile(r"\b(?:editing|proofreading)\b", re.I): "editing_proofreading",
+    re.compile(r"\bghostwriting\b|\bwriting\b", re.I): "ghostwriting",
+    re.compile(r"\bformatting\b", re.I): "interior_formatting",
+    re.compile(r"\bpublishing\b", re.I): "publishing_distribution",
+}
 
 # ---------------------------------------------------------------------------
 # Platform / format negation patterns
@@ -569,7 +589,7 @@ def _mentions_count_context(text: str) -> bool:
 
 
 def _extract_negated_service(text: str) -> str | None:
-    # Match service names after negation words directly.
+    # Match service names after explicit negation words.
     neg_pattern = re.compile(
         r"\b(?:not|no|forget|instead\s+of)\s+"
         r"(ghostwriting|editing|cover\s+design|formatting|publishing|distribution|marketing)\b",
@@ -581,6 +601,13 @@ def _extract_negated_service(text: str) -> str | None:
         for _pat, canonical in _SERVICE_CORRECTIONS:
             if _pat.search(svc_word):
                 return canonical
+
+    # Match completion-style negations: "done with editing", "editing is done", etc.
+    if _COMPLETED_SERVICE_RE.search(text):
+        for svc_pattern, canonical in _COMPLETED_SERVICE_MAP.items():
+            if svc_pattern.search(text):
+                return canonical
+
     return None
 
 

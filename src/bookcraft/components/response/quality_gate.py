@@ -79,6 +79,9 @@ _FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("table", re.compile(r"\n\s*\|.*\|")),
     ("three_plus_bullets", re.compile(r"(?:^\s*[-*]\s+.+\n){3}", re.MULTILINE)),
     ("code_fence", re.compile(r"^\s*```", re.MULTILINE)),
+    # RAG source-document headers bleeding into the response: *Title Text* or **Title Text**
+    # These appear when the LLM copies RAG chunk headings verbatim instead of paraphrasing.
+    ("rag_inline_header", re.compile(r"\*\*?[A-Z][^*\n]{4,60}\*\*?", re.MULTILINE)),
 ]
 
 # Slippy / hedging words — built from the style policy so there is one source
@@ -415,6 +418,14 @@ class ResponseQualityGate:
         else:
             audit.append("quality:scheduling_claim:ok")
 
+        # Check 23 — Consultation confirmation requires phone number.
+        # Phone is mandatory for scheduling; confirming a call time without it is an error.
+        if _consultation_confirmed_without_phone(text, context_pack):
+            failures.append("consultation_confirmed_without_phone")
+            audit.append("quality:consultation_requires_phone:FAIL")
+        else:
+            audit.append("quality:consultation_requires_phone:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -476,6 +487,29 @@ class ResponseQualityGate:
             sales_tone=sales_tone_report,
             audit=audit,
         )
+
+
+def _consultation_confirmed_without_phone(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when the response confirms a consultation time but phone is not yet captured.
+
+    Catches soft confirmations like 'Tomorrow at 12 PM is confirmed' in addition to
+    explicit scheduling claims, ensuring phone is always collected before confirming.
+    """
+    if context_pack is None:
+        return False
+    # Must contain both a time reference and a confirmation signal.
+    if not _SOFT_CONFIRMATION_RE.search(text):
+        return False
+    if not _TIME_CONFIRMATION_RE.search(text):
+        return False
+    # Check whether phone is already in known_facts.
+    has_phone = any(kf.path == "personal.phone" for kf in (context_pack.known_facts or []))
+    if has_phone:
+        return False
+    # Also allow if contact is complete (all three fields present).
+    if getattr(context_pack, "contact_complete", False):
+        return False
+    return True
 
 
 def _build_safe_repair_context(
@@ -926,6 +960,18 @@ _METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
+
+# Consultation time-confirmation phrases — broader than scheduling claim (catches "12 PM is confirmed").
+_TIME_CONFIRMATION_RE = re.compile(
+    r"\b(?:\d{1,2}\s*(?::\d{2}\s*)?(?:am|pm)|tomorrow|monday|tuesday|wednesday|thursday|friday|"
+    r"saturday|sunday|next\s+\w+)\b",
+    re.IGNORECASE,
+)
+_SOFT_CONFIRMATION_RE = re.compile(
+    r"\b(?:confirmed|booked|scheduled|is\s+set|we(?:'re|\s+are)\s+(?:all\s+)?set|"
+    r"see\s+you\s+(?:then|at|tomorrow)|looking\s+forward\s+to\s+speaking)\b",
+    re.IGNORECASE,
+)
 
 _SCHEDULING_CLAIM_RE = re.compile(
     r"\b(?:consultation\s+(?:is\s+|has\s+been\s+)?(?:booked|scheduled|confirmed)|"
