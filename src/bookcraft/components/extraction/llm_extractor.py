@@ -70,7 +70,10 @@ Your sole task is to extract factual information explicitly shared by the user a
 and their book project. You output structured JSON — nothing else.
 
 EXTRACTION RULES:
-1. Extract ONLY facts the user has explicitly stated. Never infer, guess, or assume.
+1. Extract ONLY facts the user has explicitly stated — including direct answers to the
+   assistant's questions. A user's direct reply to a question ("Its all in head right now."
+   answering "is it all in your head?") IS an explicit statement, not an inference.
+   Never infer facts the user did not state or imply at all.
 2. Resolve coreferences before extraction: if the user says "my thriller" and the known state
    already has genre=thriller, do not re-extract genre — instead note the coreference in
    coreference_notes and leave the genre field null.
@@ -131,7 +134,17 @@ EXTRACTION RULES:
     "prefer to be contacted by phone" → "phone", 0.92
     "email is better for me"     → "email",  0.92
     "please call me"             → "phone",  0.92
-12. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
+12. For timezone: ALWAYS normalize to an IANA timezone string — never store the raw alias.
+    Common US mappings:
+    "eastern", "EST", "EDT", "eastern time", "eastern timezone" → "America/New_York"
+    "central", "CST", "CDT", "central time", "central timezone" → "America/Chicago"
+    "mountain", "MST", "MDT", "mountain time"                   → "America/Denver"
+    "pacific", "PST", "PDT", "pacific time", "pacific timezone" → "America/Los_Angeles"
+    "alaska", "AKST"                                             → "America/Anchorage"
+    "hawaii", "HST"                                              → "Pacific/Honolulu"
+    "PKT", "Pakistan"                                            → "Asia/Karachi"
+    Extract the IANA string, not the alias. Confidence 0.92 for any clear timezone statement.
+13. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
     cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
 """
 
@@ -139,13 +152,41 @@ _EXTRACTION_USER_TEMPLATE = """\
 KNOWN STATE (already captured — do not re-extract unless user is correcting):
 {known_facts}
 
-USER MESSAGE:
-{user_message}
-
-ASSISTANT'S LAST RESPONSE (for context only — do not extract from this):
+ASSISTANT'S LAST MESSAGE (the question or statement the user is replying to):
 {assistant_message}
 
-Extract all factual metadata the user has shared in their message.
+USER'S REPLY:
+{user_message}
+
+EXTRACTION INSTRUCTION:
+Read the user's reply IN CONTEXT of the assistant's previous message above.
+If the assistant asked about a specific field (manuscript stage, word count, genre,
+name, email, phone, timezone, etc.) and the user's reply answers it — even briefly
+or informally — that reply IS an explicit statement about that field. Extract it.
+
+Examples of Q&A extractions that MUST be captured:
+  Assistant asked "is it all in your head right now?" → User: "Its all in head right now."
+  → manuscript_status: "not_started", confidence 0.92
+
+  Assistant asked "roughly how long is the first book?" → User: "around 130,000"
+  → word_count: 130000, confidence 0.70
+
+  Assistant asked "what's your name and best email?" → User: "Gina gina@example.com"
+  → name: "Gina", email: "gina@example.com", confidence 0.92
+
+  Assistant asked "do you have notes or are you starting from scratch?" → User: "starting from scratch"
+  → manuscript_status: "not_started", confidence 0.92
+
+  Assistant asked "do you have an outline or draft chapters?" → User: "partially outlined"
+  → manuscript_status: "notes_only", confidence 0.92
+
+  Assistant asked "what timezone are you in?" → User: "eastern timezone"
+  → timezone: "America/New_York", confidence 0.92
+
+  Assistant asked "what timezone works for you?" → User: "central"
+  → timezone: "America/Chicago", confidence 0.92
+
+Extract all factual metadata the user has shared. Do NOT extract from the assistant message.
 Respond with a valid JSON object matching the LLMExtractedFacts schema.
 """
 

@@ -125,9 +125,72 @@ class ConsultationActionService:
         )
 
 
+_TIMEZONE_ALIASES: dict[str, str] = {
+    # US Eastern
+    "eastern": "America/New_York",
+    "eastern time": "America/New_York",
+    "eastern timezone": "America/New_York",
+    "eastern standard time": "America/New_York",
+    "eastern daylight time": "America/New_York",
+    "est": "America/New_York",
+    "edt": "America/New_York",
+    "et": "America/New_York",
+    "us/eastern": "America/New_York",
+    # US Central
+    "central": "America/Chicago",
+    "central time": "America/Chicago",
+    "central timezone": "America/Chicago",
+    "central standard time": "America/Chicago",
+    "central daylight time": "America/Chicago",
+    "cst": "America/Chicago",
+    "cdt": "America/Chicago",
+    "ct": "America/Chicago",
+    "us/central": "America/Chicago",
+    # US Mountain
+    "mountain": "America/Denver",
+    "mountain time": "America/Denver",
+    "mountain timezone": "America/Denver",
+    "mountain standard time": "America/Denver",
+    "mountain daylight time": "America/Denver",
+    "mst": "America/Denver",
+    "mdt": "America/Denver",
+    "mt": "America/Denver",
+    "us/mountain": "America/Denver",
+    # US Pacific
+    "pacific": "America/Los_Angeles",
+    "pacific time": "America/Los_Angeles",
+    "pacific timezone": "America/Los_Angeles",
+    "pacific standard time": "America/Los_Angeles",
+    "pacific daylight time": "America/Los_Angeles",
+    "pst": "America/Los_Angeles",
+    "pdt": "America/Los_Angeles",
+    "pt": "America/Los_Angeles",
+    "us/pacific": "America/Los_Angeles",
+    # Other common
+    "alaska": "America/Anchorage",
+    "akst": "America/Anchorage",
+    "hawaii": "Pacific/Honolulu",
+    "hst": "Pacific/Honolulu",
+    "utc": "UTC",
+    "gmt": "UTC",
+    # Pakistan
+    "pkt": "Asia/Karachi",
+    "pakistan": "Asia/Karachi",
+}
+
+
+def _normalize_timezone(value: str | None) -> str | None:
+    """Normalize common timezone aliases to IANA strings."""
+    if not value:
+        return None
+    normalized = _TIMEZONE_ALIASES.get(value.strip().lower())
+    return normalized or value
+
+
 def _safe_zoneinfo(value: str | None) -> ZoneInfo:
+    normalized = _normalize_timezone(value)
     try:
-        return ZoneInfo(value or "America/Chicago")
+        return ZoneInfo(normalized or "America/Chicago")
     except Exception:
         return ZoneInfo("America/Chicago")
 

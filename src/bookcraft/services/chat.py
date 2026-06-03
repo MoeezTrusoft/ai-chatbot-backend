@@ -3856,17 +3856,27 @@ def _reconcile_consultation_action_plan(
         or getattr(state.sales_actions.lead, "phone", None)
     )
 
+    # Resolve customer timezone from state — prefer personal.timezone (LLM-extracted),
+    # fall back to previously stored consultation timezone, then default to Chicago.
+    customer_timezone = (
+        getattr(getattr(state.personal, "timezone", None), "value", None)
+        or getattr(state.sales_actions.consultation, "customer_timezone", None)
+        or "America/Chicago"
+    )
+
     slots: dict[str, Any] = {
         "requested_time_text": consultation_decision.preferred_call_time or "",
+        "customer_timezone": customer_timezone,
     }
     if name:
         slots["name"] = name
     if email:
         slots["email"] = email
         slots["email_or_phone"] = email
-    elif phone:
+    if phone:
         slots["phone"] = phone
-        slots["email_or_phone"] = phone
+        if not email:
+            slots["email_or_phone"] = phone
 
     return ActionPlan(
         action_type=ActionType.SCHEDULE_CONSULTATION,

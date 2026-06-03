@@ -78,6 +78,12 @@ class ContextPackBuilder:
         _append_field_fact(known_facts, "personal.phone", "author_phone", state.personal.phone)
         _append_field_fact(
             known_facts,
+            "personal.timezone",
+            "customer_timezone",
+            state.personal.timezone,
+        )
+        _append_field_fact(
+            known_facts,
             "personal.preferred_contact_method",
             "preferred_contact_method",
             state.personal.preferred_contact_method,
@@ -609,6 +615,8 @@ def _forbidden_reasks(
             forbidden.extend(["email", "author_email", "your email"])
         if getattr(getattr(state, "personal", None), "phone", None) and getattr(state.personal.phone, "value", None):
             forbidden.extend(["phone", "author_phone", "your phone", "phone number"])
+        if getattr(getattr(state, "personal", None), "timezone", None) and getattr(state.personal.timezone, "value", None):
+            forbidden.extend(["timezone", "your timezone", "what timezone", "time zone"])
         if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(state.personal.preferred_contact_method, "value", None):
             forbidden.extend(["preferred contact", "how to reach", "best way to contact"])
     return _ordered_unique(forbidden)
