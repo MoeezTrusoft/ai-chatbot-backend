@@ -84,25 +84,33 @@ EXTRACTION RULES:
 6. For word_count and page_count: value must be an integer, not a string.
 7. Do not extract information that was already in the known state UNLESS the user is
    explicitly correcting or updating it.
-8. For manuscript_status: extract a short descriptive string using these mappings.
-   Each phrase below IS an explicit statement — not an inference — extract with confidence 0.92:
-   - "no manuscript", "don't have a manuscript", "haven't written anything",
-     "starting from scratch", "start from scratch", "started from scratch",
-     "just an idea", "still in my head", "all in my head", "living in my head",
-     "haven't started", "haven't started yet", "first time putting on paper",
-     "putting it on paper for the first time" → value: "not_started"
-   - "writing notes", "have some notes", "have an outline", "just notes",
-     "rough notes", "bullet points", "working on notes", "will be writing notes"
-     → value: "notes_only"
-   - "early draft", "first draft", "rough draft", "partial draft",
-     "in progress", "writing it now", "working on it" → value: "early_draft"
-   - "complete draft", "full draft", "full manuscript", "finished draft",
-     "it's done", "completed", "ready to publish" → value: "full_draft"
-   - "done with editing", "editing done", "editing is done", "editing complete",
-     "finished editing", "already edited", "done with proofreading",
-     "editing and proofreading done" → value: "editing_complete"
-     Note: "editing_complete" means the author finished their own editing — they do NOT
-     want an editing service; treat editing as already completed and negated.
+8. For manuscript_status: read the user's full statement and use your own judgment to pick
+   the single best-fit value from this closed list — do NOT require a literal phrase match.
+   Valid values and their meanings:
+     "not_started"      — no writing done yet: just an idea, preparing, starting from scratch,
+                          story still in their head, haven't begun writing
+     "notes_only"       — has notes, bullet points, recordings, or a rough outline but no
+                          actual draft pages written
+     "early_draft"      — has some drafted content: any chapters written, pages drafted,
+                          partial manuscript, prologue written, chapters completed
+     "full_draft"       — complete or near-complete draft manuscript, full book written
+     "editing_complete" — already finished their own editing pass; they do NOT want an
+                          editing service — treat editing as negated for this conversation
+   Confidence rules:
+     0.92 — user's statement clearly implies the stage (even if phrased indirectly)
+     0.70 — statement is vague or hedged ("I think I have some notes", "maybe a draft")
+   Representative examples (guidance, not exhaustive):
+     "I have 5 chapters"                  → early_draft,      0.92
+     "Drafted"  (answer to chapter question) → early_draft,   0.92
+     "Prologue and 5 complete chapters"   → early_draft,      0.92
+     "Chapters completed done"            → early_draft,      0.92
+     "I have a few books, did a lot of spiritual writing" → early_draft, 0.85
+     "Preparing myself, getting everything I need to start" → not_started, 0.92
+     "Still in my head"                   → not_started,      0.92
+     "Starting from scratch"              → not_started,      0.92
+     "I have some notes"                  → notes_only,       0.85
+     "Full manuscript done"               → full_draft,       0.92
+     "Done with editing"                  → editing_complete, 0.92
 9. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
    cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
 """

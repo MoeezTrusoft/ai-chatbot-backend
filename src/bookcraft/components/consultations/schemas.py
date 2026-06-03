@@ -53,10 +53,12 @@ class ConsultationActionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_contact(self) -> ConsultationActionRequest:
-        if not self.email and not self.phone:
-            raise ValueError("consultation_requires_email_or_phone")
         if not self.name:
             raise ValueError("consultation_requires_name")
+        if not self.phone:
+            raise ValueError("consultation_requires_phone")
+        if not self.customer_timezone:
+            raise ValueError("consultation_requires_customer_timezone")
         if self.duration_minutes <= 0:
             raise ValueError("consultation_duration_must_be_positive")
         return self

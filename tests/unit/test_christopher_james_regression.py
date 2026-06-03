@@ -114,34 +114,36 @@ def _contact_capture_not_ready() -> ContactCaptureResult:
 # ---------------------------------------------------------------------------
 
 class TestExtractionVocabulary:
-    """Verify the extraction system prompt now contains explicit manuscript_status mappings."""
+    """Verify the extraction system prompt contains the LLM-driven manuscript_status rules."""
 
-    def test_system_prompt_contains_not_started_mapping(self):
+    def test_system_prompt_contains_not_started_key(self):
         assert "not_started" in _EXTRACTION_SYSTEM
 
-    def test_system_prompt_contains_started_from_scratch(self):
-        assert "started from scratch" in _EXTRACTION_SYSTEM
+    def test_system_prompt_contains_scratch_concept(self):
+        # New LLM-driven approach uses "Starting from scratch" as a capitalised example.
+        assert "scratch" in _EXTRACTION_SYSTEM.lower()
 
-    def test_system_prompt_contains_in_my_head_mapping(self):
-        assert "in my head" in _EXTRACTION_SYSTEM
+    def test_system_prompt_contains_in_my_head_concept(self):
+        # New approach uses "Still in my head" as a guidance example.
+        assert "in my head" in _EXTRACTION_SYSTEM or "in their head" in _EXTRACTION_SYSTEM
 
-    def test_system_prompt_contains_first_time_on_paper(self):
-        assert "first time putting on paper" in _EXTRACTION_SYSTEM
+    def test_system_prompt_contains_chapter_example(self):
+        # New approach uses "I have 5 chapters" as an example for early_draft.
+        assert "chapters" in _EXTRACTION_SYSTEM.lower()
 
-    def test_system_prompt_contains_notes_only(self):
+    def test_system_prompt_contains_notes_only_key(self):
         assert "notes_only" in _EXTRACTION_SYSTEM
 
-    def test_system_prompt_contains_early_draft(self):
+    def test_system_prompt_contains_early_draft_key(self):
         assert "early_draft" in _EXTRACTION_SYSTEM
 
-    def test_system_prompt_contains_full_draft(self):
+    def test_system_prompt_contains_full_draft_key(self):
         assert "full_draft" in _EXTRACTION_SYSTEM
 
     def test_system_prompt_contains_name_typo_normalization(self):
         assert "typo" in _EXTRACTION_SYSTEM.lower() or "normalize" in _EXTRACTION_SYSTEM.lower()
 
     def test_high_confidence_threshold_documented_for_manuscript(self):
-        # The vocabulary rules specify confidence 0.92 for these explicit statements.
         assert "0.92" in _EXTRACTION_SYSTEM
 
     def test_facts_to_deltas_maps_manuscript_status_correctly(self):
