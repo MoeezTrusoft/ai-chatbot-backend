@@ -7,6 +7,12 @@ def test_short_english_messages_default_to_english() -> None:
     assert guard.detect("hi").is_english
     assert guard.detect("hello").is_english
     assert guard.detect("price?").is_english
+    # These were previously mis-classified by Lingua as non-English because
+    # they're single Latin-derived words shared with Romance languages.
+    assert guard.detect("Consultation?").is_english
+    assert guard.detect("Schedule?").is_english
+    assert guard.detect("sure").is_english
+    assert guard.detect("tomorrow").is_english
 
 
 def test_mixed_service_message_is_handled_generously() -> None:
@@ -33,7 +39,8 @@ def test_lingua_failure_defaults_to_english(monkeypatch) -> None:
 
     monkeypatch.setattr(LanguageGuard, "_detect_with_lingua", fail)
 
-    decision = guard.detect("zzzzzzzzzzzzzzzzzzzz")
+    # Must be >= 25 chars to bypass the short_message threshold and reach Lingua.
+    decision = guard.detect("zzzzzzzzzzzzzzzzzzzzzzzzzzz")
 
     assert decision.is_english
     assert decision.source == "failure_default"

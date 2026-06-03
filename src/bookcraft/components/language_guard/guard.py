@@ -59,6 +59,15 @@ ENGLISH_HINTS = {
     "timezone", "est", "cst", "pst", "gmt", "utc", "morning",
     "afternoon", "evening", "friday", "monday", "tuesday", "wednesday",
     "thursday", "saturday", "sunday",
+    # Domain-specific single-word queries that Lingua misclassifies because
+    # the word exists in multiple Romance languages ("Consultation" = French,
+    # "Schedule" = common to several languages, etc.)
+    "consultation", "schedule", "scheduled", "scheduling",
+    "available", "appointment", "specialist", "formatting",
+    "sure", "okay", "ok", "thanks", "great", "perfect", "sounds",
+    "tomorrow", "today", "now", "later", "soon", "anytime", "flexible",
+    "correct", "exactly", "absolutely", "definitely", "certainly",
+    "no", "nope", "yep", "yeah", "alright", "right",
 }
 
 
@@ -72,7 +81,11 @@ class LanguageGuard:
             return self._record("en", True, 1.0, "disabled", started)
 
         stripped = text.strip()
-        if len(stripped) < 12:
+        # Short-message bypass: single words and very short replies ("Consultation?",
+        # "Yes please", "OK", "Sure", "Tomorrow") are too brief for reliable language
+        # detection — inherit the session's cached language instead.
+        # Threshold raised from 12 to 25 to cover single domain-specific words.
+        if len(stripped) < 25:
             language = cached_language or "en"
             return self._record(language, language == "en", 0.9, "short_message", started)
 

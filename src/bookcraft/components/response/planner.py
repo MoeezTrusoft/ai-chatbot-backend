@@ -495,6 +495,10 @@ def _next_question(
         return None
     if primary_goal == "consultation_time_capture":
         return "preferred_call_time"
+    # consultation_scoping: customer just said YES to a consultation offer.
+    # Never ask a scoping question here — go straight to contact collection.
+    if primary_goal == "consultation_scoping":
+        return _contact_next_question(context_pack)
     if primary_goal == "answer_current_question":
         # After answering, offer consultation — not a scoping question.
         nq = (
