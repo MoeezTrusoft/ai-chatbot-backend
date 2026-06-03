@@ -785,7 +785,10 @@ def _question_for_missing_fact(
         "consultation_interest": (
             "Would you like to connect with a BookCraft specialist for a free consultation?"
         ),
-        "preferred_call_time": "What day and time works best for a call?",
+        "preferred_call_time": (
+            "What day and time works best for a call? "
+            "Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time."
+        ),
         "preferred_call_timezone": "What timezone are you in so I can confirm the time slot?",
         "name_and_email_or_phone": (
             "Could I get your name and a phone number? "
@@ -1000,9 +1003,11 @@ def _response_system_prompt(
         "(2) Phone number — REQUIRED for the specialist to call them.\n"
         "(3) Timezone — REQUIRED so the call is scheduled at the right local time.\n"
         "(4) Email — optional but always ask for it after phone and timezone are captured.\n"
-        "(5) Preferred date and time.\n"
-        "Ask for one missing piece at a time. Do NOT confirm any call time or say 'confirmed' / "
-        "'see you then' until you have name, phone, and timezone. "
+        "(5) Preferred date and time — REQUIRED before confirming. When asking, always include: "
+        "'Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time.' "
+        "Do NOT say 'you're all set', 'a specialist will be in touch', 'confirmed', or any "
+        "closing phrase until the preferred date AND time is captured.\n"
+        "Ask for one missing piece at a time. "
         "Never redirect them to contact BookCraft manually.\n\n"
         "After a lead is created:\n"
         "Once a lead is confirmed, immediately suggest scheduling a free consultation. "

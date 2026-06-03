@@ -492,6 +492,9 @@ def _next_question(
 
     # PR 2 — Consultation-first next questions.
     if primary_goal == "consultation_handoff_confirmation":
+        # Never confirm without a scheduled time — collect it first.
+        if not context_pack.preferred_call_time:
+            return "preferred_call_time"
         return None
     if primary_goal == "consultation_time_capture":
         return "preferred_call_time"
