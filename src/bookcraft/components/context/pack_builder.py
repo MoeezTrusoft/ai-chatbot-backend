@@ -72,10 +72,16 @@ class ContextPackBuilder:
             )
 
         # Contact facts — always surface regardless of project_event so the bot
-        # never re-asks for name / email / phone it already has in state.
+        # never re-asks for name / email / phone / preferred contact it already has.
         _append_field_fact(known_facts, "personal.name", "author_name", state.personal.name)
         _append_field_fact(known_facts, "personal.email", "author_email", state.personal.email)
         _append_field_fact(known_facts, "personal.phone", "author_phone", state.personal.phone)
+        _append_field_fact(
+            known_facts,
+            "personal.preferred_contact_method",
+            "preferred_contact_method",
+            state.personal.preferred_contact_method,
+        )
         if active_service is not None:
             _is_new_proj = project_event == "new_project"
             known_facts.append(
@@ -315,6 +321,15 @@ class ContextPackBuilder:
         answer_before_capture_applied = bool(getattr(state, "answer_before_capture_applied", False))
         # preferred_call_time already in ContextPack from PR 1; refresh from state.
         state_preferred_call_time: str | None = getattr(state, "preferred_call_time", None)
+
+        # Once the customer has affirmed consultation interest (any consultation_stage set),
+        # never re-ask "Would you like a consultation?" — they already said yes.
+        if consultation_stage and consultation_stage not in ("", "none"):
+            for _ci_slot in ("consultation_interest", "consultation_offer"):
+                if _ci_slot not in forbidden_reasks:
+                    forbidden_reasks.append(_ci_slot)
+                if _ci_slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_ci_slot)
 
         # Suppress scoping slots when contact is ready but call time is missing.
         contact_ready = contact_capture_status == "ready"
@@ -594,6 +609,8 @@ def _forbidden_reasks(
             forbidden.extend(["email", "author_email", "your email"])
         if getattr(getattr(state, "personal", None), "phone", None) and getattr(state.personal.phone, "value", None):
             forbidden.extend(["phone", "author_phone", "your phone", "phone number"])
+        if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(state.personal.preferred_contact_method, "value", None):
+            forbidden.extend(["preferred contact", "how to reach", "best way to contact"])
     return _ordered_unique(forbidden)
 
 

@@ -82,6 +82,21 @@ _FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # RAG source-document headers bleeding into the response: *Title Text* or **Title Text**
     # These appear when the LLM copies RAG chunk headings verbatim instead of paraphrasing.
     ("rag_inline_header", re.compile(r"\*\*?[A-Z][^*\n]{4,60}\*\*?", re.MULTILINE)),
+    # RAG document-body bleed (no asterisks): verbatim document headers/section leads
+    # that appear in chat responses. Uses compound phrases that only occur in RAG source
+    # documents, not in natural conversational prose.
+    ("rag_document_body", re.compile(
+        r"(?:"
+        r"What\s+Influences\s+Cost|"
+        r"Cost\s*&\s*Timeline\s+Beyond|"
+        r"Beyond\s+genre\s+and\s+engagement\s+model|"
+        r"factors\s+can\s+affect\s+your\s+quote|"
+        r"Content\s+complexity\s+drivers|"
+        r"engagement\s+model,\s+these\s+factors|"
+        r"specialized\s+non-fiction[^.]{10,}"
+        r")[^\n]{10,}",
+        re.IGNORECASE,
+    )),
 ]
 
 # Slippy / hedging words — built from the style policy so there is one source
@@ -127,6 +142,15 @@ _REASK_PATTERNS: dict[str, re.Pattern[str]] = {
     "portfolio_filter": re.compile(
         r"\b(?:what\s+genre|which\s+genre|what\s+(?:type|kind)\s+of\s+(?:book|samples?)"
         r"|what\s+service|which\s+service|what\s+category)\b",
+        re.IGNORECASE,
+    ),
+    # Consultation CTA re-ask — once customer agrees, never ask again.
+    "consultation_interest": re.compile(
+        r"\b(?:would\s+you\s+like\s+(?:to\s+(?:connect|set\s+up|schedule|book)|"
+        r"a\s+(?:free\s+)?consultation)|"
+        r"(?:free\s+)?consultation\s+(?:call|with\s+a\s+specialist)|"
+        r"set\s+(?:up|that)\s+(?:up\s+)?for\s+you|"
+        r"connect\s+you\s+with\s+a\s+specialist)\b",
         re.IGNORECASE,
     ),
 }

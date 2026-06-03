@@ -92,6 +92,32 @@ class HandoverResponse(BaseModel):
     csr_handover_active: bool
 
 
+class ChatFactsRequest(BaseModel):
+    """Inject verified customer facts into thread state from an external source.
+
+    Used when the CSR backend already holds name/email/phone (e.g. from a signup
+    form or customer profile) so the bot never re-asks for data it can look up.
+    Fields are applied only when the bot's current confidence for that field is
+    lower than the incoming value — this ensures form-submitted data fills gaps
+    without overwriting facts the bot already captured with equal reliability.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    name: str | None = Field(default=None, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    source_label: str = Field(default="crm_sync", max_length=64)
+
+
+class ChatFactsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    fields_applied: list[str]
+
+
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
     settings: Settings = request.app.state.settings
@@ -171,6 +197,24 @@ async def chat_handover(payload: HandoverRequest, request: Request) -> HandoverR
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
     return await service.handle_handover(payload)
+
+
+@router.post("/facts", response_model=ChatFactsResponse)
+async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> ChatFactsResponse:
+    """Inject verified customer facts (name/email/phone) from the CRM into thread state.
+
+    Called by the Node.js backend when:
+    - A customer fills out a signup form (so the bot never re-asks for known data).
+    - A chat session starts and the customer's profile already has contact details.
+
+    Only fills fields that are currently empty or have lower confidence in the
+    bot's thread state — verified CRM data never overwrites a fact the bot
+    collected with equal or higher confidence.
+    """
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    return await service.handle_inject_facts(payload)
 
 
 @router.websocket("/ws/{thread_id}")

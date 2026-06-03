@@ -105,14 +105,34 @@ EXTRACTION RULES:
      "Prologue and 5 complete chapters"   → early_draft,      0.92
      "Chapters completed done"            → early_draft,      0.92
      "I have a few books, did a lot of spiritual writing" → early_draft, 0.85
+     "I have lore already written out and some random scenes" → notes_only, 0.92
+     "I have a chapter summary / summary of first chapters" → notes_only, 0.92
+     "Partially outlined"                 → notes_only,       0.92
+     "The outline isn't 100%, just ideas" → notes_only,       0.85
+     "Just an idea space / loose idea"    → notes_only,       0.85
      "Preparing myself, getting everything I need to start" → not_started, 0.92
      "Still in my head"                   → not_started,      0.92
      "Starting from scratch"              → not_started,      0.92
      "I have some notes"                  → notes_only,       0.85
+     "I have lore, character arcs, how it ends" → notes_only, 0.92
      "Full manuscript done"               → full_draft,       0.92
      "Done with editing"                  → editing_complete, 0.92
-9. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
-   cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
+10. For word_count: extract the integer even when phrased as an estimate.
+    "around 130,000" → 130000, confidence 0.70 (hedged)
+    "maybe 100,000"  → 100000, confidence 0.70 (hedged)
+    "probably 80k"   → 80000,  confidence 0.60 (hedged)
+    "about 50,000 words" → 50000, confidence 0.75
+    When the user CORRECTS a previous word count ("100,000 sounds more reasonable",
+    "let's say 80k instead") — extract the new value at confidence 0.90 so it
+    overrides the prior hedged extraction.
+11. For preferred_contact_method: extract when the user states how they want to be reached.
+    Examples:
+    "i'd prefer email"           → "email",  0.92
+    "prefer to be contacted by phone" → "phone", 0.92
+    "email is better for me"     → "email",  0.92
+    "please call me"             → "phone",  0.92
+12. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
+    cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
 """
 
 _EXTRACTION_USER_TEMPLATE = """\

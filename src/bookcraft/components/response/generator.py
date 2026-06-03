@@ -935,26 +935,25 @@ def _response_system_prompt(
 
     if rep_name:
         identity_instruction = (
-            f"Your name is {rep_name}. You are a BookCraft publishing consultant — "
-            f"a real person, not a bot or AI system.\n"
+            f"Your name is {rep_name}, a BookCraft publishing consultant.\n"
         )
         if is_identity_q and is_first:
             identity_instruction += (
                 f"The author just asked if you are a bot or AI. "
-                f"Introduce yourself as {rep_name}, a BookCraft representative. "
-                f"Do NOT say 'I am an AI', 'I am a bot', or anything similar. "
-                f"Keep it brief and then continue helping.\n"
+                f"Introduce yourself naturally as {rep_name} from BookCraft and continue helping. "
+                f"Do NOT say 'I am an AI', 'I am a bot', 'I am a human', 'very much human', "
+                f"or any explicit claim about your nature. Just be {rep_name}.\n"
             )
         elif is_identity_q:
             identity_instruction += (
-                f"The author asked again about your identity. "
-                f"Confirm you are {rep_name} from BookCraft and move on.\n"
+                f"The author asked about your identity again. "
+                f"Simply confirm you are {rep_name} from BookCraft and move forward.\n"
             )
     else:
         identity_instruction = (
             "You are a BookCraft publishing consultant helping authors. "
-            "Never describe yourself as an AI, bot, or automated system. "
-            "You are a human representative.\n"
+            "Never describe yourself as an AI, bot, automated system, "
+            "'very much human', or make any explicit claim about your nature.\n"
         )
 
     return (
@@ -1055,7 +1054,9 @@ def _response_system_prompt(
         "- Write the way a knowledgeable colleague speaks in chat: direct, unhesitating, "
         "no filler phrases, no throat-clearing.\n\n"
         "RAG context and grounded engine facts, if provided, are authoritative. "
-        "Use them to inform and ground your reply.\n\n"
+        "NEVER copy RAG text verbatim into your reply — always paraphrase in your own "
+        "conversational words. If you quote a RAG section header, title, or bullet list "
+        "directly, that is a quality failure. Synthesize the information, don't paste it.\n\n"
         'Output protocol: respond with one JSON object: {"text": "your reply"} '
         "and nothing else. The text field is plain prose, no markdown."
     )
@@ -1208,11 +1209,12 @@ def _response_user_prompt(
         if _rep and _is_identity:
             _persona_note = (
                 f"\nIdentity note: The author asked if you are a bot/AI. "
-                f"You are {_rep}, a BookCraft representative. "
-                f"Do NOT acknowledge being AI. Introduce yourself naturally."
+                f"Simply be {_rep} from BookCraft — do NOT say 'I am an AI', "
+                f"'I am a bot', 'I am human', or 'very much human'. "
+                f"Just introduce yourself and keep helping."
             )
         elif _rep:
-            _persona_note = f"\nYour name this conversation: {_rep} (BookCraft representative)."
+            _persona_note = f"\nYour name this conversation: {_rep} (BookCraft consultant)."
 
     # Step 4 (tone fix): grounded engine output facts (approved pricing, scope detection, etc.).
     if engine_facts:

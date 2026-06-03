@@ -1774,6 +1774,103 @@ class ChatService:
         else:
             self.threads[thread.thread_id].state = state
 
+    async def handle_inject_facts(self, payload: Any) -> Any:
+        """Inject verified CRM facts (name/email/phone) into a thread's state.
+
+        ``payload`` is a ``ChatFactsRequest``.  Each non-null field is applied
+        as a StateDelta with confidence 0.98 (form-verified data).  The
+        StateApplier's existing ``should_apply_delta`` logic ensures we only
+        overwrite fields that the bot captured with lower confidence, so
+        correct bot-extracted values are never degraded.
+
+        Returns a ``ChatFactsResponse`` listing which fields were actually updated.
+        """
+        from bookcraft.api.chat import ChatFactsRequest as _FR, ChatFactsResponse as _FResp
+        from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
+        from bookcraft.domain.enums import Source
+
+        if not isinstance(payload, _FR):
+            return _FResp(thread_id=payload.thread_id, fields_applied=[])
+
+        # Load or create thread (same pattern as handle_csr_turn).
+        if self.thread_repository is not None:
+            thread = await self.thread_repository.load_or_create(
+                thread_id=payload.thread_id,
+                customer_id=None,
+            )
+        else:
+            memory = self.threads.setdefault(payload.thread_id, ThreadMemory())
+            thread = LoadedThread(
+                thread_id=payload.thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=0,
+                event_count=0,
+                last_event_hash=None,
+            )
+
+        state = thread.state
+
+        # Build deltas for each non-null fact.  Confidence 0.98: higher than
+        # typical AI extraction (0.92) so form data fills gaps and corrects
+        # low-confidence guesses, but won't overwrite already-verified facts.
+        deltas: list[StateDelta] = []
+        _FACT_PATHS = [
+            ("name", "personal.name", payload.name),
+            ("email", "personal.email", payload.email),
+            ("phone", "personal.phone", payload.phone),
+        ]
+        for field_label, state_path, value in _FACT_PATHS:
+            if value and isinstance(value, str) and value.strip():
+                deltas.append(
+                    StateDelta(
+                        path=state_path,
+                        value=value.strip(),
+                        confidence=0.98,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by=f"crm_sync.{payload.source_label}",
+                        raw_excerpt=None,
+                    )
+                )
+
+        if deltas:
+            state = self.state_applier.apply(
+                state,
+                CombinedExtraction(state_deltas=deltas),
+            )
+
+        # Collect which fields were actually written (state changed).
+        fields_applied: list[str] = []
+        field_label_map = {"personal.name": "name", "personal.email": "email", "personal.phone": "phone"}
+        for delta in deltas:
+            final_value = getattr(
+                getattr(state, delta.path.split(".")[0], None),
+                delta.path.split(".")[1],
+                None,
+            )
+            if final_value is not None and getattr(final_value, "value", None) == delta.value:
+                fields_applied.append(field_label_map.get(delta.path, delta.path))
+
+        # Persist updated state.
+        if self.thread_repository is not None:
+            await self.thread_repository.save_state(
+                thread_id=thread.thread_id,
+                state=state,
+                expected_version=thread.version,
+                language="en",
+            )
+        else:
+            self.threads[thread.thread_id].state = state
+
+        structlog.get_logger(__name__).info(
+            "crm_facts_injected",
+            thread_id=str(payload.thread_id),
+            source_label=payload.source_label,
+            fields_applied=fields_applied,
+        )
+
+        return _FResp(thread_id=payload.thread_id, fields_applied=fields_applied)
+
     async def handle_handover(self, payload: Any) -> Any:
         """Signal a handover between bot and CSR.
 
