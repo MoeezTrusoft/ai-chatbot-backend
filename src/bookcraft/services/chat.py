@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -1855,10 +1856,9 @@ class ChatService:
         """Inject verified CRM facts (name/email/phone) into a thread's state.
 
         ``payload`` is a ``ChatFactsRequest``.  Each non-null field is applied
-        as a StateDelta with confidence 0.98 (form-verified data).  The
-        StateApplier's existing ``should_apply_delta`` logic ensures we only
-        overwrite fields that the bot captured with lower confidence, so
-        correct bot-extracted values are never degraded.
+        as a StateDelta with confidence 0.98 (form-verified data).  Uses
+        optimistic-locking retry (up to 3 attempts) so concurrent calls from
+        handle_turn never cause a ThreadVersionConflictError to surface as a 500.
 
         Returns a ``ChatFactsResponse`` listing which fields were actually updated.
         """
@@ -1869,84 +1869,97 @@ class ChatService:
         if not isinstance(payload, _FR):
             return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
-        # Load or create thread (same pattern as handle_csr_turn).
-        if self.thread_repository is not None:
-            thread = await self.thread_repository.load_or_create(
-                thread_id=payload.thread_id,
-                customer_id=None,
-            )
-        else:
-            memory = self.threads.setdefault(payload.thread_id, ThreadMemory())
-            thread = LoadedThread(
-                thread_id=payload.thread_id,
-                state=memory.state,
-                version=0,
-                turn_count=0,
-                event_count=0,
-                last_event_hash=None,
-            )
-
-        state = thread.state
-
-        # Build deltas for each non-null fact.  Confidence 0.98: higher than
-        # typical AI extraction (0.92) so form data fills gaps and corrects
-        # low-confidence guesses, but won't overwrite already-verified facts.
+        # Build deltas FIRST (before any thread loading).
+        # Confidence 0.98: fills gaps and corrects low-confidence guesses without
+        # overwriting already-verified facts (StateApplier enforces this).
         deltas: list[StateDelta] = []
-        _FACT_PATHS = [
-            ("name", "personal.name", payload.name),
-            ("email", "personal.email", payload.email),
-            ("phone", "personal.phone", payload.phone),
-        ]
-        for field_label, state_path, value in _FACT_PATHS:
+        for state_path, value in [
+            ("personal.name",  payload.name),
+            ("personal.email", payload.email),
+            ("personal.phone", payload.phone),
+        ]:
             if value and isinstance(value, str) and value.strip():
-                deltas.append(
-                    StateDelta(
-                        path=state_path,
-                        value=value.strip(),
-                        confidence=0.98,
-                        source=Source.AI_EXTRACTED,
-                        extracted_by=f"crm_sync.{payload.source_label}",
-                        raw_excerpt=None,
+                deltas.append(StateDelta(
+                    path=state_path,
+                    value=value.strip(),
+                    confidence=0.98,
+                    source=Source.AI_EXTRACTED,
+                    extracted_by=f"crm_sync.{payload.source_label}",
+                    raw_excerpt=None,
+                ))
+
+        # Nothing to do — return immediately without touching the thread.
+        if not deltas:
+            return _FResp(thread_id=payload.thread_id, fields_applied=[])
+
+        _log = structlog.get_logger(__name__)
+        _label_map = {"personal.name": "name", "personal.email": "email", "personal.phone": "phone"}
+        _MAX_RETRIES = 3
+
+        for _attempt in range(_MAX_RETRIES):
+            try:
+                # Always reload fresh — this gets the latest version and avoids conflict.
+                if self.thread_repository is not None:
+                    _thread = await self.thread_repository.load_or_create(
+                        thread_id=payload.thread_id, customer_id=None,
                     )
+                    _state = self.state_applier.apply(
+                        _thread.state, CombinedExtraction(state_deltas=deltas),
+                    )
+                    await self.thread_repository.save_state(
+                        thread_id=_thread.thread_id,
+                        state=_state,
+                        expected_version=_thread.version,
+                        language="en",
+                    )
+                else:
+                    _mem = self.threads.setdefault(payload.thread_id, ThreadMemory())
+                    _state = self.state_applier.apply(
+                        _mem.state, CombinedExtraction(state_deltas=deltas),
+                    )
+                    self.threads[payload.thread_id].state = _state
+
+                # Collect fields that were actually written.
+                fields_applied = [
+                    _label_map.get(d.path, d.path)
+                    for d in deltas
+                    if getattr(
+                        getattr(_state, d.path.split(".")[0], None),
+                        d.path.split(".")[1], None,
+                    ) is not None
+                    and getattr(
+                        getattr(_state, d.path.split(".")[0], None),
+                        d.path.split(".")[1],
+                    ).value == d.value
+                ]
+
+                _log.info(
+                    "crm_facts_injected",
+                    thread_id=str(payload.thread_id),
+                    source_label=payload.source_label,
+                    fields_applied=fields_applied,
+                    attempt=_attempt,
                 )
+                return _FResp(thread_id=payload.thread_id, fields_applied=fields_applied)
 
-        if deltas:
-            state = self.state_applier.apply(
-                state,
-                CombinedExtraction(state_deltas=deltas),
-            )
+            except Exception as _exc:  # noqa: BLE001
+                _is_conflict = (
+                    "versionconflict" in type(_exc).__name__.lower()
+                    or "version conflict" in str(_exc).lower()
+                    or "conflict" in str(_exc).lower()
+                )
+                if _is_conflict and _attempt < _MAX_RETRIES - 1:
+                    _log.warning("inject_facts_conflict_retry",
+                                 thread_id=str(payload.thread_id), attempt=_attempt)
+                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    continue
+                _log.warning("inject_facts_save_failed",
+                             thread_id=str(payload.thread_id),
+                             attempt=_attempt,
+                             exception_class=type(_exc).__name__)
+                return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
-        # Collect which fields were actually written (state changed).
-        fields_applied: list[str] = []
-        field_label_map = {"personal.name": "name", "personal.email": "email", "personal.phone": "phone"}
-        for delta in deltas:
-            final_value = getattr(
-                getattr(state, delta.path.split(".")[0], None),
-                delta.path.split(".")[1],
-                None,
-            )
-            if final_value is not None and getattr(final_value, "value", None) == delta.value:
-                fields_applied.append(field_label_map.get(delta.path, delta.path))
-
-        # Persist updated state.
-        if self.thread_repository is not None:
-            await self.thread_repository.save_state(
-                thread_id=thread.thread_id,
-                state=state,
-                expected_version=thread.version,
-                language="en",
-            )
-        else:
-            self.threads[thread.thread_id].state = state
-
-        structlog.get_logger(__name__).info(
-            "crm_facts_injected",
-            thread_id=str(payload.thread_id),
-            source_label=payload.source_label,
-            fields_applied=fields_applied,
-        )
-
-        return _FResp(thread_id=payload.thread_id, fields_applied=fields_applied)
+        return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
     async def handle_handover(self, payload: Any) -> Any:
         """Signal a handover between bot and CSR.
