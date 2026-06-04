@@ -199,6 +199,20 @@ async def chat_handover(payload: HandoverRequest, request: Request) -> HandoverR
     return await service.handle_handover(payload)
 
 
+@router.get("/debug/state/{thread_id}")
+async def chat_debug_state(thread_id: UUID, request: Request) -> dict:
+    """Return the thread's extracted state for debugging in the CSR dashboard.
+
+    Shows: personal facts (name/email/phone/timezone), project facts
+    (genre/word_count/manuscript_status), consultation state, and TRG active facts.
+    Requires the same auth as other endpoints.
+    """
+    settings: Settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    return await service.get_thread_debug_state(thread_id)
+
+
 @router.post("/facts", response_model=ChatFactsResponse)
 async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> ChatFactsResponse:
     """Inject verified customer facts (name/email/phone) from the CRM into thread state.

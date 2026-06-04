@@ -1774,6 +1774,83 @@ class ChatService:
         else:
             self.threads[thread.thread_id].state = state
 
+    async def get_thread_debug_state(self, thread_id: Any) -> dict:
+        """Return a structured debug snapshot of a thread's current state.
+
+        Used by the CSR dashboard to show the AI chatbot's extracted facts,
+        consultation status, and TRG context for a conversation.
+        """
+        from uuid import UUID as _UUID
+
+        try:
+            tid = thread_id if isinstance(thread_id, _UUID) else _UUID(str(thread_id))
+        except Exception:
+            return {"error": "invalid_thread_id", "thread_id": str(thread_id)}
+
+        if self.thread_repository is not None:
+            try:
+                thread = await self.thread_repository.load_or_create(
+                    thread_id=tid, customer_id=None
+                )
+                state = thread.state
+                turn_count = thread.turn_count
+            except Exception as exc:
+                return {"error": str(exc), "thread_id": str(tid)}
+        else:
+            memory = self.threads.get(tid)
+            if memory is None:
+                return {"error": "thread_not_found", "thread_id": str(tid)}
+            state = memory.state
+            turn_count = 0
+
+        def _fv(field_obj: object) -> dict | None:
+            val = getattr(field_obj, "value", None)
+            if val is None:
+                return None
+            return {
+                "value": str(val),
+                "confidence": getattr(field_obj, "confidence", None),
+                "source": str(getattr(field_obj, "source", "")),
+            }
+
+        return {
+            "thread_id": str(tid),
+            "turn_count": turn_count,
+            "personal": {
+                "name": _fv(state.personal.name),
+                "email": _fv(state.personal.email),
+                "phone": _fv(state.personal.phone),
+                "timezone": _fv(state.personal.timezone),
+                "preferred_contact_method": _fv(state.personal.preferred_contact_method),
+            },
+            "project": {
+                "title": _fv(state.project.title),
+                "genre": _fv(state.project.genre),
+                "word_count": _fv(state.project.word_count),
+                "page_count": _fv(state.project.page_count),
+                "manuscript_status": _fv(state.project.manuscript_status),
+                "services_discussed": [
+                    {
+                        "service": str(getattr(getattr(s, "service", None), "value", s.service)),
+                        "confidence": getattr(s, "confidence", None),
+                    }
+                    for s in (state.project.services_discussed or [])
+                ],
+            },
+            "commercial": {
+                "budget_range": _fv(state.commercial.budget_range),
+                "timeline": _fv(state.commercial.timeline_expectation),
+            },
+            "consultation": {
+                "stage": getattr(state, "consultation_stage", None),
+                "preferred_call_time": getattr(state, "preferred_call_time", None),
+                "handoff_created": getattr(state, "consultation_handoff_created", False),
+            },
+            "sales_stage": str(getattr(getattr(state, "sales_stage", None), "value", None) or ""),
+            "csr_commitments": list(getattr(state, "csr_commitments", None) or []),
+            "service_metadata": dict(getattr(state, "service_metadata", None) or {}),
+        }
+
     async def handle_inject_facts(self, payload: Any) -> Any:
         """Inject verified CRM facts (name/email/phone) into a thread's state.
 

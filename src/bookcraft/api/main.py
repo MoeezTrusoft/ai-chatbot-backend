@@ -388,7 +388,9 @@ def build_chat_service(
         None
         if session_factory is None
         else ConsultationActionService(
-            repository=ConsultationRepository(session_factory=session_factory)
+            repository=ConsultationRepository(session_factory=session_factory),
+            csr_node_api_url=settings.csr_node_api_url or None,
+            csr_node_timeout=settings.csr_node_consultation_timeout_seconds,
         )
     )
     response_generator = build_response_generator(settings)

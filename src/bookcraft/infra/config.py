@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     llm_provider_mode: Literal["mock", "live"] = "mock"
     llm_request_timeout_seconds: float = 60.0  # raised: let LLM take its time; no timeout fallback
 
+    # CSR Node.js backend — direct API call after consultation is booked so the
+    # appointment always appears on the CSR dashboard regardless of action-event sync.
+    # Both services run on the same server → use localhost + CSR Node port (5050).
+    csr_node_api_url: str = "http://localhost:5050"
+    csr_node_consultation_timeout_seconds: float = 10.0
+
     nda_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
     agreement_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
     nda_template_version: str = "v1.0"

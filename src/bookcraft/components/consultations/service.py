@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import re
+import structlog
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+
+import httpx
 
 from bookcraft.components.consultations.repository import ConsultationRepositoryProtocol
 from bookcraft.components.consultations.schemas import (
@@ -11,6 +14,8 @@ from bookcraft.components.consultations.schemas import (
     ConsultationActionResult,
     CSRProfile,
 )
+
+logger = structlog.get_logger(__name__)
 
 DEFAULT_CSR_ROSTER = [
     CSRProfile(csr_id="jerry-miller", name="Jerry Miller", priority_rank=1),
@@ -23,6 +28,12 @@ DEFAULT_CSR_ROSTER = [
 class ConsultationActionService:
     repository: ConsultationRepositoryProtocol
     csr_roster: list[CSRProfile] = field(default_factory=lambda: list(DEFAULT_CSR_ROSTER))
+    # Optional: direct push to CSR Node.js API so consultation appears on dashboard
+    # immediately without depending on the action-event sync chain.
+    # No token needed — CSR Node.js has no auth; CORS is browser-only and doesn't
+    # apply to server-to-server calls. Uses localhost since both run on same server.
+    csr_node_api_url: str | None = None
+    csr_node_timeout: float = 10.0
     business_start_hour: int = 10
     business_end_hour: int = 19
 
@@ -80,7 +91,7 @@ class ConsultationActionService:
             },
         )
 
-        return ConsultationActionResult(
+        result = ConsultationActionResult(
             appointment_id=record.id,
             lead_id=record.lead_id,
             csr_id=record.csr_id,
@@ -97,6 +108,59 @@ class ConsultationActionService:
             ),
             metadata=record.metadata_,
         )
+
+        # Directly push the consultation to the CSR Node.js API so it appears
+        # on the dashboard immediately — fire-and-forget, never blocks the response.
+        if self.csr_node_api_url:
+            await self._push_to_csr_api(request=request, result=result)
+
+        return result
+
+    async def _push_to_csr_api(
+        self,
+        *,
+        request: ConsultationActionRequest,
+        result: ConsultationActionResult,
+    ) -> None:
+        """POST consultation data directly to the CSR Node.js API.
+
+        This is a reliability layer — the action-event sync already handles this,
+        but a direct call guarantees the consultation shows on the CSR dashboard
+        even if the event sync chain fails.
+        """
+        url = f"{self.csr_node_api_url.rstrip('/')}/api/consultations"
+        # No auth header — CSR Node.js has no token-based auth.
+        # This is server-to-server (localhost), so CORS doesn't apply.
+        headers = {"Content-Type": "application/json"}
+
+        payload = {
+            "name": request.name,
+            "phone": request.phone,
+            "email": request.email,
+            "customerTimezone": request.customer_timezone,
+            "startsAtUtc": result.starts_at_utc.isoformat(),
+            "endsAtUtc": result.ends_at_utc.isoformat(),
+            "customerId": str(request.customer_id) if request.customer_id else None,
+            "externalAppointmentId": str(result.appointment_id),
+            "csrName": result.csr_name,
+            "csrId": result.csr_id,
+            "source": "ai_chatbot",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.csr_node_timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                logger.info(
+                    "csr_api_consultation_push",
+                    status=resp.status_code,
+                    appointment_id=str(result.appointment_id),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "csr_api_consultation_push_failed",
+                error=str(exc),
+                appointment_id=str(result.appointment_id),
+            )
 
     async def _select_csr(
         self,
