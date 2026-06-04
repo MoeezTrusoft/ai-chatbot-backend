@@ -52,6 +52,9 @@ class ContextPack(BaseModel):
     specialist_role: str | None = None
     attachment_policy: str = "metadata_only_no_content_analysis"
     lead_objective_stage: str | None = None
+    # Manuscript upload pitch: True when the author has written content but has
+    # not yet uploaded a file. Drives a one-time free editorial assessment pitch.
+    manuscript_upload_eligible: bool = False
     contact_capture_status: str | None = None
     contact_complete: bool = False  # name + email + phone all present
     lead_created: bool = False

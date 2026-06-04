@@ -209,18 +209,24 @@ class ContactCaptureDetector:
         has_email = email is not None
         has_phone = phone is not None
 
-        # Lead contact ready: name + phone (phone is required; email is optional).
-        lead_contact_ready = has_name and has_phone
-        # Contact complete: name + email + phone (used for second-method enrichment).
+        # Lead contact ready: name + at least one contact method (phone OR email).
+        # Phone is preferred and always solicited, but email-only is a valid path
+        # for customers who cannot provide a phone number (e.g. privacy, hacked).
+        lead_contact_ready = has_name and (has_email or has_phone)
+        # Contact complete: name + email + phone (all three captured).
         contact_complete = has_name and has_email and has_phone
 
         missing: list[str] = []
         if not has_name:
             missing.append("name")
-        if not has_phone:
-            missing.append("phone")  # phone always required
-        if not has_email:
-            missing.append("email")  # email tracked as optional but still listed
+        if not has_phone and not has_email:
+            # Neither contact method — ask for phone first (preferred).
+            missing.append("phone")
+            missing.append("email")
+        elif not has_phone:
+            missing.append("phone")   # ask as supplementary (not blocking)
+        elif not has_email:
+            missing.append("email")   # ask as supplementary (not blocking)
 
         audit.append(f"lead_contact_ready:{lead_contact_ready}")
         audit.append(f"contact_complete:{contact_complete}")

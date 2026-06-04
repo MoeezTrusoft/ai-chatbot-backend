@@ -540,7 +540,10 @@ def _next_question(
             if not context_pack.preferred_call_time:
                 return "preferred_call_time"
             return None
-        return lead_objective_decision.next_question or _contact_next_question(context_pack)
+        # Always use _contact_next_question — it checks known_facts and returns the
+        # most specific missing field. This prevents lead_objective.next_question from
+        # overriding with "name_and_email_or_phone" when name is already captured.
+        return _contact_next_question(context_pack)
 
     # Project-scope clarification: ask Claude to resolve same vs. new project.
     if primary_goal == "clarify_project_scope":
@@ -630,8 +633,11 @@ def _customer_safe_tool_summary(
 def _contact_next_question(context_pack: ContextPack) -> str:
     """Return the most specific contact question given what's already captured.
 
-    Phone is required for consultation; email is optional.
-    Avoids re-asking fields already in known_facts.
+    Phone is preferred and always solicited. However, email alone is a valid
+    contact path when the customer cannot provide a phone (privacy, compromised
+    number, explicit preference). Once name + (email OR phone) are captured
+    the consultation is unblocked — move to call time rather than looping on
+    the missing secondary method.
     """
     known_paths = {kf.path for kf in context_pack.known_facts}
     has_name = "personal.name" in known_paths
@@ -640,12 +646,24 @@ def _contact_next_question(context_pack: ContextPack) -> str:
 
     if not has_name:
         return "name_and_email_or_phone"
-    if not has_phone:
-        # Phone is required — ask for it even when email is already captured.
+
+    # Neither contact method — ask for phone first (preferred).
+    if not has_phone and not has_email:
+        return "name_and_email_or_phone"
+
+    # At least one contact method captured → lead is unblocked.
+    # Ask for the supplementary method (phone if only email, email if only phone)
+    # but do NOT block progression — if the stop_discovery path reaches here it
+    # means the planner already decided to move forward.
+    if has_email and not has_phone:
+        # Email captured, phone missing — ask for phone as a supplementary.
+        # Return missing_phone so the bot asks once, but this path is non-blocking
+        # (contact_capture_result.lead_contact_ready is already True).
         return "missing_phone"
-    if not has_email:
+    if has_phone and not has_email:
         return "missing_email"
-    # All captured — move to call time.
+
+    # Both captured — move to call time.
     return "preferred_call_time"
 
 

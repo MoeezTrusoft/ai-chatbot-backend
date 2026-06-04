@@ -55,8 +55,10 @@ class ConsultationActionRequest(BaseModel):
     def validate_contact(self) -> ConsultationActionRequest:
         if not self.name:
             raise ValueError("consultation_requires_name")
-        if not self.phone:
-            raise ValueError("consultation_requires_phone")
+        # Phone is preferred; email is a valid fallback for customers who cannot
+        # provide a phone number (privacy concerns, compromised number, etc.).
+        if not self.phone and not self.email:
+            raise ValueError("consultation_requires_phone_or_email")
         if not self.customer_timezone:
             raise ValueError("consultation_requires_customer_timezone")
         if self.duration_minutes <= 0:

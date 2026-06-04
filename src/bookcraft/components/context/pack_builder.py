@@ -50,6 +50,16 @@ class ContextPackBuilder:
 
         sales_stage = _string_field_value(state.sales_stage)
 
+        # Manuscript upload pitch eligibility: author has written content but hasn't
+        # uploaded a file yet. Only eligible outside new-project context.
+        _UPLOAD_ELIGIBLE_STATUSES = {"notes_only", "early_draft", "full_draft", "editing_complete"}
+        _has_attachments = bool(getattr(state, "attachments_received", None))
+        manuscript_upload_eligible = (
+            project_event != "new_project"
+            and manuscript_status in _UPLOAD_ELIGIBLE_STATUSES
+            and not _has_attachments
+        )
+
         if project_event != "new_project":
             _append_field_fact(known_facts, "project.genre", "genre", state.project.genre)
             _append_field_fact(
@@ -267,6 +277,12 @@ class ContextPackBuilder:
                     forbidden_reasks.append(_slot)
                 if _slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_slot)
+            # Once a file is uploaded, suppress the upload pitch entirely.
+            for _up_slot in ("manuscript_upload_pitch", "manuscript_upload_eligible"):
+                if _up_slot not in forbidden_reasks:
+                    forbidden_reasks.append(_up_slot)
+                if _up_slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_up_slot)
         lead_created = bool(getattr(state, "lead_created", False))
         contact_info = getattr(state, "contact_info", None) or {}
         # Use sentinel-aware helpers so redacted placeholders never look "ready".
@@ -297,6 +313,9 @@ class ContextPackBuilder:
         _audience_raw = runtime_atoms.get("audience") or getattr(state.project, "audience", None)
         audience: str | None = str(_audience_raw) if _audience_raw else None
         pending_slots: list[str] = list(getattr(state, "pending_slots", None) or [])
+        # Inject the manuscript upload pitch slot when eligible.
+        if manuscript_upload_eligible and "manuscript_upload_pitch" not in pending_slots:
+            pending_slots.append("manuscript_upload_pitch")
         language_ignored_segments: list[dict[str, str]] = []
         for seg in getattr(state, "language_ignored_segments", None) or []:
             if isinstance(seg, dict):
@@ -327,6 +346,26 @@ class ContextPackBuilder:
         answer_before_capture_applied = bool(getattr(state, "answer_before_capture_applied", False))
         # preferred_call_time already in ContextPack from PR 1; refresh from state.
         state_preferred_call_time: str | None = getattr(state, "preferred_call_time", None)
+
+        # CRITICAL: once consultation_stage is set, the customer has committed to a
+        # consultation. All scoping questions (genre, word count, service, deadline)
+        # are irrelevant — those topics belong on the call itself, not in this chat.
+        # Suppress them completely so the bot stays in contact/scheduling mode.
+        if consultation_stage and consultation_stage not in ("", "none"):
+            _consultation_scoping_suppress = {
+                "word_or_page_count", "word_count", "page_count",
+                "genre", "manuscript_stage", "manuscript_status",
+                "deadline", "cover_style",
+            }
+            missing_facts = [f for f in missing_facts if f not in _consultation_scoping_suppress]
+            allowed_next_questions = [
+                q for q in allowed_next_questions if q not in _consultation_scoping_suppress
+            ]
+            for _slot in _consultation_scoping_suppress:
+                if _slot not in forbidden_reasks:
+                    forbidden_reasks.append(_slot)
+                if _slot not in disallowed_next_questions:
+                    disallowed_next_questions.append(_slot)
 
         # Once the customer has affirmed consultation interest (any consultation_stage set),
         # never re-ask "Would you like a consultation?" — they already said yes.
@@ -466,6 +505,7 @@ class ContextPackBuilder:
             assessment_type=assessment_type,
             specialist_role=specialist_role,
             lead_objective_stage=lead_objective_stage,
+            manuscript_upload_eligible=manuscript_upload_eligible,
             contact_capture_status=contact_capture_status,
             contact_complete=contact_complete,
             lead_created=lead_created,
@@ -711,6 +751,22 @@ def _response_hint(pack: ContextPack) -> str | None:
     if pack.preferred_call_time and pack.lead_created:
         parts.append(
             f"Preferred call time captured: {pack.preferred_call_time}. Confirm specialist handoff."
+        )
+    # Manuscript upload pitch: proactively pitch free editorial assessment when
+    # the author has written content but hasn't uploaded a file yet.
+    if pack.manuscript_upload_eligible:
+        status_label = pack.manuscript_status or "written content"
+        parts.append(
+            f"MANUSCRIPT UPLOAD PITCH (manuscript_status: {status_label}): "
+            "The author has written material. At the natural point in the conversation "
+            "— after acknowledging their work — weave in ONE offer of a free editorial assessment: "
+            "'Since you have [chapters/a draft/notes] written, our specialists can provide a "
+            "free editorial assessment — just upload your manuscript or a sample chapter "
+            "directly here in this chat using the 📎 attach button at the bottom of the chat.' "
+            "Say this ONCE, naturally and conversationally. "
+            "Do not repeat it, do not make it sound like an advertisement, "
+            "and do not interrupt the current conversation flow to say it — "
+            "blend it in after you answer whatever the author is asking about."
         )
     return " ".join(parts) if parts else None
 

@@ -146,6 +146,32 @@ class TestConsultationRequestWithTimezone:
         assert req.phone == "8887690431"
         assert req.email is None
 
+    def test_request_with_email_only_no_phone_succeeds(self):
+        """Email alone is a valid contact path (e.g. customer whose phone was hacked)."""
+        req = ConsultationActionRequest(
+            thread_id=uuid4(),
+            name="Chris",
+            email="clarkchris62@yahoo.com",
+            phone=None,
+            customer_timezone="America/Chicago",
+            requested_time_text="as soon as possible",
+        )
+        assert req.email == "clarkchris62@yahoo.com"
+        assert req.phone is None
+
+    def test_request_with_neither_phone_nor_email_fails(self):
+        """Must have at least one contact method."""
+        import pydantic
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            ConsultationActionRequest(
+                thread_id=uuid4(),
+                name="Chris",
+                email=None,
+                phone=None,
+                customer_timezone="America/Chicago",
+                requested_time_text="tomorrow at 3pm",
+            )
+
     @pytest.mark.asyncio
     async def test_schedule_with_eastern_timezone_succeeds(self):
         """End-to-end: 'eastern timezone' → normalized → valid ConsultationActionRequest → scheduled."""

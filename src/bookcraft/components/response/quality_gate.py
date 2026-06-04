@@ -93,8 +93,15 @@ _FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"factors\s+can\s+affect\s+your\s+quote|"
         r"Content\s+complexity\s+drivers|"
         r"engagement\s+model,\s+these\s+factors|"
-        r"specialized\s+non-fiction[^.]{10,}"
-        r")[^\n]{10,}",
+        r"specialized\s+non-fiction[^.]{10,}|"
+        # Specific phrases observed in production RAG bleed incidents:
+        r"editing\s+and\s+proofreading\s+is\s+the\s+main\s+direction\s+here|"
+        r"ghostwriting\s+is\s+the\s+main\s+direction\s+here|"
+        r"I'd\s+confirm\s+the\s+manuscript\s+stage\s+first,\s+then\s+map|"
+        r"Crafting\s+Clarity,\s+Perfecting\s+Prose|"
+        r"Precision\s+in\s+every\s+word;\s+excellence|"
+        r"beyond\s+catching\s+typos\s+-\s+we\s+refine"
+        r")[^\n]{0,}",
         re.IGNORECASE,
     )),
 ]
@@ -444,11 +451,11 @@ class ResponseQualityGate:
 
         # Check 23 — Consultation confirmation requires phone number.
         # Phone is mandatory for scheduling; confirming a call time without it is an error.
-        if _consultation_confirmed_without_phone(text, context_pack):
-            failures.append("consultation_confirmed_without_phone")
-            audit.append("quality:consultation_requires_phone:FAIL")
+        if _consultation_confirmed_without_contact(text, context_pack):
+            failures.append("consultation_confirmed_without_contact")
+            audit.append("quality:consultation_requires_contact:FAIL")
         else:
-            audit.append("quality:consultation_requires_phone:ok")
+            audit.append("quality:consultation_requires_contact:ok")
 
         sales_tone_report = self.style_policy.evaluate(
             text=text,
@@ -513,24 +520,22 @@ class ResponseQualityGate:
         )
 
 
-def _consultation_confirmed_without_phone(text: str, context_pack: ContextPack | None) -> bool:
-    """Fail when the response confirms a consultation time but phone is not yet captured.
+def _consultation_confirmed_without_contact(text: str, context_pack: ContextPack | None) -> bool:
+    """Fail when the response confirms a consultation time but no contact method is captured.
 
-    Catches soft confirmations like 'Tomorrow at 12 PM is confirmed' in addition to
-    explicit scheduling claims, ensuring phone is always collected before confirming.
+    Phone is preferred; email is a valid fallback. A confirmation is only invalid
+    when NEITHER phone nor email is in known_facts.
     """
     if context_pack is None:
         return False
-    # Must contain both a time reference and a confirmation signal.
     if not _SOFT_CONFIRMATION_RE.search(text):
         return False
     if not _TIME_CONFIRMATION_RE.search(text):
         return False
-    # Check whether phone is already in known_facts.
-    has_phone = any(kf.path == "personal.phone" for kf in (context_pack.known_facts or []))
-    if has_phone:
+    known_paths = {kf.path for kf in (context_pack.known_facts or [])}
+    # Valid if phone OR email is captured.
+    if "personal.phone" in known_paths or "personal.email" in known_paths:
         return False
-    # Also allow if contact is complete (all three fields present).
     if getattr(context_pack, "contact_complete", False):
         return False
     return True
@@ -775,6 +780,7 @@ def _missing_next_step(text: str, response_plan: ResponsePlan | None) -> bool:
         "preferred_call_time",
         "name_and_email_or_phone",
         "preferred_call_timezone",
+        "manuscript_upload_pitch",
     }
     if response_plan.next_question in specific_slot_questions:
         # A vague progression phrase alone is not enough.
