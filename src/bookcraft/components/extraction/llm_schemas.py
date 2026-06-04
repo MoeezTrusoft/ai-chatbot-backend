@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ExtractedValue(BaseModel):
@@ -35,6 +35,42 @@ class LLMExtractedFacts(BaseModel):
     """
 
     model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_bare_values(cls, data: Any) -> Any:
+        """Claude sometimes returns a bare string/number instead of an ExtractedValue dict.
+
+        e.g. {"name": "Babar Azam"} instead of {"name": {"value": "Babar Azam", ...}}
+
+        Wrap those bare values into a minimal ExtractedValue dict so field
+        validation never raises a ValidationError for correctly identified facts.
+        """
+        if not isinstance(data, dict):
+            return data
+        _EV_FIELDS = {
+            "name", "email", "phone", "preferred_contact_method", "timezone",
+            "book_title", "genre", "sub_genre", "word_count", "page_count",
+            "manuscript_status", "target_completion_date", "budget_range",
+            "timeline", "service_interest", "page_dimensions", "cover_preferences",
+            "section_structure", "target_audience",
+        }
+        for key, value in list(data.items()):
+            if key not in _EV_FIELDS:
+                continue
+            if value is None:
+                continue
+            # If it's already a dict (proper ExtractedValue) leave it alone.
+            if isinstance(value, dict):
+                continue
+            # Bare string / int / float → wrap into ExtractedValue shape.
+            if isinstance(value, (str, int, float, bool)):
+                data[key] = {
+                    "value": value,
+                    "confidence": 0.85,
+                    "source_quote": str(value),
+                }
+        return data
 
     # Personal info → personal.* FieldMeta paths
     name: ExtractedValue | None = None
