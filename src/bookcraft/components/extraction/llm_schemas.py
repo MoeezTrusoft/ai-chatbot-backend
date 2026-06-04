@@ -1,16 +1,29 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ExtractedValue(BaseModel):
     """A single value extracted by the LLM with per-field confidence and provenance."""
 
-    model_config = ConfigDict(extra="forbid")
+    # extra="ignore" so unexpected sub-fields never raise ValidationError.
+    # Confidence is coerced from string to float because Claude occasionally
+    # returns "0.92" (string) instead of 0.92 (float), which previously caused
+    # a ValidationError that silently dropped the entire extraction result.
+    model_config = ConfigDict(extra="ignore")
 
     value: Any
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.9)
     source_quote: str = ""  # verbatim phrase from user message that justifies this extraction
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        """Accept strings like '0.92' and clamp to [0, 1]."""
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.9  # safe fallback confidence
 
 
 class LLMExtractedFacts(BaseModel):
