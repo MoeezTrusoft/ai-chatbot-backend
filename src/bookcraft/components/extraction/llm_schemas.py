@@ -56,6 +56,14 @@ class LLMExtractedFacts(BaseModel):
             "section_structure", "target_audience",
         }
         for key, value in list(data.items()):
+            # Fix coreference_notes: Claude returns "" (string) instead of [] (list).
+            if key == "coreference_notes":
+                if isinstance(value, str):
+                    data[key] = [value] if value.strip() else []
+                elif value is None:
+                    data[key] = []
+                continue
+
             if key not in _EV_FIELDS:
                 continue
             if value is None:
