@@ -1640,13 +1640,29 @@ class ChatService:
                     "recorded_at": datetime.now(UTC).isoformat(),
                 }
             )
+            base_action_events = self._build_action_events(action_result)
+
+            # When the planner decides the customer should book a consultation
+            # (consultation_scoping goal) and no contact info is captured yet,
+            # emit a show_consultation_form event so the chat widget renders a
+            # booking button. Claude's intent drives this — not backend heuristics.
+            _show_form_event: list[dict[str, object]] = []
+            if (
+                response_plan is not None
+                and response_plan.primary_goal == "consultation_scoping"
+                and not getattr(state.personal.name, "value", None)
+                and not getattr(state.personal.phone, "value", None)
+                and not any(e.get("type") == "show_consultation_form" for e in base_action_events)
+            ):
+                _show_form_event = [{"type": "show_consultation_form"}]
+
             return ChatTurnResponse(
                 thread_id=thread_id,
                 bubbles=bubbles,
                 intent=intent,
                 language_status=language.language,
                 debug_event_ids=self._debug_event_ids(event_ids),
-                action_events=self._build_action_events(action_result),
+                action_events=base_action_events + _show_form_event,
             )
 
     async def handle_greet(self, payload: Any) -> Any:
