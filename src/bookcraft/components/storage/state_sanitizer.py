@@ -37,6 +37,18 @@ def _sanitize_personal_info(snapshot: dict[str, Any]) -> None:
     _replace_field_meta_value(personal, "email", _REDACTED_EMAIL)
     _replace_field_meta_value(personal, "phone", _REDACTED_PHONE)
 
+    # BUG-008: contact_info is a plain dict that only goes through regex-based
+    # redact_mapping(), which cannot redact plain name strings. Explicitly
+    # mirror the same sentinels so contact_info stays consistent with personal.
+    contact_info = snapshot.get("contact_info")
+    if isinstance(contact_info, dict):
+        if contact_info.get("name") is not None:
+            contact_info["name"] = _REDACTED_NAME
+        if contact_info.get("email") is not None:
+            contact_info["email"] = _REDACTED_EMAIL
+        if contact_info.get("phone") is not None:
+            contact_info["phone"] = _REDACTED_PHONE
+
 
 def _replace_field_meta_value(
     container: dict[str, Any],

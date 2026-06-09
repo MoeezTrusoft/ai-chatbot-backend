@@ -150,13 +150,19 @@ class ConsultationActionService:
         try:
             async with httpx.AsyncClient(timeout=self.csr_node_timeout) as client:
                 resp = await client.post(url, json=payload, headers=headers)
-                logger.info(
-                    "csr_api_consultation_push",
-                    status=resp.status_code,
-                    appointment_id=str(result.appointment_id),
-                )
+                if resp.status_code >= 400:
+                    logger.error(
+                        "csr_api_consultation_push_failed",
+                        status_code=resp.status_code,
+                        response_body=resp.text[:500],
+                    )
+                else:
+                    logger.info(
+                        "csr_api_consultation_push_success",
+                        status_code=resp.status_code,
+                    )
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
+            logger.error(
                 "csr_api_consultation_push_failed",
                 error=str(exc),
                 appointment_id=str(result.appointment_id),

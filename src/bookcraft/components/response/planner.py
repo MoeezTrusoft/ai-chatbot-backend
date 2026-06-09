@@ -8,6 +8,7 @@ from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
 from bookcraft.components.tools.governance import ToolGovernanceDecision
+from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
 
 # Type alias to avoid circular import at runtime; resolved via Any in signatures.
@@ -391,9 +392,10 @@ def _primary_goal(
         if cod_goal:
             return str(cod_goal)
 
-    if context_pack.lead_created or (
-        lead_objective_decision is not None and lead_objective_decision.stage == "lead_created"
-    ):
+    # Only confirm lead creation on the turn it was JUST created (lod_move == "create_lead").
+    # context_pack.lead_created persists across all subsequent turns and must not keep
+    # triggering lead_created_confirmation after the first acknowledgement.
+    if lead_objective_decision is not None and getattr(lead_objective_decision, "objective_move", None) == "create_lead":
         return "lead_created_confirmation"
 
     # Greeting-only turns always map to greeting_welcome regardless of classifier output.
@@ -467,7 +469,10 @@ def _primary_goal(
     ):
         return "process_explanation"
 
-    if context_pack.active_service == "cover_design_illustration":
+    # Manuscript status updates (e.g. "I just finished my chapter!") should be celebrated
+    # even when inside a cover design scoping flow — don't interrupt good news with scoping.
+    _has_manuscript_update = QueryIntentType.MANUSCRIPT_STATUS_UPDATE in (intent.query_secondary or [])
+    if context_pack.active_service == "cover_design_illustration" and not _has_manuscript_update:
         return "cover_design_scoping"
 
     return _GOAL_BY_QUERY.get(intent.query_primary.value, "continue_discovery")

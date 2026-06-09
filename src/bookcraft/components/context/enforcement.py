@@ -129,10 +129,12 @@ _NEGATED_SERVICE_RE = re.compile(
 # These mean the author has ALREADY completed that service and doesn't need it.
 _COMPLETED_SERVICE_RE = re.compile(
     r"\b(?:"
-    r"done\s+with\s+(?:editing|proofreading|ghostwriting|formatting|writing)|"
+    r"done\s+with\s+(?:editing|proofreading|ghostwriting|formatting|writing|(?:the\s+)?cover(?:\s+design)?)|"
     r"(?:editing|proofreading|writing|formatting)\s+(?:is\s+)?(?:done|complete|finished|ready)|"
-    r"already\s+(?:edited|proofread|written|formatted|published)|"
-    r"finished\s+(?:editing|proofreading|writing|formatting)|"
+    r"(?:the\s+)?(?:book\s+)?cover(?:\s+design)?\s+(?:is\s+)?(?:done|complete|finished|ready)|"
+    r"cover(?:\s+design)?\s+(?:is\s+)?(?:done|complete|finished|ready)|"
+    r"already\s+(?:edited|proofread|written|formatted|published|(?:have\s+a\s+)?cover(?:\s+design)?)|"
+    r"finished\s+(?:editing|proofreading|writing|formatting|(?:the\s+)?cover(?:\s+design)?)|"
     r"editing\s+(?:and\s+proofreading\s+)?(?:is\s+)?(?:done|complete|finished)"
     r")\b",
     re.IGNORECASE,
@@ -143,6 +145,7 @@ _COMPLETED_SERVICE_MAP: dict[re.Pattern[str], str] = {
     re.compile(r"\bghostwriting\b|\bwriting\b", re.I): "ghostwriting",
     re.compile(r"\bformatting\b", re.I): "interior_formatting",
     re.compile(r"\bpublishing\b", re.I): "publishing_distribution",
+    re.compile(r"\bcover(?:\s+design)?\b", re.I): "cover_design_illustration",
 }
 
 # ---------------------------------------------------------------------------

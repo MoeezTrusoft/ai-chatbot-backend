@@ -24,7 +24,12 @@ from bookcraft.components.sales.current_question_priority import CurrentQuestion
 # ---------------------------------------------------------------------------
 
 _CALL_TIME_RE = re.compile(
-    r"\b(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+    r"\b(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm))?|"
+    r"\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm))?|"
+    r"(?:this|next)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?|"
+    r"(?:eastern|central|mountain|pacific|est|cst|mst|pst)(?:\s+time)?|"
+    r"east|west|"
+    r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
     r"(?:\s+(?:morning|afternoon|evening|at\s+\d+(?:am|pm)?))?|"
     r"tomorrow(?:\s+(?:morning|afternoon|evening))?|"
     r"next\s+(?:week|monday|tuesday|wednesday|thursday|friday)|"
@@ -40,6 +45,19 @@ _CALL_TIME_RE = re.compile(
 def _extract_preferred_call_time(text: str) -> str | None:
     m = _CALL_TIME_RE.search(text)
     return m.group(0).strip() if m else None
+
+
+# Detects messages where the user is announcing manuscript/project status — these should
+# be celebrated rather than immediately redirected to call-time capture.
+_MANUSCRIPT_STATUS_RE = re.compile(
+    r"\b(?:"
+    r"(?:just\s+)?(?:finished|completed|done|wrapped\s+up|finalized)\s+"
+    r"(?:the\s+)?(?:final\s+)?(?:chapter|draft|manuscript|book|novel|writing|editing|revision)|"
+    r"(?:my|the)\s+(?:manuscript|book|novel|draft|chapter)\s+(?:is\s+)?(?:done|ready|complete|finished)|"
+    r"(?:i've|i\s+have)\s+(?:just\s+)?(?:finished|completed)\s+(?:writing|the\s+)?(?:it|my|the)"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +116,7 @@ class ConsultationObjectiveEngine:
 
         preferred_call_time: str | None = getattr(state, "preferred_call_time", None)
         consultation_stage: str = getattr(state, "consultation_stage", None) or "engaging"
+        handoff_created: bool = bool(getattr(state, "consultation_handoff_created", False))
 
         lead_created: bool = bool(getattr(state, "lead_created", False))
         lod_move: str = getattr(
@@ -109,13 +128,15 @@ class ConsultationObjectiveEngine:
         audit.append(f"lead_created:{lead_created}")
         audit.append(f"preferred_call_time_present:{preferred_call_time is not None}")
         audit.append(f"consultation_stage:{consultation_stage}")
+        audit.append(f"handoff_created:{handoff_created}")
 
         # Whether the lead was already confirmed from a PREVIOUS turn.
         # (lead_created on state = persisted; lod_move == "create_lead" means creating *now*)
         lead_confirmed_prior_turn = lead_created and lod_move not in {"create_lead"}
 
         # ── Priority 1: contact + call time → handoff ─────────────────────
-        if contact_ready and preferred_call_time:
+        # Skip if handoff was already created on a prior turn — don't re-trigger it.
+        if contact_ready and preferred_call_time and not handoff_created and lod_move not in {"create_lead"}:
             audit.append("move:create_handoff")
             return ConsultationObjectiveDecision(
                 stage="consultation_pending",
@@ -131,7 +152,13 @@ class ConsultationObjectiveEngine:
         # ── Priority 2: contact ready (from a PRIOR turn), call time missing → ask for it ──
         # If we are creating the lead *this turn* (lod_move == "create_lead"), let the
         # lead-creation confirmation happen first; the call-time ask comes next turn.
-        if contact_ready and not preferred_call_time and lead_confirmed_prior_turn:
+        # Skip entirely if handoff is already created — no need to keep asking.
+        # Also skip if the user is announcing manuscript/project news — celebrate first,
+        # ask for call time next turn so we don't interrupt their moment.
+        _is_manuscript_update = bool(_MANUSCRIPT_STATUS_RE.search(message))
+        if _is_manuscript_update:
+            audit.append("skip_priority2:manuscript_status_update")
+        if contact_ready and not preferred_call_time and lead_confirmed_prior_turn and not handoff_created and not _is_manuscript_update:
             # Try to extract call time from the *current* message in case the
             # user provided it on the same turn as a follow-up.
             extracted_time = _extract_preferred_call_time(message)

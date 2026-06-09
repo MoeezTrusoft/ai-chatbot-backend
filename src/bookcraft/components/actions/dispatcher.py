@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+import structlog
+
 from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
@@ -31,12 +33,18 @@ from bookcraft.components.storage.action_idempotency_repository import (
 )
 
 
+logger = structlog.get_logger(__name__)
+
+
 def _make_idempotency_key(thread_id: UUID, action_type: str, slots: dict[str, object]) -> str:
     """Stable key: prevents double-dispatch on concurrent/retried confirmations."""
     # Sort slots for determinism; exclude per-call volatile fields.
     stable = {k: v for k, v in sorted(slots.items()) if k not in ("requested_time_text",)}
     raw = f"{thread_id}:{action_type}:{json.dumps(stable, sort_keys=True, default=str)}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+_DEV_ENVS: frozenset[str] = frozenset({"test", "dev", "development", "local"})
 
 
 @dataclass(slots=True)
@@ -53,6 +61,11 @@ class SalesActionDispatcher:
     action_idempotency_repository: ActionIdempotencyRepository = field(
         default_factory=ActionIdempotencyRepository
     )
+    # Controls synthetic-success behaviour when lead_service is None.
+    # In test/dev envs (app_env in _DEV_ENVS) a fake success is returned so e2e tests
+    # can exercise post-lead flows without a real DB.  In production this must be False
+    # so a missing lead_service surfaces as a hard failure rather than silent data loss.
+    app_env: str = "dev"
 
     async def dispatch(
         self,
@@ -215,13 +228,23 @@ class SalesActionDispatcher:
                     duration_ms=_elapsed_ms(started),
                 )
 
+        name_val = _string_or_none(slots.get("name"))
+        if not name_val:
+            return ActionResult(
+                success=False,
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                error_code="missing_contact",
+                internal_summary="Customer name is missing — cannot schedule consultation",
+                duration_ms=_elapsed_ms(started),
+            )
+
         try:
             result = await self.consultation_action_service.schedule(
                 ConsultationActionRequest(
                     customer_id=customer_id,
                     lead_id=lead_id,
                     thread_id=thread_id,
-                    name=_string_or_none(slots.get("name")) or "",
+                    name=name_val,
                     email=_string_or_none(slots.get("email")),
                     phone=_string_or_none(slots.get("phone")),
                     services=[
@@ -230,7 +253,7 @@ class SalesActionDispatcher:
                     if isinstance(slots.get("services"), list)
                     else [],
                     requested_time_text=_string_or_none(slots.get("requested_time_text")) or "",
-                    customer_timezone=_string_or_none(slots.get("customer_timezone")),
+                    customer_timezone=_string_or_none(slots.get("customer_timezone")) or _string_or_none(slots.get("timezone")) or "UTC",
                     business_timezone=_string_or_none(slots.get("business_timezone"))
                     or "America/Chicago",
                     duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,
@@ -272,32 +295,26 @@ class SalesActionDispatcher:
         started: float,
     ) -> ActionResult:
         if self.lead_service is None:
-            pseudo_id = str(uuid4())
-            slots = plan.collected_slots
+            if self.app_env in _DEV_ENVS:
+                # Dev/test: return synthetic success so e2e tests can exercise post-lead flows.
+                return ActionResult(
+                    success=True,
+                    action_type=ActionType.CREATE_LEAD,
+                    customer_safe_summary="Got it! I've noted your details.",
+                    internal_summary="synthetic lead (no lead_service in dev/test env)",
+                    payload={"synthetic": True},
+                    duration_ms=_elapsed_ms(started),
+                )
+            logger.critical(
+                "lead_service_not_configured",
+                message="lead_service is None — no lead will be created; check startup config",
+            )
             return ActionResult(
+                success=False,
                 action_type=ActionType.CREATE_LEAD,
-                success=True,
-                result_id=pseudo_id,
-                customer_safe_summary=(
-                    "Thanks - your details are captured and a senior specialist "
-                    "will follow up shortly."
-                ),
-                internal_summary="LeadService unavailable; synthetic lead result used.",
-                payload={
-                    "lead": {
-                        "id": pseudo_id,
-                        "name": _string_or_none(slots.get("name")),
-                        "email": _string_or_none(slots.get("email")),
-                        "phone": _string_or_none(slots.get("phone")),
-                        "preferred_contact_method": _string_or_none(
-                            slots.get("preferred_contact_method")
-                        ),
-                    },
-                    "created": True,
-                    "updated_fields": [],
-                    "recommended_follow_up_slots": plan.recommended_follow_up_slots,
-                    "synthetic": True,
-                },
+                error_code="service_unavailable",
+                customer_safe_summary="I got your details but couldn't save them right now.",
+                internal_summary="lead_service is None — check startup configuration",
                 duration_ms=_elapsed_ms(started),
             )
 
@@ -339,13 +356,19 @@ class SalesActionDispatcher:
                 duration_ms=_elapsed_ms(started),
             )
         except Exception as exc:
+            logger.error(
+                "lead_creation_exception",
+                exc_class=exc.__class__.__name__,
+                detail=str(exc)[:500],
+                thread_id=str(getattr(self, "_current_thread_id", "unknown")),
+            )
             return ActionResult(
                 action_type=ActionType.CREATE_LEAD,
                 success=False,
                 customer_safe_summary=(
                     "I got your contact details, but I could not save the lead just now."
                 ),
-                internal_summary=exc.__class__.__name__,
+                internal_summary=f"{exc.__class__.__name__}: {str(exc)[:200]}",
                 error_code="lead_creation_failed",
                 duration_ms=_elapsed_ms(started),
             )

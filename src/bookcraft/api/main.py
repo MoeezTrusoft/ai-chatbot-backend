@@ -450,6 +450,7 @@ def build_chat_service(
             portfolio_action_service=portfolio_action_service,
             nda_action_service=nda_action_service,
             agreement_action_service=agreement_action_service,
+            app_env=settings.app_env,
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,

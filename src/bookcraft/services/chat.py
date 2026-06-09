@@ -102,6 +102,7 @@ from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
     ThreadRepository,
+    ThreadVersionConflictError,
 )
 from bookcraft.components.tools.governance import ToolGovernanceGate
 from bookcraft.components.csr.commitment_detector import detect_commitments
@@ -617,7 +618,15 @@ class ChatService:
                 state.latest_specialist_role = attachment_intake_result.specialist_role
             contact_capture = self.contact_capture_detector.extract(payload.message)
             contact_capture = self.contact_capture_detector.merge_with_state(contact_capture, state)
-            state.contact_info = contact_capture.contact.model_dump(mode="json")
+            # BUG-023: full overwrite loses previously-captured fields that were
+            # redacted in persisted state but live in the in-memory contact_capture.
+            # Merge instead — only update fields that are non-None in the new capture.
+            _new_contact = contact_capture.contact.model_dump(mode="json")
+            _existing_ci = dict(state.contact_info or {})
+            for _field in ("name", "email", "phone", "source", "confidence"):
+                if _new_contact.get(_field) is not None:
+                    _existing_ci[_field] = _new_contact[_field]
+            state.contact_info = _existing_ci
             # Phase 4 hotfix: sync contact_capture into personal + lead state so that
             # contact_slots() can find the contact on all subsequent turns.
             _sync_contact_capture_to_state(state, contact_capture)
@@ -1427,12 +1436,30 @@ class ChatService:
             state.last_user_message = (processed.normalized or "")[:300]
             state.last_assistant_text = final_text[:300]
             if self.thread_repository is not None:
-                await self.thread_repository.save_state(
-                    thread_id=thread_id,
-                    state=state,
-                    expected_version=thread.version,
-                    language=language.language,
-                )
+                _save_attempts = 0
+                while True:
+                    try:
+                        await self.thread_repository.save_state(
+                            thread_id=thread_id,
+                            state=state,
+                            expected_version=thread.version,
+                            language=language.language,
+                        )
+                        break
+                    except ThreadVersionConflictError:
+                        _save_attempts += 1
+                        if _save_attempts >= 3:
+                            structlog.get_logger(__name__).warning(
+                                "thread_version_conflict_save_skipped",
+                                thread_id=str(thread_id),
+                                attempts=_save_attempts,
+                            )
+                            break
+                        # Reload thread to get latest version, then retry save.
+                        _fresh = await self.thread_repository.load_or_create(
+                            thread_id=thread_id, customer_id=None
+                        )
+                        thread = _fresh
             else:
                 self.threads[thread_id].state = state
 
@@ -2276,11 +2303,20 @@ class ChatService:
         if action_result.action_type == ActionType.CREATE_LEAD:
             lead = action_result.payload.get("lead")
             if not isinstance(lead, dict):
+                # Synthetic lead (dev/test env with no lead_service): mark created so
+                # post-lead flows work in test, but no real DB record exists.
+                if action_result.payload.get("synthetic"):
+                    state.lead_created = True
+                    state.lead_created_acknowledged = True
+                    state.lead_objective_stage = "lead_created"
+                    state.sales_actions.lead.created = True
+                    state.sales_actions.lead.last_updated_at = datetime.now(UTC)
                 return
 
             state.sales_actions.lead.lead_id = str(lead.get("id") or action_result.result_id)
             state.lead_id = state.sales_actions.lead.lead_id
             state.lead_created = True
+            state.lead_created_acknowledged = True
             state.lead_objective_stage = "lead_created"
             state.sales_actions.lead.name = _optional_string(lead.get("name"))
             state.sales_actions.lead.email = _optional_string(lead.get("email"))
