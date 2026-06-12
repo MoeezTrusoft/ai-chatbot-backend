@@ -159,14 +159,16 @@ class TestExtractionVocabulary:
         assert len(deltas) == 1
         d = deltas[0]
         assert d.path == "project.manuscript_status"
-        assert d.value == "not_started"
+        # "not_started" is coerced to the canonical ManuscriptStatus.IDEA before
+        # persisting — the raw prompt vocabulary fails ThreadState validation.
+        assert d.value == "idea"
         assert d.confidence == 0.92  # above gate → stored at full confidence
 
     def test_low_confidence_extraction_downscaled(self):
         """Hedged manuscript extraction goes through the 0.3 fill gate."""
         facts = LLMExtractedFacts(
             manuscript_status=ExtractedValue(
-                value="maybe notes",
+                value="notes_only",
                 confidence=0.70,
                 source_quote="I think I have some notes",
             )

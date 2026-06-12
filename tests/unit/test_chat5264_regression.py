@@ -184,7 +184,10 @@ class TestManuscriptStatusExtraction5264:
         )
         deltas = _facts_to_deltas(facts)
         assert deltas[0].path == "project.manuscript_status"
-        assert deltas[0].value == "notes_only"
+        # The prompt's coarse "notes_only" is coerced to the canonical enum
+        # value (rough_notes) before persisting — raw vocabulary would fail
+        # ThreadState validation on the next load.
+        assert deltas[0].value == "rough_notes"
         assert deltas[0].confidence == 0.92
 
     def test_chapter_summary_maps_to_notes_only(self):
@@ -196,7 +199,7 @@ class TestManuscriptStatusExtraction5264:
             )
         )
         deltas = _facts_to_deltas(facts)
-        assert deltas[0].value == "notes_only"
+        assert deltas[0].value == "rough_notes"
 
     def test_partially_outlined_maps_to_notes_only(self):
         facts = LLMExtractedFacts(
@@ -207,7 +210,7 @@ class TestManuscriptStatusExtraction5264:
             )
         )
         deltas = _facts_to_deltas(facts)
-        assert deltas[0].value == "notes_only"
+        assert deltas[0].value == "rough_notes"
 
     def test_pack_suppresses_manuscript_stage_after_notes_only_set(self):
         state = ThreadState()

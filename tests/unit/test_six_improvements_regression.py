@@ -143,7 +143,9 @@ class TestManuscriptExtractionRule8:
         deltas = _facts_to_deltas(facts)
         assert len(deltas) == 1
         assert deltas[0].path == "project.manuscript_status"
-        assert deltas[0].value == "early_draft"
+        # The prompt's coarse "early_draft" is coerced to the canonical enum
+        # value before persisting (raw vocabulary fails ThreadState validation).
+        assert deltas[0].value == "partial_draft"
         assert deltas[0].confidence == 0.92
 
     def test_facts_to_deltas_maps_not_started(self):
@@ -154,7 +156,8 @@ class TestManuscriptExtractionRule8:
             )
         )
         deltas = _facts_to_deltas(facts)
-        assert deltas[0].value == "not_started"
+        # "not_started" → canonical ManuscriptStatus.IDEA ("idea").
+        assert deltas[0].value == "idea"
 
     def test_low_confidence_downscaled(self):
         facts = LLMExtractedFacts(

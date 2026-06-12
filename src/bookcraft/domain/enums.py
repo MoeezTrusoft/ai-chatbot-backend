@@ -83,6 +83,47 @@ class ManuscriptStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+# Aliases that map non-canonical status strings onto the v2 taxonomy above.
+# Two distinct sources feed these in: the legacy enum values, and the LLM
+# metadata extractor's deliberately coarse 5-value vocabulary (see
+# llm_extractor's prompt). Neither set is a valid ``ManuscriptStatus`` on its
+# own, so they MUST be coerced before being stored on ThreadState — otherwise
+# the value round-trips fine in memory but fails ``model_validate`` on the next
+# load, 500-ing every subsequent turn of that thread.
+_MANUSCRIPT_STATUS_ALIASES: dict[str, ManuscriptStatus] = {
+    # Legacy enum values.
+    "idea_only": ManuscriptStatus.IDEA,
+    "completed_draft": ManuscriptStatus.COMPLETED,
+    # LLM extractor coarse vocabulary.
+    "not_started": ManuscriptStatus.IDEA,
+    "notes_only": ManuscriptStatus.ROUGH_NOTES,
+    "early_draft": ManuscriptStatus.PARTIAL_DRAFT,
+    "full_draft": ManuscriptStatus.DRAFT,
+    "editing_complete": ManuscriptStatus.EDITED,
+}
+
+
+def coerce_manuscript_status(raw: object) -> ManuscriptStatus | None:
+    """Best-effort parse of a raw status value to the canonical enum.
+
+    Accepts canonical ``ManuscriptStatus`` members/values, legacy aliases, and
+    the LLM extractor's coarse vocabulary. Returns ``None`` when the value is
+    empty or cannot be mapped, so callers can drop unrecognised statuses rather
+    than persist something that will fail validation later.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, ManuscriptStatus):
+        return raw
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+    try:
+        return ManuscriptStatus(text)
+    except ValueError:
+        return _MANUSCRIPT_STATUS_ALIASES.get(text)
+
+
 class ContactMethod(StrEnum):
     EMAIL = "email"
     PHONE = "phone"

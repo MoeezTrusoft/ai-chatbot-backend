@@ -23,7 +23,7 @@ from prometheus_client import Counter, Histogram
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import StateDelta
 from bookcraft.components.llm.protocols import LLMProvider
-from bookcraft.domain.enums import Source
+from bookcraft.domain.enums import Source, coerce_manuscript_status
 from bookcraft.domain.state import ThreadState
 
 logger = structlog.get_logger(__name__)
@@ -321,6 +321,17 @@ def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
                 raw_value = int(raw_value)
             except (TypeError, ValueError):
                 continue
+
+        # The extraction prompt uses a coarse 5-value vocabulary
+        # (not_started / notes_only / early_draft / full_draft / editing_complete)
+        # that is NOT a valid ManuscriptStatus. Map it to the canonical enum
+        # before persisting; drop the delta if it cannot be mapped so we never
+        # write a value that fails validation on the next load.
+        if field_name == "manuscript_status":
+            coerced = coerce_manuscript_status(raw_value)
+            if coerced is None:
+                continue
+            raw_value = coerced.value
 
         # Guard: never persist a book's author as the customer's name. Dropping the
         # delta keeps personal.name empty so the consultation flow still asks for the

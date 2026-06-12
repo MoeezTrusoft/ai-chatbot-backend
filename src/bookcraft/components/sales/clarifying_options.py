@@ -83,7 +83,7 @@ _OPTIONS_REGISTRY: dict[str, list[ClarifyingOption]] = {
         _opt("rough_notes", "Rough notes", "scattered ideas or journal entries"),
         _opt("outline", "Outline", "structured plan but not written"),
         _opt("partial_draft", "Partial draft", "some chapters written"),
-        _opt("full_draft", "Full draft", "complete but needs work"),
+        _opt("draft", "Full draft", "complete but needs work"),
         _opt("completed", "Completed manuscript", "ready for editing or publishing"),
     ],
     "how_can_we_help": [

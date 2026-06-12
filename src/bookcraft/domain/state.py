@@ -1,9 +1,15 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from bookcraft.domain.enums import ContactMethod, ManuscriptStatus, SalesStage, ServiceCategory
+from bookcraft.domain.enums import (
+    ContactMethod,
+    ManuscriptStatus,
+    SalesStage,
+    ServiceCategory,
+    coerce_manuscript_status,
+)
 from bookcraft.domain.meta import FieldMeta
 
 
@@ -46,6 +52,30 @@ class ProjectInfo(BaseModel):
     genre_candidates: list[str] = Field(default_factory=list)
     book_formats: list[str] = Field(default_factory=list)  # e.g. ["picture_book"]
     audience: str | None = None  # e.g. "children" — only when explicitly evidenced
+
+    @field_validator("manuscript_status", mode="before")
+    @classmethod
+    def _coerce_manuscript_status(cls, value: Any) -> Any:
+        """Coerce legacy / coarse status strings to the canonical enum on load.
+
+        Persisted threads may carry pre-fix values (e.g. ``not_started``) that
+        are no longer valid enum members. Without this, ``model_validate`` raises
+        and every subsequent turn of that thread 500s. We rewrite the inner
+        ``value`` to a canonical status (or ``None`` when unmappable) so the
+        thread keeps loading instead of becoming permanently wedged.
+        """
+        if not isinstance(value, dict):
+            return value
+        inner = value.get("value")
+        if inner is None:
+            return value
+        coerced = coerce_manuscript_status(inner)
+        if coerced is None and inner not in (None, ""):
+            # Unmappable legacy value: clear it rather than crash on load.
+            return {**value, "value": None}
+        if coerced is not None and coerced.value != inner:
+            return {**value, "value": coerced.value}
+        return value
 
 
 class CommercialInfo(BaseModel):

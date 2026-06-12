@@ -91,9 +91,22 @@ class ContextPackBuilder:
 
         sales_stage = _string_field_value(state.sales_stage)
 
-        # Manuscript upload pitch eligibility: author has written content but hasn't
-        # uploaded a file yet. Only eligible outside new-project context.
-        _UPLOAD_ELIGIBLE_STATUSES = {"notes_only", "early_draft", "full_draft", "editing_complete"}
+        # Manuscript upload pitch eligibility: author has written/recorded tangible
+        # content (anything past a bare idea) but hasn't uploaded a file yet. Only
+        # eligible outside new-project context. Uses canonical ManuscriptStatus
+        # values — the stored status is always coerced to this taxonomy.
+        _UPLOAD_ELIGIBLE_STATUSES = {
+            "rough_notes",
+            "journal_entries",
+            "voice_memo",
+            "outline",
+            "in_progress",
+            "partial_draft",
+            "draft",
+            "completed",
+            "edited",
+            "published",
+        }
         _has_attachments = bool(getattr(state, "attachments_received", None))
         manuscript_upload_eligible = (
             project_event != "new_project"
