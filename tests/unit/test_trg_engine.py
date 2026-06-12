@@ -94,7 +94,8 @@ async def test_repetition_signal_counts_repeated_user_messages() -> None:
 
     assert result.repetition_signal is not None
     assert result.repetition_signal.repeated is True
-    assert any(edge.relation_type == RelationType.REPEATS for edge in result.added_edges)
+    # Self-edges (node → itself) are suppressed; the repetition signal alone is used downstream.
+    assert not any(edge.relation_type == RelationType.REPEATS for edge in result.added_edges)
 
 
 @pytest.mark.asyncio

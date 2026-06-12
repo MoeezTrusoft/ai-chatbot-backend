@@ -34,6 +34,7 @@ from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
+from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.context.entity_index import ConversationEntityIndex
 from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
@@ -47,6 +48,7 @@ from bookcraft.components.intent import (
 )
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.leads import LeadRepository, LeadService
+import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.portfolio.tools import register_portfolio_tools
@@ -130,7 +132,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else "test_dev"
             ),
         )
+        # Warm up the shared HTTP connection pool so the first LLM call does
+        # not pay for client initialisation.  Skipped in test mode because
+        # adapters use MockLLMAdapter there and we never want a real client.
+        if resolved_settings.app_env != "test" and resolved_settings.llm_provider_mode != "mock":
+            await _adapters_module.get_shared_client(
+                read_timeout=(
+                    resolved_settings.llm_read_timeout_generation_seconds
+                    if resolved_settings.llm_bounded_timeouts_enabled
+                    else None
+                )
+            )
         yield
+        await _adapters_module.close_shared_client()
         db_engine = getattr(app.state, "db_engine", None)
         if db_engine is not None:
             await db_engine.dispose()
@@ -428,6 +442,10 @@ def build_chat_service(
         entity_index=entity_index,
         csr_summarizer=csr_summarizer,
         formatter=ResponseFormatter(),
+        context_pack_builder=ContextPackBuilder(
+            budget_enabled=settings.context_pack_budget_enabled,
+            hint_token_budget=settings.context_pack_hint_token_budget,
+        ),
         rag_retriever=rag_retriever,
         pricing_engine=pricing_engine,
         portfolio_engine=portfolio_engine,
@@ -513,6 +531,9 @@ def build_trg_engine(
     return TemporalRelationGraphEngine(
         repository=repository,
         compact_keep=settings.trg_compact_keep,
+        question_matching_enabled=settings.trg_question_matching_enabled,
+        answer_match_threshold=settings.trg_answer_match_threshold,
+        repetition_edges_v2=settings.trg_repetition_edges_v2,
     )
 
 
@@ -573,6 +594,11 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER_MODE=live")
 
+    _extraction_read_timeout = (
+        settings.llm_read_timeout_extraction_seconds
+        if settings.llm_bounded_timeouts_enabled
+        else None
+    )
     providers = [
         LLMIntentProvider(
             name="claude_haiku",
@@ -582,6 +608,8 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
                 timeout_seconds=settings.llm_request_timeout_seconds,
                 model=settings.anthropic_haiku_model,
                 name="claude_haiku",
+                read_timeout=_extraction_read_timeout,
+                prompt_cache_enabled=settings.prompt_cache_enabled,
             ),
         ),
         LLMIntentProvider(
@@ -592,6 +620,7 @@ def build_intent_classifier(settings: Settings) -> EnsembleIntentClassifier:
                 timeout_seconds=settings.llm_request_timeout_seconds,
                 model=settings.openai_intent_model,
                 name="openai_gpt_5_4_mini",
+                read_timeout=_extraction_read_timeout,
             ),
         ),
     ]
@@ -639,12 +668,19 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
     # If ANTHROPIC_API_KEY is present, wire the real Anthropic adapter regardless
     # of llm_provider_mode — key presence is the authoritative signal.
     if settings.anthropic_api_key:
+        _generation_read_timeout = (
+            settings.llm_read_timeout_generation_seconds
+            if settings.llm_bounded_timeouts_enabled
+            else None
+        )
         adapter = AnthropicAdapter(
             api_key=settings.anthropic_api_key,
             base_url=settings.anthropic_base_url,
             timeout_seconds=settings.llm_request_timeout_seconds,
             model=settings.anthropic_sonnet_model,
             name="claude_sonnet",
+            read_timeout=_generation_read_timeout,
+            prompt_cache_enabled=settings.prompt_cache_enabled,
         )
         contract_mode = "production_strict" if production_like else "test_dev"
         logger.info(

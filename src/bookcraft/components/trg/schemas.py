@@ -62,6 +62,12 @@ class UnresolvedQuestion(BaseModel):
     asked_turn_sequence: int
     resolved: bool = False
     resolved_turn_sequence: int | None = None
+    # P2-T1 question-to-answer matching: the state path this question asks for
+    # (derived from the re-ask phrasing table), the question embedding (when TEI
+    # is available), and a counter of turns the question was left unanswered.
+    slot_path: str | None = None
+    embedding: list[float] | None = None
+    ignored_count: int = 0
 
 
 class RepetitionSignal(BaseModel):
@@ -80,6 +86,9 @@ class TemporalRelationGraph(BaseModel):
     edges: list[GraphEdge] = Field(default_factory=list)
     unresolved_questions: list[UnresolvedQuestion] = Field(default_factory=list)
     repetition_counters: dict[str, int] = Field(default_factory=dict)
+    # P2-T7: node id of the first occurrence of each normalized message, so a
+    # repeat can link back to it with a REPEATS edge instead of self-looping.
+    repetition_first_node_id: dict[str, UUID] = Field(default_factory=dict)
     compliance_score: float = Field(default=1.0, ge=0.0, le=1.0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -162,6 +171,9 @@ class TRGContext(BaseModel):
     repeated_user_messages: list[str] = Field(default_factory=list)
     recent_node_labels: list[str] = Field(default_factory=list)
     compliance_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    # P2-T1: total times outstanding questions were left unanswered — a sales signal
+    # that the customer is dodging or ignoring a slot the bot keeps asking for.
+    questions_ignored: int = 0
 
     # Semantic memory fields (Phase 8).
     active_facts: list[TRGFactNode] = Field(default_factory=list)

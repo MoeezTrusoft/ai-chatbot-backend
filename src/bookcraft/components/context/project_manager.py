@@ -89,6 +89,13 @@ class ProjectContextSnapshot(BaseModel):
     decision: ProjectShiftDecision
     audit: list[str] = Field(default_factory=list)
 
+    @property
+    def active_project_known_facts(self) -> dict[str, str | int | float | bool]:
+        for p in self.projects:
+            if p.active:
+                return p.known_facts
+        return {}
+
 
 # ---------------------------------------------------------------------------
 # Manager
@@ -134,6 +141,7 @@ class ProjectContextManager:
                 project_id=str(uuid4()),
                 active=True,
                 service_focus=[service] if service else [],
+                known_facts=_snapshot_state_facts(state),
             )
             decision = ProjectShiftDecision(
                 event="same_project",
@@ -156,11 +164,22 @@ class ProjectContextManager:
 
         # --- New project ---
         if has_new:
-            deactivated = [p.model_copy(update={"active": False}) for p in projects]
+            # Snapshot facts for the project being deactivated before switching away.
+            if active_project is not None:
+                deactivated = [
+                    p.model_copy(update={
+                        "active": False,
+                        "known_facts": _snapshot_state_facts(state) if p.project_id == current_active_id else p.known_facts,
+                    })
+                    for p in projects
+                ]
+            else:
+                deactivated = [p.model_copy(update={"active": False}) for p in projects]
             new_proj = ProjectContext(
                 project_id=str(uuid4()),
                 active=True,
                 service_focus=[service] if service else [],
+                known_facts={},  # fresh project starts with no inherited facts
             )
             return ProjectContextSnapshot(
                 active_project_id=new_proj.project_id,
@@ -181,8 +200,12 @@ class ProjectContextManager:
             inactive = [p for p in projects if not p.active]
             if inactive:
                 target = inactive[-1]  # most recently deactivated
+                # Snapshot current project's facts before deactivation; restore target's preserved facts.
                 updated = [
-                    p.model_copy(update={"active": p.project_id == target.project_id})
+                    p.model_copy(update={
+                        "active": p.project_id == target.project_id,
+                        "known_facts": _snapshot_state_facts(state) if p.project_id == current_active_id else p.known_facts,
+                    })
                     for p in projects
                 ]
                 return ProjectContextSnapshot(
@@ -274,6 +297,27 @@ class ProjectContextManager:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _snapshot_state_facts(state: ThreadState) -> dict[str, str | int | float | bool]:
+    """Extract key conversation facts into a flat dict for ProjectContext.known_facts."""
+    facts: dict[str, str | int | float | bool] = {}
+    # Project facts
+    if state.project.genre.value is not None:
+        facts["project.genre"] = str(state.project.genre.value)
+    if state.project.word_count.value is not None:
+        facts["project.word_count"] = state.project.word_count.value
+    if state.project.page_count.value is not None:
+        facts["project.page_count"] = state.project.page_count.value
+    if state.project.manuscript_status.value is not None:
+        facts["project.manuscript_status"] = str(state.project.manuscript_status.value)
+    # Contact facts (PII-safe keys only — no raw email/phone)
+    if state.personal.name.value is not None:
+        facts["contact.name"] = str(state.personal.name.value)
+    # Service facts
+    if state.project.services_discussed:
+        facts["service.primary"] = str(state.project.services_discussed[-1].service.value)
+    return facts
 
 
 def _load_projects(state: ThreadState) -> list[ProjectContext]:

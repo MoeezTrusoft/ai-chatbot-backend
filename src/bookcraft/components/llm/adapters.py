@@ -1,11 +1,63 @@
 import json
 import re
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 
 import httpx
 from pydantic import BaseModel
 
 from bookcraft.components.llm.metrics import LLM_CALLS, LLM_LATENCY
+
+# ---------------------------------------------------------------------------
+# Shared HTTP client — created once, reused across all LLM calls.
+# Using HTTP/2 and a persistent connection pool avoids a TCP+TLS handshake
+# (typically 100-300 ms) on every request.
+# ---------------------------------------------------------------------------
+
+_shared_client: httpx.AsyncClient | None = None
+
+
+async def get_shared_client(
+    *,
+    read_timeout: float | None = None,
+) -> httpx.AsyncClient:
+    """Return the process-wide shared AsyncClient, creating it on first call.
+
+    The *read_timeout* argument is only used on the very first call (when the
+    client is being initialised); subsequent calls return the cached instance
+    regardless of the argument value.  Pass the most generous timeout you need
+    (i.e. the generation timeout) so that long responses are never cut off.
+    """
+    global _shared_client  # noqa: PLW0603
+    if _shared_client is None:
+        timeout = httpx.Timeout(
+            connect=10.0,
+            read=read_timeout,  # None = unbounded when feature is disabled
+            write=30.0,
+            pool=5.0,
+        )
+        _shared_client = httpx.AsyncClient(
+            http2=True,
+            timeout=timeout,
+            limits=httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=100,
+            ),
+        )
+    return _shared_client
+
+
+async def close_shared_client() -> None:
+    """Gracefully close the shared client during application shutdown."""
+    global _shared_client  # noqa: PLW0603
+    if _shared_client is not None:
+        await _shared_client.aclose()
+        _shared_client = None
+
+
+# ---------------------------------------------------------------------------
+# Adapters
+# ---------------------------------------------------------------------------
 
 
 @dataclass(slots=True)
@@ -30,9 +82,12 @@ class MockLLMAdapter:
 class AnthropicAdapter:
     api_key: str
     base_url: str
-    timeout_seconds: float  # kept for config compatibility; read timeout is always unlimited
+    timeout_seconds: float  # kept for config compatibility
     model: str = "claude-haiku-4-5-20251001"
     name: str = "anthropic"
+    # None = unbounded read (current default; safe for long LLM responses)
+    read_timeout: float | None = field(default=None)
+    prompt_cache_enabled: bool = field(default=False)
 
     async def structured(
         self,
@@ -44,22 +99,123 @@ class AnthropicAdapter:
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
-            # read=None means wait as long as Claude needs — never cut off mid-response.
-            # connect stays short so we fail fast if Anthropic is unreachable.
-            _timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=5.0)
-            async with httpx.AsyncClient(timeout=_timeout) as client:
-                response = await client.post(
-                    f"{self.base_url.rstrip('/')}/v1/messages",
-                    headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
-                    json={
-                        "model": self.model,
-                        "max_tokens": 1024,
-                        "system": system,
-                        "messages": [{"role": "user", "content": user}],
-                    },
-                )
-                response.raise_for_status()
+            client = await get_shared_client(read_timeout=self.read_timeout)
+
+            headers: dict[str, str] = {
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            }
+            if self.prompt_cache_enabled:
+                headers["anthropic-beta"] = "prompt-caching-2024-07-31"
+
+            # System prompt: plain string, or cache-control block when caching
+            # is enabled so Anthropic stores it across requests.
+            if self.prompt_cache_enabled:
+                system_payload: object = [
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
+            else:
+                system_payload = system
+
+            # Build a per-call timeout that respects the instance read_timeout.
+            # The shared client has its own default timeout; we pass an explicit
+            # one here so adapters with different read budgets share the same
+            # underlying connection pool while still honouring their limits.
+            call_timeout = httpx.Timeout(
+                connect=10.0,
+                read=self.read_timeout,
+                write=30.0,
+                pool=5.0,
+            )
+
+            response = await client.post(
+                f"{self.base_url.rstrip('/')}/v1/messages",
+                headers=headers,
+                json={
+                    "model": self.model,
+                    "max_tokens": 1024,
+                    "system": system_payload,
+                    "messages": [{"role": "user", "content": user}],
+                },
+                timeout=call_timeout,
+            )
+            response.raise_for_status()
         return _parse_structured_response(response.text, output_model)
+
+    async def stream_text(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, object]],
+        max_tokens: int = 1024,
+        purpose: str = "response_stream",
+    ) -> AsyncIterator[str]:
+        """Stream plain text deltas from the Anthropic Messages streaming API.
+
+        Issues a POST to ``/v1/messages`` with ``"stream": true`` and parses the
+        documented SSE event stream, yielding ``delta.text`` from each
+        ``content_block_delta`` event whose delta is a ``text_delta``.  Built in
+        the exact style of :meth:`structured` (same headers, base_url, model, and
+        prompt-cache handling) but over a streaming connection.
+
+        Defensive by design: any transport, HTTP-status, or SSE ``error`` event
+        raises so the caller (the generator) can fall back to a non-streaming
+        path.  This method must not be called when the adapter has no API key /
+        is in mock mode — the generator decides whether streaming is viable.
+        """
+        LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
+        client = await get_shared_client(read_timeout=self.read_timeout)
+
+        headers: dict[str, str] = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+        }
+        if self.prompt_cache_enabled:
+            headers["anthropic-beta"] = "prompt-caching-2024-07-31"
+
+        # System prompt: plain string, or cache-control block when caching is
+        # enabled — mirrors structured() so a streaming call shares the same
+        # cached prefix as the non-streaming one.
+        if self.prompt_cache_enabled:
+            system_payload: object = [
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        else:
+            system_payload = system
+
+        call_timeout = httpx.Timeout(
+            connect=10.0,
+            read=self.read_timeout,
+            write=30.0,
+            pool=5.0,
+        )
+
+        async with client.stream(
+            "POST",
+            f"{self.base_url.rstrip('/')}/v1/messages",
+            headers=headers,
+            json={
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "system": system_payload,
+                "messages": messages,
+                "stream": True,
+            },
+            timeout=call_timeout,
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                text = _sse_text_delta(line)
+                if text:
+                    yield text
 
 
 @dataclass(slots=True)
@@ -69,6 +225,8 @@ class OpenAIAdapter:
     timeout_seconds: float
     model: str = "gpt-5.4-mini"
     name: str = "openai"
+    # None = unbounded read (current default)
+    read_timeout: float | None = field(default=None)
 
     async def structured(
         self,
@@ -80,34 +238,85 @@ class OpenAIAdapter:
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
-            _timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=5.0)
-            async with httpx.AsyncClient(timeout=_timeout) as client:
-                payload: dict[str, object] = {
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    "response_format": {"type": "json_object"},
-                    "stream": False,
-                }
-                if self.name.startswith("openai"):
-                    payload["max_completion_tokens"] = 320
-                else:
-                    payload["max_tokens"] = 320
+            client = await get_shared_client(read_timeout=self.read_timeout)
 
-                response = await client.post(
-                    f"{self.base_url.rstrip('/')}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=payload,
-                )
-                response.raise_for_status()
+            call_timeout = httpx.Timeout(
+                connect=10.0,
+                read=self.read_timeout,
+                write=30.0,
+                pool=5.0,
+            )
+
+            payload: dict[str, object] = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+                "stream": False,
+            }
+            if self.name.startswith("openai"):
+                payload["max_completion_tokens"] = 320
+            else:
+                payload["max_tokens"] = 320
+
+            response = await client.post(
+                f"{self.base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=call_timeout,
+            )
+            response.raise_for_status()
         return _parse_structured_response(response.text, output_model)
 
 
 @dataclass(slots=True)
 class DeepSeekAdapter(OpenAIAdapter):
     name: str = "deepseek"
+
+
+def _sse_text_delta(line: str) -> str | None:
+    """Extract incremental text from a single Anthropic SSE stream line.
+
+    The Messages streaming API emits Server-Sent Events. Each event is a pair of
+    lines: ``event: <type>`` then ``data: <json>``.  We only care about the
+    ``data:`` payloads here; ``content_block_delta`` events whose delta is a
+    ``text_delta`` carry the incremental text in ``delta.text``.  Anything else
+    (``message_start``, ``content_block_start``, ``ping``, ``message_stop``,
+    blank keep-alive lines) yields no text.
+
+    An SSE ``error`` event (``data: {"type": "error", ...}``) is raised so the
+    caller can fall back — a mid-stream API error must never look like a normal
+    end-of-turn.
+    """
+    if not line.startswith("data:"):
+        return None
+    payload = line[len("data:") :].strip()
+    if not payload or payload == "[DONE]":
+        return None
+    try:
+        event = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(event, dict):
+        return None
+    event_type = event.get("type")
+    if event_type == "error":
+        error = event.get("error")
+        message = (
+            error.get("message")
+            if isinstance(error, dict)
+            else "anthropic stream error"
+        )
+        raise RuntimeError(f"anthropic_stream_error: {message}")
+    if event_type != "content_block_delta":
+        return None
+    delta = event.get("delta")
+    if not isinstance(delta, dict) or delta.get("type") != "text_delta":
+        return None
+    text = delta.get("text")
+    return text if isinstance(text, str) and text else None
 
 
 def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseModel:

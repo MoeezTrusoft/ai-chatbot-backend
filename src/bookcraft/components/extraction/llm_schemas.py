@@ -3,6 +3,52 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class RangeValue(BaseModel):
+    """An extracted numeric range, e.g. word count '60,000-80,000' or budget '$500-$1,000'."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    low: float | None = None
+    high: float | None = None
+    unit: str | None = None  # e.g. "words", "USD", "pages"
+    confidence: float = Field(ge=0.0, le=1.0, default=0.85)
+    source_quote: str = ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.85
+
+    def midpoint(self) -> float | None:
+        """Return the midpoint for single-value approximation."""
+        if self.low is not None and self.high is not None:
+            return (self.low + self.high) / 2
+        return self.low or self.high
+
+
+class DimensionValue(BaseModel):
+    """A structured dimension, e.g. '5.5 x 8.5 inches' for page dimensions."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    width: float | None = None
+    height: float | None = None
+    unit: str | None = None  # e.g. "inches", "cm"
+    confidence: float = Field(ge=0.0, le=1.0, default=0.85)
+    source_quote: str = ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.85
+
+
 class ExtractedValue(BaseModel):
     """A single value extracted by the LLM with per-field confidence and provenance."""
 
@@ -68,8 +114,11 @@ class LLMExtractedFacts(BaseModel):
                 continue
             if value is None:
                 continue
-            # If it's already a dict (proper ExtractedValue) leave it alone.
+            # If it's already a dict (proper ExtractedValue or RangeValue) leave it alone.
             if isinstance(value, dict):
+                # Range-shaped dicts for word_count / budget_range must NOT be wrapped.
+                if key in {"word_count", "budget_range"} and ("low" in value or "high" in value):
+                    continue
                 continue
             # Bare string / int / float → wrap into ExtractedValue shape.
             if isinstance(value, (str, int, float, bool)):
@@ -111,3 +160,7 @@ class LLMExtractedFacts(BaseModel):
 
     # Coreference notes — LLM explains any reference resolution it performed
     coreference_notes: list[str] = Field(default_factory=list)
+
+    # If True: the extracted facts are conditional on a future event (e.g. "if I get funding...")
+    # The extractor sets this to signal the state applier should use lower confidence.
+    conditional: bool = False

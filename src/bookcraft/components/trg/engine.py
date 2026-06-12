@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -32,11 +33,68 @@ from .schemas import (
 TRG_UPDATES_TOTAL = Counter("trg_updates_total", "TRG updates applied.", ["result"])
 TRG_UPDATE_LATENCY = Histogram("trg_update_latency_seconds", "TRG update latency.")
 
+# Mapping from fact_path → list of question phrasings that must not be re-asked
+# after the fact has been captured.  Extend this table whenever a new extractable
+# fact path is added to the schema.
+_REASK_PROTECTION: dict[str, list[str]] = {
+    "project.genre": ["genre", "what genre"],
+    "project.manuscript_status": ["manuscript_stage", "draft status", "starting from scratch"],
+    "project.word_count": ["word count", "how many words", "length of your manuscript"],
+    "project.title": ["title", "book title", "name of your book"],
+    "project.formats": ["format", "book format", "paperback or ebook"],
+    "contact.name": ["your name", "what's your name", "may i have your name"],
+    "contact.email": ["email", "email address", "your email"],
+    "contact.phone": ["phone", "phone number", "contact number"],
+    "service.timeline": ["timeline", "when do you need", "deadline"],
+    "service.budget": ["budget", "how much are you looking to spend"],
+    "project.page_count": ["page count", "how many pages"],
+    "project.platforms": ["platform", "publishing platform", "where will you publish"],
+}
+
+# Normalized single-phrase user inputs that carry no real answer content.
+# These phrases must NOT be treated as resolving an outstanding question.
+_NON_ANSWER_PHRASES: frozenset[str] = frozenset({
+    "hi", "hello", "hey", "ok", "okay", "sure", "thanks", "thank you",
+    "yes", "no", "yep", "nope", "got it", "alright",
+})
+
+
+def _derive_slot_path(question_text: str) -> str | None:
+    """Map an outstanding question to the state path it asks for (P2-T1).
+
+    Reuses the ``_REASK_PROTECTION`` phrasing table so a question and its answer
+    slot share one source of truth: if any registered phrasing for a path appears
+    in the question, that path is the question's slot. First match wins.
+    """
+    lowered = question_text.casefold()
+    for path, phrasings in _REASK_PROTECTION.items():
+        if any(phrase in lowered for phrase in phrasings):
+            return path
+    return None
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    """Cosine similarity; returns 0.0 for empty or zero-norm vectors."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / (na * nb)
+
 
 @dataclass(slots=True)
 class TemporalRelationGraphEngine:
     repository: GraphRepository = field(default_factory=InMemoryGraphRepository)
     compact_keep: int = 24
+    # P2-T1: resolve outstanding questions by slot/embedding match instead of
+    # blindly resolving the first one on any substantive message.
+    question_matching_enabled: bool = False
+    answer_match_threshold: float = 0.6
+    # P2-T7: link a repeated message to its prior occurrence with a REPEATS edge.
+    repetition_edges_v2: bool = False
 
     async def update_after_turn(
         self,
@@ -48,11 +106,13 @@ class TemporalRelationGraphEngine:
         previous_state: ThreadState | None = None,
         state_deltas: Iterable[StateDelta] = (),
         arbiter_signals: list[str] | None = None,
+        preloaded_graph: TemporalRelationGraph | None = None,
+        user_embedding: list[float] | None = None,
     ) -> GraphUpdateResult:
         with TRG_UPDATE_LATENCY.time():
             # Materialize once so helpers can iterate multiple times.
             delta_list = list(state_deltas)
-            graph = await self.repository.load(thread_id)
+            graph = preloaded_graph if preloaded_graph is not None else await self.repository.load(thread_id)
             if graph is None:
                 graph = TemporalRelationGraph(thread_id=thread_id)
 
@@ -88,6 +148,8 @@ class TemporalRelationGraphEngine:
                 answer_node=user_node,
                 user_text=user_text,
                 turn_sequence=turn_sequence,
+                state_deltas=delta_list,
+                user_embedding=user_embedding,
             )
             added_edges.extend(resolved_edges)
             question_nodes, question_edges = self._track_assistant_questions(
@@ -107,18 +169,12 @@ class TemporalRelationGraphEngine:
             )
             added_edges.extend(contradiction_edges)
 
-            repetition_signal = self._track_repetition(graph, user_node, user_text)
-            if repetition_signal.repeated:
-                added_edges.append(
-                    self._add_edge(
-                        graph,
-                        user_node,
-                        user_node,
-                        RelationType.REPEATS,
-                        confidence=0.95,
-                        evidence="normalized user message repeated",
-                    )
-                )
+            repetition_signal, repetition_edge = self._track_repetition(graph, user_node, user_text)
+            # P2-T7: when enabled, a repeat links to its PRIOR occurrence's node
+            # (a queryable REPEATS edge) instead of the old self-edge.  Self-edges
+            # remain omitted; the repetition_signal still surfaces in the result.
+            if repetition_edge is not None:
+                added_edges.append(repetition_edge)
 
             # Compute engagement weight for this user turn and store on the node.
             user_node.engagement_weight = _compute_engagement_weight(user_text)
@@ -172,6 +228,9 @@ class TemporalRelationGraphEngine:
             forbidden_reasks=forbidden,
             contradictions=list(graph.contradiction_events),
             service_shifts=list(graph.service_shifts),
+            questions_ignored=sum(
+                q.ignored_count for q in graph.unresolved_questions if not q.resolved
+            ),
         )
 
     def compact(self, graph: TemporalRelationGraph) -> None:
@@ -189,8 +248,14 @@ class TemporalRelationGraphEngine:
         if len(non_fact_nodes) > slots_for_non_fact:
             scored = sorted(
                 enumerate(non_fact_nodes),
-                key=lambda iv: (iv[0] / max(len(non_fact_nodes) - 1, 1))
-                * iv[1].engagement_weight,
+                # Additive blend: 60% recency + 40% normalised engagement weight.
+                # This ensures index-0 nodes with high engagement are NOT silently
+                # zeroed out (the old multiplicative formula gave index-0 a score of
+                # 0 regardless of engagement_weight).
+                key=lambda iv: (
+                    0.6 * (iv[0] / max(len(non_fact_nodes) - 1, 1))
+                    + 0.4 * (iv[1].engagement_weight / 3.0)
+                ),
                 reverse=True,
             )
             non_fact_nodes = [n for _, n in scored[:slots_for_non_fact]]
@@ -212,6 +277,15 @@ class TemporalRelationGraphEngine:
             if edge.source_node_id in keep_ids and edge.target_node_id in keep_ids
         ]
         _ = total  # suppress unused-variable lint
+
+        # Prune repetition_counters to prevent unbounded growth.
+        # Keep all entries seen more than once (they carry useful repetition signal)
+        # plus the N most-recent singletons.
+        MAX_SINGLETON_COUNTERS = 50
+        multi_seen = {k: v for k, v in graph.repetition_counters.items() if v > 1}
+        singletons = {k: v for k, v in graph.repetition_counters.items() if v == 1}
+        singleton_items = list(singletons.items())[-MAX_SINGLETON_COUNTERS:]
+        graph.repetition_counters = {**multi_seen, **dict(singleton_items)}
 
     def _track_assistant_questions(
         self,
@@ -236,6 +310,7 @@ class TemporalRelationGraphEngine:
                     node_id=question_node.id,
                     question=question,
                     asked_turn_sequence=turn_sequence,
+                    slot_path=_derive_slot_path(question),
                 )
             )
             nodes.append(question_node)
@@ -257,9 +332,33 @@ class TemporalRelationGraphEngine:
         answer_node: GraphNode,
         user_text: str,
         turn_sequence: int,
+        state_deltas: Iterable[StateDelta] = (),
+        user_embedding: list[float] | None = None,
     ) -> list[GraphEdge]:
-        if not user_text.strip():
+        stripped = user_text.strip()
+        if not stripped:
             return []
+
+        # A one-word greeting / acknowledgment is not a meaningful answer.
+        normalized_input = stripped.casefold()
+        if normalized_input in _NON_ANSWER_PHRASES:
+            return []
+
+        # Fewer than 3 words is almost certainly not a real answer to a question.
+        if len(stripped.split()) < 3:  # noqa: PLR2004
+            return []
+
+        if self.question_matching_enabled:
+            return self._resolve_questions_by_match(
+                graph,
+                answer_node=answer_node,
+                user_text=user_text,
+                turn_sequence=turn_sequence,
+                state_deltas=state_deltas,
+                user_embedding=user_embedding,
+            )
+
+        # Legacy behavior: resolve the first outstanding question (flag off).
         edges: list[GraphEdge] = []
         for question in graph.unresolved_questions:
             if question.resolved:
@@ -277,6 +376,52 @@ class TemporalRelationGraphEngine:
                 )
             )
             break
+        return edges
+
+    def _resolve_questions_by_match(
+        self,
+        graph: TemporalRelationGraph,
+        *,
+        answer_node: GraphNode,
+        user_text: str,
+        turn_sequence: int,
+        state_deltas: Iterable[StateDelta],
+        user_embedding: list[float] | None,
+    ) -> list[GraphEdge]:
+        """P2-T1: resolve every question this message actually answers.
+
+        A question resolves when EITHER a state delta this turn writes the
+        question's ``slot_path``, OR the message embedding is similar enough to the
+        question's embedding (``answer_match_threshold``).  Questions matching
+        neither stay open and have their ``ignored_count`` incremented — a
+        dodge/avoidance sales signal exposed via ``TRGContext.questions_ignored``.
+        """
+        delta_paths = {d.path for d in state_deltas}
+        edges: list[GraphEdge] = []
+        for question in graph.unresolved_questions:
+            if question.resolved:
+                continue
+            matched_by_slot = bool(question.slot_path and question.slot_path in delta_paths)
+            matched_by_embedding = bool(
+                question.embedding
+                and user_embedding
+                and _cosine(question.embedding, user_embedding) >= self.answer_match_threshold
+            )
+            if matched_by_slot or matched_by_embedding:
+                question.resolved = True
+                question.resolved_turn_sequence = turn_sequence
+                edges.append(
+                    self._add_edge(
+                        graph,
+                        answer_node,
+                        question.node_id,
+                        RelationType.ANSWERS,
+                        confidence=0.85 if matched_by_slot else 0.7,
+                        evidence=user_text[:240],
+                    )
+                )
+            else:
+                question.ignored_count += 1
         return edges
 
     def _track_contradictions(
@@ -322,14 +467,30 @@ class TemporalRelationGraphEngine:
         graph: TemporalRelationGraph,
         user_node: GraphNode,
         user_text: str,
-    ) -> RepetitionSignal:
+    ) -> tuple[RepetitionSignal, GraphEdge | None]:
         normalized = normalize_text(user_text)
         if not normalized:
-            return RepetitionSignal(normalized_text="", count=0, repeated=False)
+            return RepetitionSignal(normalized_text="", count=0, repeated=False), None
         graph.repetition_counters[normalized] = graph.repetition_counters.get(normalized, 0) + 1
         count = graph.repetition_counters[normalized]
         user_node.metadata["repetition_count"] = count
-        return RepetitionSignal(normalized_text=normalized, count=count, repeated=count > 1)
+
+        edge: GraphEdge | None = None
+        if self.repetition_edges_v2:
+            prior_id = graph.repetition_first_node_id.get(normalized)
+            if prior_id is None:
+                # First occurrence: remember this node as the repetition anchor.
+                graph.repetition_first_node_id[normalized] = user_node.id
+            elif prior_id != user_node.id and any(n.id == prior_id for n in graph.nodes):
+                # Repeat: link to the prior occurrence (if it still exists post-compaction).
+                edge = self._add_edge(
+                    graph,
+                    user_node,
+                    prior_id,
+                    RelationType.REPEATS,
+                    evidence=f"repeat #{count} of: {normalized[:120]}",
+                )
+        return RepetitionSignal(normalized_text=normalized, count=count, repeated=count > 1), edge
 
     @staticmethod
     def _add_node(
@@ -438,13 +599,16 @@ def _compute_engagement_weight(user_text: str) -> float:
 
 
 def forbidden_reasks_from_facts(active_facts: list[TRGFactNode]) -> list[str]:
-    """Return labels that must not be asked again given the supplied active facts."""
+    """Return labels that must not be asked again given the supplied active facts.
+
+    Uses the module-level ``_REASK_PROTECTION`` mapping so every registered
+    fact path is automatically covered — not just genre and manuscript_status.
+    """
     forbidden: list[str] = []
     for fact in active_facts:
-        if fact.fact_path == "project.genre":
-            forbidden.extend(["genre", "what genre"])
-        elif fact.fact_path == "project.manuscript_status":
-            forbidden.extend(["manuscript_stage", "draft status", "starting from scratch"])
+        phrasings = _REASK_PROTECTION.get(fact.fact_path)
+        if phrasings:
+            forbidden.extend(phrasings)
     seen: set[str] = set()
     result: list[str] = []
     for item in forbidden:
@@ -591,8 +755,20 @@ _forbidden_reasks_from_facts = forbidden_reasks_from_facts
 
 
 def extract_questions(text: str) -> list[str]:
+    """Return the question clause(s) from *text*, stripping any leading statements.
+
+    Example: "Here is the plan. What is your budget?" → ["What is your budget?"]
+    """
     questions = re.findall(r"([^?]{3,}\?)", text)
-    return [" ".join(question.split()) for question in questions]
+    cleaned: list[str] = []
+    for q in questions:
+        # Split on sentence-ending punctuation and take only the final clause
+        # so that leading declarative statements are discarded.
+        sentences = re.split(r"(?<=[.!])\s+", q.strip())
+        last = sentences[-1].strip() if sentences else q.strip()
+        if len(last) >= 3:  # noqa: PLR2004
+            cleaned.append(" ".join(last.split()))
+    return cleaned
 
 
 def normalize_text(text: str) -> str:

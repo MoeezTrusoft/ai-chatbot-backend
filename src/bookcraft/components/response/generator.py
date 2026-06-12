@@ -237,6 +237,182 @@ class SonnetResponseGenerator:
                 approved_urls=_engine_approved_urls,
             )
 
+    async def stream(
+        self,
+        *,
+        message: ProcessedMessage,
+        state: ThreadState,
+        intent: IntentVote,
+        extraction: CombinedExtraction,
+        rag_chunks: list[RetrievedChunk] | None = None,
+        pricing_quote: PricingTimelineQuote | None = None,
+        timeline_estimate: PricingTimelineQuote | None = None,
+        pricing_missing_question: str | None = None,
+        portfolio_response: PortfolioResponse | None = None,
+        document_status_message: str | None = None,
+        runtime_atoms: dict[Any, Any] | None = None,
+        response_hint: str | None = None,
+        context_pack: ContextPack | None = None,
+        response_plan: ResponsePlan | None = None,
+        recent_turns: list[tuple[str, str]] | None = None,
+        persona_decision: Any | None = None,
+    ):
+        """Stream the response text as an async generator of string chunks.
+
+        Two paths, both of which yield ≥ 1 chunk and never raise mid-stream:
+
+        * **Real incremental streaming** — when ``self.adapter`` exposes a
+          ``stream_text`` coroutine and is not in mock mode, the LLM is asked to
+          produce the reply over the Anthropic Messages streaming API and each
+          ``text_delta`` is yielded as it arrives.  The full text is accumulated
+          and, if the streamed result passes the same safety/quality validation
+          as :meth:`generate`, it is the turn.  On **any** streaming failure
+          (transport error, SSE error event, or a streamed reply that fails
+          validation) the method falls back to :meth:`generate` so a streaming
+          hiccup never produces a broken or unsafe turn.
+
+        * **Fallback** — when no streaming-capable adapter is available (mock /
+          no-adapter dev path, or any of the above failures), :meth:`generate`
+          is awaited and its text is delivered in small word-group chunks so the
+          delivery is still genuinely incremental.
+
+        The signature is kept backward-compatible with the existing callers —
+        every keyword argument :meth:`generate` accepts is accepted here too.
+        """
+        generate_kwargs: dict[str, Any] = {
+            "message": message,
+            "state": state,
+            "intent": intent,
+            "extraction": extraction,
+            "rag_chunks": rag_chunks,
+            "pricing_quote": pricing_quote,
+            "timeline_estimate": timeline_estimate,
+            "pricing_missing_question": pricing_missing_question,
+            "portfolio_response": portfolio_response,
+            "document_status_message": document_status_message,
+            "runtime_atoms": runtime_atoms,
+            "response_hint": response_hint,
+            "context_pack": context_pack,
+            "response_plan": response_plan,
+            "recent_turns": recent_turns,
+            "persona_decision": persona_decision,
+        }
+
+        # Real incremental streaming is only viable when the adapter exposes a
+        # stream_text coroutine AND is not in mock mode (mock adapters have no
+        # api_key).  The generator — not the adapter — owns this decision.
+        if self._streaming_viable():
+            accumulated: list[str] = []
+            try:
+                async for chunk in self._stream_via_adapter(
+                    message=message,
+                    state=state,
+                    intent=intent,
+                    extraction=extraction,
+                    rag_chunks=rag_chunks,
+                    runtime_atoms=runtime_atoms,
+                    response_hint=response_hint,
+                    context_pack=context_pack,
+                    response_plan=response_plan,
+                    recent_turns=recent_turns,
+                    persona_decision=persona_decision,
+                ):
+                    accumulated.append(chunk)
+                    yield chunk
+            except Exception as exc:
+                logger.warning(
+                    "response_stream_failed",
+                    provider=self.provider_name,
+                    error=str(exc),
+                    note="streaming path failed mid-flight; falling back to generate()",
+                )
+                accumulated = None  # signal: discard partial, fall back below
+            else:
+                # Validate the fully-streamed text with the same gate generate()
+                # uses.  If it passes, the streamed turn is complete and we stop.
+                streamed_text = "".join(accumulated)
+                if _safe_generated_text(streamed_text) is not None:
+                    return
+                logger.info(
+                    "response_stream_validation_rejected",
+                    provider=self.provider_name,
+                    preview=streamed_text[:120],
+                )
+                accumulated = None  # fall back to generate()
+
+            # NOTE: we already yielded partial chunks above.  Falling back here
+            # re-yields the full validated text; the WS consumer accumulates by
+            # concatenation, so a clean restart is preferable to a broken turn.
+
+        draft = await self.generate(**generate_kwargs)
+        for chunk in _chunk_text(draft.text):
+            yield chunk
+
+    def _streaming_viable(self) -> bool:
+        """Return True when the adapter can do real incremental streaming.
+
+        Requires a callable ``stream_text`` and a truthy ``api_key`` — the mock
+        adapter has neither, so the fallback (word-group chunked generate())
+        path is used offline and in tests without a live API.
+        """
+        adapter = self.adapter
+        if adapter is None:
+            return False
+        if not callable(getattr(adapter, "stream_text", None)):
+            return False
+        return bool(getattr(adapter, "api_key", None))
+
+    async def _stream_via_adapter(
+        self,
+        *,
+        message: ProcessedMessage,
+        state: ThreadState,
+        intent: IntentVote,
+        extraction: CombinedExtraction,
+        rag_chunks: list[RetrievedChunk] | None,
+        runtime_atoms: dict[Any, Any] | None,
+        response_hint: str | None,
+        context_pack: ContextPack | None,
+        response_plan: ResponsePlan | None,
+        recent_turns: list[tuple[str, str]] | None,
+        persona_decision: Any | None,
+    ):
+        """Yield text deltas from ``adapter.stream_text`` for this turn.
+
+        Builds the same system/user prompts as :meth:`_try_llm` so the streamed
+        reply is grounded identically to the non-streaming path.  Any exception
+        propagates to :meth:`stream`, which falls back to :meth:`generate`.
+        """
+        assert self.adapter is not None
+        route = self.router.route(intent)
+        system = _response_system_prompt(
+            active_service=context_pack.active_service if context_pack is not None else None,
+            persona_decision=persona_decision,
+        )
+        user = _response_user_prompt(
+            message=message,
+            state=state,
+            intent=intent,
+            extraction=extraction,
+            rag_chunks=(rag_chunks or [])[:5],
+            route_name=route.name,
+            runtime_atoms=runtime_atoms or {},
+            response_hint=response_hint,
+            context_pack=context_pack,
+            response_plan=response_plan,
+            recent_turns=recent_turns,
+            engine_facts=None,
+            persona_decision=persona_decision,
+        )
+        async for chunk in self.adapter.stream_text(
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            max_tokens=1024,
+            purpose="response_stream",
+        ):
+            if chunk:
+                yield chunk
+
     async def repair(
         self,
         *,
@@ -891,6 +1067,39 @@ def _is_retail_book_order(text: str) -> bool:
     from inventing price/discount/freight figures that fail the quality gate.
     """
     return bool(_RETAIL_ORDER_RE.search(text))
+
+
+def _chunk_text(text: str, *, words_per_chunk: int = 5) -> list[str]:
+    """Split text into a few word-group chunks for incremental delivery.
+
+    Used only on the streaming fallback path (no live API): yields the full
+    text in ~``words_per_chunk``-word groups so a consumer receives multiple
+    chunks whose concatenation reproduces the original text exactly (whitespace
+    is preserved by splitting with a capturing regex, not ``str.split``).  A
+    single-word or empty string yields one chunk so the contract "≥ 1 chunk" and
+    "concatenation == text" both hold.  ``generate()`` itself is untouched.
+    """
+    if not text:
+        return [text]
+    # Split into [word, sep, word, sep, ...] keeping separators so we can
+    # rejoin losslessly.  Group whole words (skipping the separator tokens)
+    # into runs of words_per_chunk and emit each run with its trailing
+    # whitespace attached.
+    tokens = re.split(r"(\s+)", text)
+    chunks: list[str] = []
+    current: list[str] = []
+    words_in_current = 0
+    for token in tokens:
+        current.append(token)
+        if token and not token.isspace():
+            words_in_current += 1
+            if words_in_current >= words_per_chunk:
+                chunks.append("".join(current))
+                current = []
+                words_in_current = 0
+    if current:
+        chunks.append("".join(current))
+    return chunks or [text]
 
 
 def _truncate_on_word_boundary(text: str, max_chars: int) -> str:

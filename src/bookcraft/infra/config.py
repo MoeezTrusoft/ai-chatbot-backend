@@ -53,6 +53,28 @@ class Settings(BaseSettings):
     deepseek_intent_enabled: bool = False
     llm_provider_mode: Literal["mock", "live"] = "mock"
     llm_request_timeout_seconds: float = 60.0  # raised: let LLM take its time; no timeout fallback
+    llm_bounded_timeouts_enabled: bool = False
+    llm_read_timeout_generation_seconds: float = 20.0
+    llm_read_timeout_extraction_seconds: float = 8.0
+    prompt_cache_enabled: bool = False
+    event_log_batching_enabled: bool = False
+    trg_background_persist_enabled: bool = False
+    llm_extraction_overlap_enabled: bool = False
+    trimatch_event_evidence_summary: bool = False
+    trg_event_rebuild_enabled: bool = False
+    project_fact_partitioning_enabled: bool = False
+    trimatch_compiled_index_enabled: bool = False
+    trimatch_semantic_embeddings_enabled: bool = False
+    response_streaming_enabled: bool = False
+    contradiction_confirmation_enabled: bool = False
+    extraction_value_types_enabled: bool = False
+    # Wave 2: completion of the partially-implemented plan tasks.
+    trg_question_matching_enabled: bool = False  # P2-T1: slot/embedding answer matching
+    trg_answer_match_threshold: float = 0.6  # P2-T1: cosine threshold for answer→question
+    trg_repetition_edges_v2: bool = False  # P2-T7: REPEATS edge to prior occurrence
+    context_pack_budget_enabled: bool = False  # P4-T3: hint-source token budgeting
+    context_pack_hint_token_budget: int = 1200  # P4-T3: max approx tokens of response_hint
+    staged_pipeline_enabled: bool = False  # P4-T2: staged TurnContext pipeline (foundation)
 
     # CSR Node.js backend — direct API call after consultation is booked so the
     # appointment always appears on the CSR dashboard regardless of action-event sync.

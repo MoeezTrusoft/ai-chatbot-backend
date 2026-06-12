@@ -7,6 +7,7 @@ from .engine import (
     forbidden_reasks_from_facts,
     semantic_facts_from_deltas,
 )
+from .rebuilder import RebuildResult, rebuild_graph
 from .repository import GraphRepository, InMemoryGraphRepository, RedisHotGraphStore
 from .schemas import (
     AnsweredQuestion,
@@ -37,6 +38,8 @@ __all__ = [
     "GraphRepository",
     "GraphUpdateResult",
     "InMemoryGraphRepository",
+    "RebuildResult",
+    "rebuild_graph",
     "RedisHotGraphStore",
     "RelationType",
     "RepetitionSignal",

@@ -7,24 +7,24 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.api.auth import authenticate_websocket, require_http_auth
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
-from bookcraft.components.attachments.intake import ChatAttachment
-from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.response.schemas import FormattedBubble
+from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
 from bookcraft.infra.config import Settings
 from bookcraft.infra.rate_limit import RateLimiter, client_ip_from_scope
 from bookcraft.services.chat import ChatService
 
+# Re-export so existing code that imports from bookcraft.api.chat still works.
+__all__ = [
+    "ChatTurnRequest",
+    "ChatTurnResponse",
+    "ChatGreetRequest",
+    "CsrTurnRequest",
+    "HandoverRequest",
+    "HandoverResponse",
+    "ChatFactsRequest",
+    "ChatFactsResponse",
+]
+
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
-
-
-class ChatTurnRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    thread_id: UUID | None = None
-    customer_id: UUID | None = None
-    message: str = Field(min_length=1, max_length=8000)
-    correlation_id: str | None = Field(default=None, max_length=128)
-    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ChatGreetRequest(BaseModel):
@@ -41,21 +41,6 @@ class ChatGreetRequest(BaseModel):
     landing_page: str | None = Field(default=None, max_length=200)
     landing_keyword: str | None = Field(default=None, max_length=200)
     correlation_id: str | None = Field(default=None, max_length=128)
-
-
-class ChatTurnResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    thread_id: UUID
-    bubbles: list[FormattedBubble]
-    intent: IntentVote | None
-    language_status: str
-    debug_event_ids: list[str] = Field(default_factory=list)
-    # Safety fields (PR 4).
-    blocked: bool = False
-    input_disabled: bool = False
-    system_message: str | None = None
-    action_events: list[dict[str, object]] = Field(default_factory=list)
 
 
 class CsrTurnRequest(BaseModel):
@@ -295,5 +280,100 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
                     "language_status": response.language_status,
                 }
             )
+    except WebSocketDisconnect:
+        return
+
+
+@router.websocket("/ws/stream")
+async def chat_websocket_stream(websocket: WebSocket) -> None:
+    """WebSocket endpoint for streaming chat responses.
+
+    When ``settings.response_streaming_enabled`` is True, response tokens are
+    sent incrementally as they are generated.  When it is False (or the adapter
+    does not support streaming), the full response is sent as a single payload.
+
+    Message protocol (server → client):
+      {"type": "stream_start"}                         — streaming turn begun
+      {"type": "token",       "text": "<chunk>"}       — incremental token
+      {"type": "stream_end",  "full_text": "<all>"}    — streaming turn done
+      {"type": "response",    "data": <ChatTurnResponse as dict>}  — non-streaming
+      {"type": "error",       "message": "<reason>"}   — request parsing error
+      {"type": "error", "code": "rate_limited", ...}   — rate limit hit
+
+    TODO: wire the streaming path through the full handle_turn pipeline so that
+    safety checks, tool governance, and bubble formatting are applied before
+    tokens are sent.
+    """
+    settings: Settings = websocket.app.state.settings
+    origin = websocket.headers.get("origin")
+
+    if not is_origin_allowed(origin, settings):
+        await websocket.close(code=1008, reason="Origin not allowed")
+        return
+
+    try:
+        principal = authenticate_websocket(websocket, settings)
+    except Exception:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    service: ChatService = websocket.app.state.chat_service
+    limiter: RateLimiter = websocket.app.state.rate_limiter
+    client_host = websocket.client.host if websocket.client else None
+    rate_key = f"ws:stream:{client_ip_from_scope(client_host)}"
+
+    # Detect whether streaming is active.  Attribute access is tolerant of
+    # Settings objects that do not yet carry response_streaming_enabled.
+    streaming_enabled: bool = bool(getattr(settings, "response_streaming_enabled", False))
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            decision = await limiter.check(rate_key, scope="ws_chat_message")
+            if not decision.allowed:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "code": "rate_limited",
+                        "message": "Too many messages. Please wait before sending another message.",
+                        "retry_after_seconds": decision.reset_after_seconds,
+                    }
+                )
+                continue
+
+            try:
+                request = ChatTurnRequest.model_validate(data)
+            except Exception as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+
+            # Inject principal customer_id if the caller did not supply one.
+            if request.customer_id is None and principal.customer_id is not None:
+                request = request.model_copy(update={"customer_id": principal.customer_id})
+
+            if not streaming_enabled:
+                # Non-streaming path: delegate to the standard handle_turn pipeline.
+                response = await service.handle_turn(request)
+                await websocket.send_json(
+                    {"type": "response", "data": response.model_dump(mode="json")}
+                )
+            else:
+                # Streaming path: send tokens as they arrive from the generator.
+                # NOTE: this bypasses the full handle_turn pipeline (safety checks,
+                # tool governance, bubble formatting).  Full pipeline streaming
+                # requires refactoring handle_turn to yield intermediate results.
+                # TODO: replace this scaffold with a streaming-aware handle_turn.
+                await websocket.send_json({"type": "stream_start"})
+                full_text = ""
+                async for token in service.response_generator.stream(  # type: ignore[attr-defined]
+                    message=request,  # type: ignore[arg-type]
+                    state=None,  # type: ignore[arg-type]
+                    intent=None,  # type: ignore[arg-type]
+                    extraction=None,  # type: ignore[arg-type]
+                ):
+                    full_text += token
+                    await websocket.send_json({"type": "token", "text": token})
+                await websocket.send_json({"type": "stream_end", "full_text": full_text})
     except WebSocketDisconnect:
         return

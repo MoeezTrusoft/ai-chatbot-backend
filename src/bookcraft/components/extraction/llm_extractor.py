@@ -15,6 +15,8 @@ target_audience) do not map to FieldMeta paths and are returned separately in
 
 from __future__ import annotations
 
+import re
+
 import structlog
 from prometheus_client import Counter, Histogram
 
@@ -40,6 +42,61 @@ LLM_EXTRACTION_FIELDS = Counter(
     "Fields extracted by LLM extractor.",
     ["field"],
 )
+NAME_AUTHORSHIP_REJECTED = Counter(
+    "llm_extraction_name_authorship_rejected_total",
+    "Customer-name deltas dropped because the name was a book author, not the customer.",
+)
+
+# Authorship attribution cues. A name appearing in these contexts is the book's
+# AUTHOR, not the customer — guards the bug where "the past & the future written by
+# Thomas Ray" caused "Thomas Ray" to be saved as personal.name.
+_AUTHORSHIP_CUE = re.compile(
+    r"\b(?:written|penned|authored|illustrated|created|published)\s+by\b"
+    r"|\bauthor(?:ed|\s+is|:)",
+    re.IGNORECASE,
+)
+# Trailing authorship clause on a book title. REQUIRES an authorship verb so titles
+# that merely contain " by " (e.g. "Death by Chocolate") are never truncated.
+_TITLE_AUTHORSHIP_SUFFIX = re.compile(
+    r"\s*(?:[-—,]\s*)?(?:written|penned|authored|illustrated)\s+by\s+.+$",
+    re.IGNORECASE,
+)
+
+
+def _name_is_book_authorship(
+    name_value: object, source_quote: str | None, book_title: object
+) -> bool:
+    """True when an extracted ``name`` is really a book author, not the customer.
+
+    Fires when the name's evidence quote carries an authorship cue, attributes the
+    name with "by <name>", or the name is contained within the (raw) book title.
+    The ``by <name>`` check is gated on the exact extracted name, so a title like
+    "Death by Chocolate" never trips it (the model would not extract "Chocolate").
+    """
+    name = str(name_value or "").strip().casefold()
+    if not name:
+        return False
+    quote = source_quote or ""
+    if _AUTHORSHIP_CUE.search(quote):
+        return True
+    if re.search(r"\bby\s+" + re.escape(name) + r"\b", quote, re.IGNORECASE):
+        return True
+    if book_title and name in str(book_title).strip().casefold():
+        return True
+    return False
+
+
+def _strip_authorship_from_title(title_value: object) -> object:
+    """Strip a trailing "written/penned/authored by X" clause from a book title.
+
+    "The Past & The Future written by Thomas Ray" → "The Past & The Future".
+    Returns the value unchanged when there is no authorship suffix, when it is not a
+    string, or when stripping would empty the title.
+    """
+    if not isinstance(title_value, str):
+        return title_value
+    stripped = _TITLE_AUTHORSHIP_SUFFIX.sub("", title_value).strip()
+    return stripped or title_value
 
 _HIGH_CONFIDENCE_THRESHOLD = 0.85
 _LOW_CONFIDENCE_FILL_VALUE = 0.3  # fills only empty fields via StateApplier rules
@@ -144,8 +201,16 @@ EXTRACTION RULES:
     "hawaii", "HST"                                              → "Pacific/Honolulu"
     "PKT", "Pakistan"                                            → "Asia/Karachi"
     Extract the IANA string, not the alias. Confidence 0.92 for any clear timezone statement.
-13. For name: normalize obvious typos (e.g. "Chri9stopher" → "Christopher"). Extract the
-    cleaned name. Confidence 0.92 for any clear name statement regardless of minor typos.
+13. For name: this is the CUSTOMER's OWN name only — NEVER a book's author or a name
+    printed in a title. Do NOT extract a name that appears after "written by", "by",
+    "authored by", or inside a book title as the customer name; that is the author. If
+    the ONLY name present is the book's author (e.g. "The Past & The Future written by
+    Thomas Ray"), leave name EMPTY. For a genuine self-identification ("my name is X",
+    "I'm X", "this is X", "call me X"), normalize obvious typos (e.g. "Chri9stopher" →
+    "Christopher") and extract the cleaned name at confidence 0.92.
+14. For book_title: extract ONLY the title itself, stripping any trailing authorship
+    clause — "The Past & The Future written by Thomas Ray" → book_title "The Past & The
+    Future" (and do NOT put "Thomas Ray" in name).
 """
 
 _EXTRACTION_USER_TEMPLATE = """\
@@ -173,6 +238,9 @@ Examples of Q&A extractions that MUST be captured:
 
   Assistant asked "what's your name and best email?" → User: "Gina gina@example.com"
   → name: "Gina", email: "gina@example.com", confidence 0.92
+
+  Assistant asked "what's your book's title?" → User: "the past & the future written by Thomas Ray"
+  → book_title: "The Past & The Future"  (NOT name — "Thomas Ray" is the AUTHOR, not the customer)
 
   Assistant asked "do you have notes or are you starting from scratch?" → User: "starting from scratch"
   → manuscript_status: "not_started", confidence 0.92
@@ -236,6 +304,11 @@ def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
     """Convert structured LLM output into StateDelta objects for existing StateApplier."""
     deltas: list[StateDelta] = []
 
+    # Raw (uncleaned) title is needed to disambiguate an author name from the
+    # customer name BEFORE the title's own authorship suffix is stripped below.
+    _title_ev: ExtractedValue | None = getattr(facts, "book_title", None)
+    raw_book_title = _title_ev.value if _title_ev is not None else None
+
     for field_name, state_path in _FIELD_TO_STATE_PATH.items():
         ev: ExtractedValue | None = getattr(facts, field_name, None)
         if ev is None or ev.value is None:
@@ -248,6 +321,25 @@ def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
                 raw_value = int(raw_value)
             except (TypeError, ValueError):
                 continue
+
+        # Guard: never persist a book's author as the customer's name. Dropping the
+        # delta keeps personal.name empty so the consultation flow still asks for the
+        # real name instead of skipping it (and addressing the customer as the author).
+        if field_name == "name" and _name_is_book_authorship(
+            raw_value, ev.source_quote, raw_book_title
+        ):
+            NAME_AUTHORSHIP_REJECTED.inc()
+            logger.info(
+                "llm_name_authorship_rejected",
+                rejected_name=str(raw_value),
+                source_quote=ev.source_quote,
+                book_title=str(raw_book_title) if raw_book_title is not None else None,
+            )
+            continue
+
+        # Keep the book title clean: "<Title> written by <Author>" → "<Title>".
+        if field_name == "book_title":
+            raw_value = _strip_authorship_from_title(raw_value)
 
         deltas.append(
             StateDelta(

@@ -114,12 +114,15 @@ from bookcraft.components.trg.schemas import (
     DelegationEvent,
     ProjectShiftEvent,
     SlotResolutionEvent,
+    TemporalRelationGraph,
     TRGContext,
 )
 from bookcraft.components.trimatch import TriMatchEngine
+from bookcraft.components.trimatch.schemas import TriMatchResult
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
+from bookcraft.infra.observability import STAGE_LATENCY
 from bookcraft.infra.redaction import redact_mapping, redact_text
 from bookcraft.infra.trace_sanitizer import (
     safe_contact_capture,
@@ -134,6 +137,44 @@ if TYPE_CHECKING:
 CHAT_TURNS_TOTAL = Counter("chatbot_turns_total", "Chat turns handled.")
 CHAT_TURN_LATENCY = Histogram("chatbot_turn_latency_seconds", "Chat turn latency.")
 STATE_UPDATES = Counter("thread_state_updates_total", "Thread state updates.", ["result"])
+ENTITY_INDEX_FAILURES = Counter(
+    "entity_index_failures_total",
+    "Entity index upsert failures.",
+    ["kind"],
+)
+
+_IMMEDIATE_EVENT_TYPES: frozenset[str] = frozenset({"user.message"})
+
+
+@dataclass
+class _EventBuffer:
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def collect(
+        self,
+        *,
+        thread_id: UUID,
+        sequence: int,
+        event_type: str,
+        payload: dict[str, object],
+        previous_hash: str | None,
+    ) -> tuple[str, int, str]:
+        from bookcraft.components.storage.events import calculate_event_hash
+        event_hash = calculate_event_hash(
+            thread_id=thread_id,
+            sequence=sequence + 1,
+            event_type=event_type,
+            payload=payload,
+            previous_hash=previous_hash,
+        )
+        self.events.append({
+            "sequence": sequence + 1,
+            "event_type": event_type,
+            "payload": payload,
+            "previous_hash": previous_hash,
+            "event_hash": event_hash,
+        })
+        return event_hash, sequence + 1, event_hash
 
 
 @dataclass(slots=True)
@@ -223,6 +264,10 @@ class ChatService:
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
     response_repair_enabled: bool = False
+    event_log_batching_enabled: bool = False
+    trg_background_persist_enabled: bool = False
+    llm_extraction_overlap_enabled: bool = False
+    trimatch_event_evidence_summary: bool = False
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
@@ -234,6 +279,8 @@ class ChatService:
             state = thread.state
             event_sequence = thread.event_count
             previous_event_hash = thread.last_event_hash
+            _evt_buf: _EventBuffer | None = _EventBuffer() if self.event_log_batching_enabled and self.thread_repository is not None else None
+            _preloaded_trg_graph: TemporalRelationGraph | None = None
 
             # PR 4: run input safety guard before any processing.
             input_safety_decision = self.input_safety_guard.evaluate(payload.message, state=state)
@@ -253,6 +300,7 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="user.message",
                     payload={"text": payload.message},
+                    _buf=_evt_buf,
                 )
                 event_ids = [event_id]
                 self._record_live_trace(
@@ -296,6 +344,7 @@ class ChatService:
                 event_type="user.message",
                 # Step 2 (Batch 1): sanitize event payload before persistence.
                 payload=sanitize_event_payload("user.message", {"text": payload.message}),
+                _buf=_evt_buf,
             )
             event_ids = [event_id]
             if not language.is_english:
@@ -306,6 +355,7 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="assistant.redirect",
                     payload={"language": language.language},
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
                 self._record_live_trace(
@@ -347,7 +397,8 @@ class ChatService:
                     sequence=event_sequence,
                     previous_hash=previous_event_hash,
                     event_type="trimatch.voted",
-                    payload=trimatch_result.model_dump(mode="json"),
+                    payload=_summarize_trimatch_payload(trimatch_result) if self.trimatch_event_evidence_summary else trimatch_result.model_dump(mode="json"),
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
 
@@ -364,7 +415,8 @@ class ChatService:
                             sequence=event_sequence,
                             previous_hash=previous_event_hash,
                             event_type="trimatch.extra_shadow_voted",
-                            payload=trimatch_shadow_result.model_dump(mode="json"),
+                            payload=_summarize_trimatch_payload(trimatch_shadow_result) if self.trimatch_event_evidence_summary else trimatch_shadow_result.model_dump(mode="json"),
+                            _buf=_evt_buf,
                         )
                         event_ids.append(event_id)
                 except Exception as exc:
@@ -387,14 +439,16 @@ class ChatService:
                         previous_hash=previous_event_hash,
                         event_type=failure_event_type,
                         payload={"exception_class": exc.__class__.__name__},
+                        _buf=_evt_buf,
                     )
                     event_ids.append(event_id)
 
-            intent = await self.intent_classifier.classify(
-                processed,
-                state,
-                trimatch_result=trimatch_result,
-            )
+            with STAGE_LATENCY.labels(stage="intent_classification").time():
+                intent = await self.intent_classifier.classify(
+                    processed,
+                    state,
+                    trimatch_result=trimatch_result,
+                )
             ensemble_intent = intent
             intent = harden_intent_from_message(intent, processed)
             arbiter_result = self.context_arbiter.arbitrate(
@@ -415,6 +469,7 @@ class ChatService:
                         extra_advisory=trimatch_shadow_result,
                         final_intent=intent,
                     ),
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
 
@@ -441,6 +496,7 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="trimatch.extra_tiebreaker_considered",
                     payload=tiebreaker_payload,
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
 
@@ -465,6 +521,7 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="trimatch.extra_shortcut_considered",
                     payload=shortcut_payload,
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
 
@@ -485,6 +542,7 @@ class ChatService:
                     previous_hash=previous_event_hash,
                     event_type="trimatch.disagreement_observed",
                     payload=disagreement_payload,
+                    _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
 
@@ -497,6 +555,7 @@ class ChatService:
                     "intent": intent.model_dump(mode="json"),
                     "decision": decision.model_dump(mode="json") if decision else None,
                 },
+                _buf=_evt_buf,
             )
             event_ids.append(event_id)
             # Phase 13: attachment intake.
@@ -516,24 +575,34 @@ class ChatService:
                     audit=[f"attachment_parse_error:{_attachment_parse_error}"]
                 )
 
-            extraction = await self.extractor.extract(processed, state)
-            # Step 6: collect rejected delta paths for trace.
-            _rejected_delta_paths: list[str] = []
-            previous_state = state.model_copy(deep=True)
-            state = self.state_applier.apply(
-                state, extraction, rejected_paths=_rejected_delta_paths
-            )
-            self._apply_service_focus_to_state(
-                state=state,
-                processed=processed,
-                intent=intent,
-            )
+            with STAGE_LATENCY.labels(stage="extraction").time():
+                extraction = await self.extractor.extract(processed, state)
+                # Step 6: collect rejected delta paths for trace.
+                _rejected_delta_paths: list[str] = []
+                previous_state = state.model_copy(deep=True)
+                state = self.state_applier.apply(
+                    state, extraction, rejected_paths=_rejected_delta_paths
+                )
+                self._apply_service_focus_to_state(
+                    state=state,
+                    processed=processed,
+                    intent=intent,
+                )
 
             # LLM metadata extraction — synchronous, runs before response generation so the
             # current response already benefits from richer facts (book title, cover preferences,
             # section structure, page dimensions, etc.) that regex cannot capture.
             _llm_extraction_delta_count = 0
-            if self.llm_metadata_extractor is not None:
+            _llm_extraction_task: asyncio.Task | None = None
+            if self.llm_metadata_extractor is not None and self.llm_extraction_overlap_enabled:
+                _llm_extraction_task = asyncio.create_task(
+                    self.llm_metadata_extractor.extract(
+                        user_text=payload.message,
+                        assistant_text=state.last_assistant_text or "",
+                        state=state.model_copy(deep=True),
+                    )
+                )
+            if self.llm_metadata_extractor is not None and not self.llm_extraction_overlap_enabled:
                 try:
                     _llm_result = await self.llm_metadata_extractor.extract(
                         user_text=payload.message,
@@ -569,7 +638,7 @@ class ChatService:
                                     turn_index=event_sequence,
                                 )
                             except Exception:  # noqa: BLE001
-                                pass
+                                ENTITY_INDEX_FAILURES.labels(kind="structured_fact").inc()
                         for _rk, _rv in _llm_result.rich_metadata.items():
                             try:
                                 await self.entity_index.upsert_free_text_fact(
@@ -580,7 +649,7 @@ class ChatService:
                                     turn_index=event_sequence,
                                 )
                             except Exception:  # noqa: BLE001
-                                pass
+                                ENTITY_INDEX_FAILURES.labels(kind="free_text_fact").inc()
                 except Exception as _llm_exc:  # noqa: BLE001
                     structlog.get_logger(__name__).warning(
                         "llm_metadata_extraction_failed",
@@ -640,6 +709,7 @@ class ChatService:
                     "delta_count": len(extraction.state_deltas),
                     "llm_delta_count": _llm_extraction_delta_count,
                 },
+                _buf=_evt_buf,
             )
             event_ids.append(event_id)
             action_plan = self.action_planner.plan(
@@ -852,6 +922,7 @@ class ChatService:
                     else "sales_action.planned"
                 ),
                 payload=action_payload or {},
+                _buf=_evt_buf,
             )
             event_ids.append(event_id)
             pricing_quote: PricingTimelineQuote | None = None
@@ -944,48 +1015,89 @@ class ChatService:
                     intent_service=intent.service_primary,
                     message=payload.message,
                 )
-            trg_context = await self._build_trg_context(thread_id)
-            trg_response_hint = _trg_response_hint_from_context(
-                state=state,
-                intent=intent,
-                trg_context=trg_context,
-            )
-
-            # Retrieve semantically relevant entity memory and build a context delta hint.
-            # Only inject facts that are NOT already present in the current thread state.
-            _entity_hint: str | None = None
-            if self.entity_index is not None:
+            if _llm_extraction_task is not None:
                 try:
-                    _entity_docs = await self.entity_index.retrieve_relevant(
-                        thread_id=thread_id,
-                        query_text=payload.message,
-                        top_k=6,
-                    )
-                    _entity_hint = _build_entity_context_hint(_entity_docs, state)
-                except Exception as _ei_exc:  # noqa: BLE001
-                    structlog.get_logger(__name__).debug(
-                        "entity_retrieval_skipped",
+                    _llm_result = await _llm_extraction_task
+                    if _llm_result.state_deltas:
+                        _llm_extraction_delta_count = len(_llm_result.state_deltas)
+                        _llm_combined = CombinedExtraction(state_deltas=_llm_result.state_deltas)
+                        state = self.state_applier.apply(state, _llm_combined, rejected_paths=_rejected_delta_paths)
+                        extraction.state_deltas.extend(_llm_result.state_deltas)
+                    if _llm_result.rich_metadata:
+                        if "book_specs" not in state.service_metadata:
+                            state.service_metadata["book_specs"] = {}
+                        for _k, _v in _llm_result.rich_metadata.items():
+                            if _k not in state.service_metadata["book_specs"]:
+                                state.service_metadata["book_specs"][_k] = _v
+                    if self.entity_index is not None:
+                        for _delta in _llm_result.state_deltas:
+                            try:
+                                await self.entity_index.upsert_structured_fact(
+                                    thread_id=thread_id,
+                                    entity_path=_delta.path,
+                                    entity_value=str(_delta.value),
+                                    confidence=_delta.confidence,
+                                    source_extraction=True,
+                                    turn_index=event_sequence,
+                                )
+                            except Exception:
+                                ENTITY_INDEX_FAILURES.labels(kind="structured_fact").inc()
+                        for _rk, _rv in _llm_result.rich_metadata.items():
+                            try:
+                                await self.entity_index.upsert_free_text_fact(
+                                    thread_id=thread_id, key=_rk, value=_rv, confidence=0.9, turn_index=event_sequence,
+                                )
+                            except Exception:
+                                ENTITY_INDEX_FAILURES.labels(kind="free_text_fact").inc()
+                except Exception as _llm_exc:
+                    structlog.get_logger(__name__).warning(
+                        "llm_metadata_extraction_failed",
                         thread_id=str(thread_id),
-                        exception_class=_ei_exc.__class__.__name__,
+                        exception_class=_llm_exc.__class__.__name__,
                     )
+            with STAGE_LATENCY.labels(stage="context_build").time():
+                trg_context, _preloaded_trg_graph = await self._build_trg_context(thread_id)
+                trg_response_hint = _trg_response_hint_from_context(
+                    state=state,
+                    intent=intent,
+                    trg_context=trg_context,
+                )
 
-            project_snapshot: ProjectContextSnapshot = self.project_context_manager.decide(
-                message=payload.message,
-                state=state,
-                intent=intent,
-            )
-            # Persist multi-project state so it survives across turns.
-            state.conversation_projects = [
-                p.model_dump(mode="json") for p in project_snapshot.projects
-            ]
-            context_pack = self.context_pack_builder.build(
-                state=state,
-                intent=intent,
-                runtime_atoms=processed.deterministic_atoms,
-                trg_context=trg_context,
-                project_snapshot=project_snapshot,
-                context_enforcement=context_enforcement_decision,
-            )
+                # Retrieve semantically relevant entity memory and build a context delta hint.
+                # Only inject facts that are NOT already present in the current thread state.
+                _entity_hint: str | None = None
+                if self.entity_index is not None:
+                    try:
+                        _entity_docs = await self.entity_index.retrieve_relevant(
+                            thread_id=thread_id,
+                            query_text=payload.message,
+                            top_k=6,
+                        )
+                        _entity_hint = _build_entity_context_hint(_entity_docs, state)
+                    except Exception as _ei_exc:  # noqa: BLE001
+                        structlog.get_logger(__name__).debug(
+                            "entity_retrieval_skipped",
+                            thread_id=str(thread_id),
+                            exception_class=_ei_exc.__class__.__name__,
+                        )
+
+                project_snapshot: ProjectContextSnapshot = self.project_context_manager.decide(
+                    message=payload.message,
+                    state=state,
+                    intent=intent,
+                )
+                # Persist multi-project state so it survives across turns.
+                state.conversation_projects = [
+                    p.model_dump(mode="json") for p in project_snapshot.projects
+                ]
+                context_pack = self.context_pack_builder.build(
+                    state=state,
+                    intent=intent,
+                    runtime_atoms=processed.deterministic_atoms,
+                    trg_context=trg_context,
+                    project_snapshot=project_snapshot,
+                    context_enforcement=context_enforcement_decision,
+                )
             response_hint = context_pack.response_hint or trg_response_hint
             if _entity_hint:
                 response_hint = f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
@@ -1183,6 +1295,7 @@ class ChatService:
                             else None,
                             "exception_class": exc.__class__.__name__,
                         },
+                        _buf=_evt_buf,
                     )
                     event_ids.append(event_id)
             document_status_message: str | None
@@ -1196,24 +1309,25 @@ class ChatService:
             _recent_turns: list[tuple[str, str]] | None = None
             if state.last_user_message and state.last_assistant_text:
                 _recent_turns = [(state.last_user_message, state.last_assistant_text)]
-            draft = await self.response_generator.generate(
-                message=processed,
-                state=state,
-                intent=intent,
-                extraction=extraction,
-                rag_chunks=rag_chunks,
-                pricing_quote=pricing_quote,
-                timeline_estimate=timeline_estimate,
-                pricing_missing_question=pricing_missing_question,
-                portfolio_response=portfolio_response,
-                document_status_message=document_status_message,
-                runtime_atoms=processed.deterministic_atoms,
-                response_hint=response_hint,
-                context_pack=context_pack,
-                response_plan=response_plan,
-                recent_turns=_recent_turns,
-                persona_decision=persona_decision,
-            )
+            with STAGE_LATENCY.labels(stage="response_generation").time():
+                draft = await self.response_generator.generate(
+                    message=processed,
+                    state=state,
+                    intent=intent,
+                    extraction=extraction,
+                    rag_chunks=rag_chunks,
+                    pricing_quote=pricing_quote,
+                    timeline_estimate=timeline_estimate,
+                    pricing_missing_question=pricing_missing_question,
+                    portfolio_response=portfolio_response,
+                    document_status_message=document_status_message,
+                    runtime_atoms=processed.deterministic_atoms,
+                    response_hint=response_hint,
+                    context_pack=context_pack,
+                    response_plan=response_plan,
+                    recent_turns=_recent_turns,
+                    persona_decision=persona_decision,
+                )
             quality_report = self.response_quality_gate.evaluate(
                 text=draft.text,
                 intent=intent,
@@ -1365,17 +1479,31 @@ class ChatService:
                 if _port_segs:
                     bubbles[0].rich_segments.extend(_port_segs)
             trg_context_for_trace: TRGContext | None = trg_context
-            if self.trg_engine is not None:
+            if self.trg_background_persist_enabled:
+                trg_context_for_trace = None
+                asyncio.create_task(self._bg_trg_update_and_persist(
+                    thread_id=thread_id,
+                    turn_sequence=event_sequence + 1,
+                    user_text=payload.message,
+                    assistant_text=final_text,
+                    previous_state=previous_state,
+                    state_deltas=list(extraction.state_deltas),
+                    arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
+                    preloaded_graph=_preloaded_trg_graph,
+                ))
+            elif self.trg_engine is not None:
                 try:
-                    trg_result = await self.trg_engine.update_after_turn(
-                        thread_id=thread_id,
-                        turn_sequence=event_sequence + 1,
-                        user_text=payload.message,
-                        assistant_text=final_text,
-                        previous_state=previous_state,
-                        state_deltas=extraction.state_deltas,
-                        arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
-                    )
+                    with STAGE_LATENCY.labels(stage="trg_update").time():
+                        trg_result = await self.trg_engine.update_after_turn(
+                            thread_id=thread_id,
+                            turn_sequence=event_sequence + 1,
+                            user_text=payload.message,
+                            assistant_text=final_text,
+                            previous_state=previous_state,
+                            state_deltas=extraction.state_deltas,
+                            arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
+                            preloaded_graph=_preloaded_trg_graph,
+                        )
                     # Rebuild context from the updated graph so trg_semantic reflects
                     # facts, service shifts, and contradictions recorded this turn.
                     trg_context_for_trace = self.trg_engine.build_context(trg_result.graph)
@@ -1390,6 +1518,7 @@ class ChatService:
                             "unresolved_question_count": trg_result.unresolved_question_count,
                             "contradiction_count": trg_result.contradiction_count,
                         },
+                        _buf=_evt_buf,
                     )
                     event_ids.append(event_id)
                 except Exception as exc:
@@ -1404,6 +1533,7 @@ class ChatService:
                         previous_hash=previous_event_hash,
                         event_type="trg.failed",
                         payload={"exception_class": exc.__class__.__name__},
+                        _buf=_evt_buf,
                     )
                     event_ids.append(event_id)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
@@ -1416,6 +1546,7 @@ class ChatService:
                     "bubble_count": len(bubbles),
                     "source": final_source,
                 },
+                _buf=_evt_buf,
             )
             event_ids.append(event_id)
             # Batch 3 Step 4: mark lead confirmation as acknowledged so future turns
@@ -1439,12 +1570,13 @@ class ChatService:
                 _save_attempts = 0
                 while True:
                     try:
-                        await self.thread_repository.save_state(
-                            thread_id=thread_id,
-                            state=state,
-                            expected_version=thread.version,
-                            language=language.language,
-                        )
+                        with STAGE_LATENCY.labels(stage="state_persist").time():
+                            await self.thread_repository.save_state(
+                                thread_id=thread_id,
+                                state=state,
+                                expected_version=thread.version,
+                                language=language.language,
+                            )
                         break
                     except ThreadVersionConflictError:
                         _save_attempts += 1
@@ -1464,7 +1596,7 @@ class ChatService:
                 self.threads[thread_id].state = state
 
             # Persist TRG facts to PostgreSQL so cold-start reload works after Redis TTL.
-            if self.trg_fact_store is not None and self.trg_engine is not None:
+            if not self.trg_background_persist_enabled and self.trg_fact_store is not None and self.trg_engine is not None:
                 try:
                     _pg_graph = await self.trg_engine.repository.load(thread_id)
                     if _pg_graph is not None and _pg_graph.semantic_facts:
@@ -1495,6 +1627,15 @@ class ChatService:
                         exception_class=_cp_exc.__class__.__name__,
                     )
 
+            if _evt_buf is not None and _evt_buf.events:
+                try:
+                    await self.thread_repository.append_events_batch(thread_id=thread_id, events=_evt_buf.events)
+                except Exception as _buf_exc:
+                    structlog.get_logger(__name__).warning(
+                        "event_buffer_flush_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_buf_exc.__class__.__name__,
+                    )
             self._record_live_trace(
                 {
                     "thread_id": str(thread_id),
@@ -2531,6 +2672,44 @@ class ChatService:
         for service in services_to_store:
             _append_service_focus(state, service)
 
+    async def _bg_trg_update_and_persist(
+        self,
+        *,
+        thread_id: UUID,
+        turn_sequence: int,
+        user_text: str,
+        assistant_text: str,
+        previous_state: "ThreadState | None",
+        state_deltas: list,
+        arbiter_signals: list[str],
+        preloaded_graph: "TemporalRelationGraph | None",
+    ) -> None:
+        if self.trg_engine is None:
+            return
+        try:
+            trg_result = await self.trg_engine.update_after_turn(
+                thread_id=thread_id,
+                turn_sequence=turn_sequence,
+                user_text=user_text,
+                assistant_text=assistant_text,
+                previous_state=previous_state,
+                state_deltas=iter(state_deltas),
+                arbiter_signals=arbiter_signals,
+                preloaded_graph=preloaded_graph,
+            )
+            if self.trg_fact_store is not None and trg_result.graph is not None and trg_result.graph.semantic_facts:
+                await self.trg_fact_store.upsert_facts(
+                    thread_id=thread_id,
+                    facts=trg_result.graph.semantic_facts,
+                    turn_index=turn_sequence,
+                )
+        except Exception as exc:
+            structlog.get_logger(__name__).warning(
+                "bg_trg_update_failed",
+                thread_id=str(thread_id),
+                exception_class=exc.__class__.__name__,
+            )
+
     async def _build_trg_response_hint(
         self,
         *,
@@ -2538,16 +2717,16 @@ class ChatService:
         state: ThreadState,
         intent: IntentVote,
     ) -> str | None:
-        trg_context = await self._build_trg_context(thread_id)
+        trg_context, _ = await self._build_trg_context(thread_id)
         return _trg_response_hint_from_context(
             state=state,
             intent=intent,
             trg_context=trg_context,
         )
 
-    async def _build_trg_context(self, thread_id: UUID) -> TRGContext | None:
+    async def _build_trg_context(self, thread_id: UUID) -> tuple[TRGContext | None, TemporalRelationGraph | None]:
         if self.trg_engine is None:
-            return None
+            return None, None
 
         graph = await self.trg_engine.repository.load(thread_id)
 
@@ -2559,8 +2738,6 @@ class ChatService:
             and (graph is None or not graph.semantic_facts)
         ):
             try:
-                from bookcraft.components.trg.schemas import TemporalRelationGraph
-
                 persisted_facts = await self.trg_fact_store.load_active_facts(thread_id)
                 if persisted_facts:
                     if graph is None:
@@ -2575,9 +2752,9 @@ class ChatService:
                 )
 
         if graph is None:
-            return None
+            return None, None
 
-        return self.trg_engine.build_context(graph)
+        return self.trg_engine.build_context(graph), graph
 
     def _record_live_trace(self, row: dict[str, Any]) -> None:
         if self.trace_store is None:
@@ -2650,12 +2827,23 @@ class ChatService:
         previous_hash: str | None,
         event_type: str,
         payload: dict[str, object],
+        _buf: "_EventBuffer | None" = None,
     ) -> tuple[str, int, str]:
         safe_payload = redact_mapping(payload) or {}
         if self.thread_repository is None:
             memory = self.threads.setdefault(thread_id, ThreadMemory())
             event_hash = self._append_event(memory, thread_id, event_type, safe_payload)
             return event_hash, len(memory.events), event_hash
+
+        # Buffered path: collect for batch flush later
+        if _buf is not None and event_type not in _IMMEDIATE_EVENT_TYPES:
+            return _buf.collect(
+                thread_id=thread_id,
+                sequence=sequence,
+                event_type=event_type,
+                payload=safe_payload,
+                previous_hash=previous_hash,
+            )
 
         event_hash = await self.thread_repository.append_event(
             thread_id=thread_id,
@@ -3884,6 +4072,23 @@ def _is_proof_copy_request(text: str) -> bool:
     'I want to print a sample', 'sample copy', 'proof copy', 'publish a journal'.
     """
     return bool(_PROOF_COPY_RE.search(text))
+
+
+def _summarize_trimatch_payload(result: "TriMatchResult") -> dict[str, object]:
+    return {
+        "service_primary": result.service_primary.value if result.service_primary else None,
+        "query_primary": result.query_primary.value if result.query_primary else None,
+        "confidence": result.confidence,
+        "evidence_summary": [
+            {
+                "rule_id": e.rule_id,
+                "target": e.target,
+                "layer": e.layer.value if e.layer else None,
+                "confidence": e.confidence,
+            }
+            for e in result.evidence
+        ],
+    }
 
 
 def _optional_string(value: object) -> str | None:

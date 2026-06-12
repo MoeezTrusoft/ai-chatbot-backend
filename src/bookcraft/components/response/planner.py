@@ -8,6 +8,7 @@ from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
 from bookcraft.components.tools.governance import ToolGovernanceDecision
+from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
 
@@ -121,9 +122,17 @@ class ResponsePlan(BaseModel):
     tone: str = "warm_consultative"
     customer_safe_tool_summary: str | None = None
     audit: list[str] = Field(default_factory=list)
+    # P4-T4: contradiction-confirmation flow.
+    contradiction_pending: bool = False  # True if there are unresolved contradictions worth confirming
+    contradiction_hint: str | None = None  # What the contradiction is about
 
 
 class ResponsePlanner:
+    # P4-T4: when True, the planner will flag unresolved pricing-relevant
+    # contradictions in the ResponsePlan so downstream code can surface a
+    # confirmation question to the author.
+    contradiction_confirmation_enabled: bool = False
+
     def plan(
         self,
         *,
@@ -148,6 +157,8 @@ class ResponsePlanner:
         context_enforcement: Any | None = None,
         # Batch 4: complaint classifier output.
         complaint_classification: Any | None = None,
+        # P4-T4: TRG context for contradiction-confirmation flow.
+        trg_context: TRGContext | None = None,
     ) -> ResponsePlan:
         del state, action_plan  # all project state surfaces via context_pack
 
@@ -262,6 +273,33 @@ class ResponsePlanner:
         if summary:
             audit.append("planner:tool_summary:set")
 
+        # P4-T4: contradiction-confirmation flow.
+        # Flag unresolved pricing-relevant contradictions so the response layer
+        # can prompt the author to confirm which value to use, rather than silently
+        # picking one.  Only activates when contradiction_confirmation_enabled=True.
+        contradiction_pending = False
+        contradiction_hint: str | None = None
+        if self.contradiction_confirmation_enabled and trg_context is not None and trg_context.contradictions:
+            _PRICING_PATHS = {
+                "project.word_count",
+                "project.page_count",
+                "service.budget",
+                "service.timeline",
+            }
+            pricing_contradictions = [
+                c for c in trg_context.contradictions
+                if c.fact_path in _PRICING_PATHS and c.resolution_status == "unresolved"
+            ]
+            if pricing_contradictions:
+                contradiction_pending = True
+                contradiction_hint = (
+                    f"Conflicting info about "
+                    f"{pricing_contradictions[0].fact_path.split('.')[-1]}"
+                )
+                audit.append(
+                    f"planner:contradiction_pending:{pricing_contradictions[0].fact_path}"
+                )
+
         return ResponsePlan(
             acknowledge_facts=facts,
             primary_goal=goal,
@@ -271,6 +309,8 @@ class ResponsePlanner:
             tone="warm_consultative",
             customer_safe_tool_summary=summary,
             audit=audit,
+            contradiction_pending=contradiction_pending,
+            contradiction_hint=contradiction_hint,
         )
 
 

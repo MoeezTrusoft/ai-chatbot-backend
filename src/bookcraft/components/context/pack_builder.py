@@ -14,12 +14,53 @@ from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
+from bookcraft.infra.observability import CONTEXT_HINT_DROPPED
 
 if TYPE_CHECKING:
     from bookcraft.components.context.project_manager import ProjectContextSnapshot
 
+# Maximum number of known facts to include in a context pack by priority tier.
+_FACT_PRIORITY_TIERS = {
+    "contact": 10,    # contact facts — always include all
+    "project": 15,    # project facts — include all
+    "service": 10,    # service-specific facts
+    "trg": 8,         # TRG semantic facts
+    "other": 5,       # anything else
+}
+_MAX_TOTAL_FACTS = 30  # hard cap on total facts in context pack
+
+# Priority of response_hint source labels for token budgeting (higher = kept first).
+# Contradiction / confirmation guidance is most important, then TRG forbidden-reask
+# guards, then CSR-style scoping (consultation/upload), workflow, entity, then misc.
+_HINT_SOURCE_PRIORITY: dict[str, int] = {
+    "contradiction": 100,      # contradictory-detail / repeated-info guidance
+    "forbidden_reasks": 90,    # do-not-reask guard (TRG / state derived)
+    "consultation": 80,        # consultation-first scoping guard (CSR)
+    "manuscript_upload": 75,   # manuscript upload pitch (CSR)
+    "current_question": 70,    # priority-question / answer-before-capture (workflow)
+    "known_facts": 60,         # known facts recap (entity)
+    "active_service": 55,      # active service (entity)
+    "missing_facts": 50,       # missing facts / allowed-next (workflow)
+    "allowed_next": 48,        # allowed next questions (workflow)
+    "outstanding": 45,         # previously-asked questions (workflow)
+    "preferred_call_time": 40,  # call-time handoff confirmation
+    "greeting": 35,            # greeting-only guard
+    "genre_uncertain": 30,     # genre-uncertain guidance
+    "book_format": 25,         # book-format note
+    "language": 20,            # non-English handling note
+}
+_DEFAULT_HINT_PRIORITY = 10  # any unlabeled / misc source
+
 
 class ContextPackBuilder:
+    def __init__(
+        self,
+        budget_enabled: bool = False,
+        hint_token_budget: int = 1200,
+    ) -> None:
+        self._budget_enabled = budget_enabled
+        self._hint_token_budget = hint_token_budget
+
     def build(
         self,
         *,
@@ -478,6 +519,10 @@ class ContextPackBuilder:
             if _known_meta_key not in forbidden_reasks:
                 forbidden_reasks.append(_known_meta_key)
 
+        # Token-budget trimming: cap known_facts at _MAX_TOTAL_FACTS, preferring higher-priority facts
+        if len(known_facts) > _MAX_TOTAL_FACTS:
+            known_facts = _trim_facts_by_priority(known_facts, _MAX_TOTAL_FACTS)
+
         pack = ContextPack(
             known_facts=known_facts,
             missing_facts=missing_facts,
@@ -535,6 +580,14 @@ class ContextPackBuilder:
             stale_context_terms=_enforcement_stale_terms,
             context_enforcement_warnings=_enforcement_warnings,
         )
+        if self._budget_enabled:
+            segments = _response_hint_segments(pack)
+            budgeted_hint, dropped_labels = _apply_hint_budget(
+                segments, self._hint_token_budget
+            )
+            for label in dropped_labels:
+                CONTEXT_HINT_DROPPED.labels(source=label).inc()
+            return pack.model_copy(update={"response_hint": budgeted_hint})
         return pack.model_copy(update={"response_hint": _response_hint(pack)})
 
 
@@ -678,85 +731,113 @@ def _allowed_next_questions(
     ]
 
 
-def _response_hint(pack: ContextPack) -> str | None:
-    parts: list[str] = []
+def _response_hint_segments(pack: ContextPack) -> list[tuple[str, str]]:
+    """Assemble the response_hint as an ordered list of (source_label, text) pairs.
+
+    The order here is the canonical assembly order. Joining the texts with a single
+    space reproduces the legacy ``_response_hint`` string exactly. Labels feed the
+    token-budget priority map (``_HINT_SOURCE_PRIORITY``).
+    """
+    parts: list[tuple[str, str]] = []
     if pack.is_greeting_turn:
-        parts.append(
+        parts.append((
+            "greeting",
             "This is a greeting-only turn. Welcome the user warmly. "
-            "Do NOT ask about genre, word count, manuscript stage, or any scoping detail."
-        )
+            "Do NOT ask about genre, word count, manuscript stage, or any scoping detail.",
+        ))
     if pack.genre_status == "uncertain":
         candidates = ", ".join(pack.genre_candidates) if pack.genre_candidates else "unknown"
-        parts.append(
+        parts.append((
+            "genre_uncertain",
             f"Genre is UNCERTAIN — the user mentioned candidates ({candidates}) but has not "
             f"confirmed a genre. Do NOT assert any genre as established. "
             f"Offer options (fiction, memoir/personal story, business/self-help, "
-            f"children's book, not sure yet) as a helpful guide."
-        )
+            f"children's book, not sure yet) as a helpful guide.",
+        ))
     if pack.book_formats:
-        parts.append(
+        parts.append((
+            "book_format",
             f"Book format detected: {', '.join(pack.book_formats)}. "
             f"Treat as format/type, not as a genre. "
-            f"{'Audience: ' + pack.audience if pack.audience else 'Audience not yet confirmed'}."
-        )
+            f"{'Audience: ' + pack.audience if pack.audience else 'Audience not yet confirmed'}.",
+        ))
     if pack.known_facts:
         known = ", ".join(f"{fact.label}={fact.value}" for fact in pack.known_facts)
-        parts.append(f"Known facts: {known}.")
+        parts.append(("known_facts", f"Known facts: {known}."))
     if pack.active_service:
-        parts.append(f"Active service: {pack.active_service}.")
+        parts.append(("active_service", f"Active service: {pack.active_service}."))
     if pack.missing_facts:
-        parts.append("Missing facts: " + ", ".join(pack.missing_facts) + ".")
+        parts.append(("missing_facts", "Missing facts: " + ", ".join(pack.missing_facts) + "."))
     if pack.forbidden_reasks:
-        parts.append("Do not ask again for: " + ", ".join(pack.forbidden_reasks) + ".")
+        parts.append((
+            "forbidden_reasks",
+            "Do not ask again for: " + ", ".join(pack.forbidden_reasks) + ".",
+        ))
     if pack.allowed_next_questions:
-        parts.append("Allowed next questions: " + ", ".join(pack.allowed_next_questions) + ".")
+        parts.append((
+            "allowed_next",
+            "Allowed next questions: " + ", ".join(pack.allowed_next_questions) + ".",
+        ))
     if pack.outstanding_questions:
-        parts.append(
+        parts.append((
+            "outstanding",
             "Previous assistant questions already asked: "
             + " | ".join(pack.outstanding_questions[-3:])
-            + "."
-        )
+            + ".",
+        ))
     if pack.repeated_user_info:
-        parts.append(
-            "The user appears to be repeating information; acknowledge it and move forward."
-        )
+        parts.append((
+            "contradiction",
+            "The user appears to be repeating information; acknowledge it and move forward.",
+        ))
     if pack.contradiction_warnings:
-        parts.append("There may be contradictory project details; ask one focused question.")
+        parts.append((
+            "contradiction",
+            "There may be contradictory project details; ask one focused question.",
+        ))
     if pack.language_ignored_segments:
-        parts.append(
+        parts.append((
+            "language",
             "Some non-English segments were ignored. Answer the English portion only. "
-            "Ask the user to continue in English through one gentle prompt."
-        )
+            "Ask the user to continue in English through one gentle prompt.",
+        ))
     # Consultation-first guidance.
     if pack.consultation_stage == "consultation_pending":
-        parts.append(
+        parts.append((
+            "consultation",
             "CONSULTATION IS PENDING. Do NOT ask for word count, genre, deadline, or any "
-            "scoping detail. Confirm specialist follow-up and timing only."
-        )
+            "scoping detail. Confirm specialist follow-up and timing only.",
+        ))
     elif pack.consultation_stage == "consultation_time_requested":
-        parts.append(
+        parts.append((
+            "consultation",
             "Contact is captured. Ask for the user's preferred call time only. "
-            "Do NOT ask for word count, genre, or deadline."
-        )
+            "Do NOT ask for word count, genre, or deadline.",
+        ))
     if pack.current_question_type:
-        parts.append(
+        parts.append((
+            "current_question",
             f"User asked a priority question ({pack.current_question_type}). "
-            f"Answer this concern first before asking for contact details."
-        )
+            f"Answer this concern first before asking for contact details.",
+        ))
     if pack.answer_before_capture_applied:
-        parts.append(
+        parts.append((
+            "current_question",
             "Answer-before-capture policy was applied this turn. "
-            "Do not open with a contact request — answer the concern first."
-        )
+            "Do not open with a contact request — answer the concern first.",
+        ))
     if pack.preferred_call_time and pack.lead_created:
-        parts.append(
-            f"Preferred call time captured: {pack.preferred_call_time}. Confirm specialist handoff."
-        )
+        parts.append((
+            "preferred_call_time",
+            f"Preferred call time captured: {pack.preferred_call_time}. "
+            "Confirm specialist handoff.",
+        ))
     # Manuscript upload pitch: proactively pitch free editorial assessment when
     # the author has written content but hasn't uploaded a file yet.
     if pack.manuscript_upload_eligible:
         status_label = pack.manuscript_status or "written content"
-        parts.append(
+        parts.append((
+            "manuscript_upload",
             f"MANUSCRIPT UPLOAD PITCH (manuscript_status: {status_label}): "
             "The author has written material. At the natural point in the conversation "
             "— after acknowledging their work — weave in ONE offer of a free editorial assessment: "
@@ -766,9 +847,103 @@ def _response_hint(pack: ContextPack) -> str | None:
             "Say this ONCE, naturally and conversationally. "
             "Do not repeat it, do not make it sound like an advertisement, "
             "and do not interrupt the current conversation flow to say it — "
-            "blend it in after you answer whatever the author is asking about."
-        )
+            "blend it in after you answer whatever the author is asking about.",
+        ))
+    return parts
+
+
+def _response_hint(pack: ContextPack) -> str | None:
+    parts = [text for _label, text in _response_hint_segments(pack)]
     return " ".join(parts) if parts else None
+
+
+def _hint_approx_tokens(text: str) -> int:
+    """Approximate token count for a hint segment.
+
+    Uses whitespace word count as the proxy (``len(text.split())``). This is a
+    deliberately simple, deterministic heuristic — roughly 1 token per word, which
+    slightly under-counts vs. true BPE tokenization but is stable and dependency-free.
+    """
+    return len(text.split())
+
+
+def _apply_hint_budget(
+    hint_sources: list[tuple[str, str]] | None,
+    budget_tokens: int,
+) -> tuple[str | None, list[str]]:
+    """Greedily keep the highest-priority hint sources within an approx token budget.
+
+    Args:
+        hint_sources: ordered ``(source_label, text)`` segments from
+            ``_response_hint_segments``. ``None`` or empty is treated as no hint.
+        budget_tokens: approximate token budget (see ``_hint_approx_tokens``).
+
+    Returns:
+        ``(budgeted_hint_string_or_None, dropped_source_labels)``. Kept segments are
+        re-emitted in their original assembly order so wording is unchanged; dropped
+        labels are returned in priority-evaluation order for observability.
+    """
+    if not hint_sources:
+        return None, []
+
+    # Rank by descending priority; ties keep original assembly order (stable sort).
+    indexed = list(enumerate(hint_sources))
+    ranked = sorted(
+        indexed,
+        key=lambda item: _HINT_SOURCE_PRIORITY.get(item[1][0], _DEFAULT_HINT_PRIORITY),
+        reverse=True,
+    )
+
+    kept_indices: set[int] = set()
+    dropped_labels: list[str] = []
+    used = 0
+    for orig_index, (label, text) in ranked:
+        cost = _hint_approx_tokens(text)
+        if used + cost <= budget_tokens:
+            kept_indices.add(orig_index)
+            used += cost
+        else:
+            dropped_labels.append(label)
+
+    kept_parts = [text for i, (_label, text) in enumerate(hint_sources) if i in kept_indices]
+    budgeted = " ".join(kept_parts) if kept_parts else None
+    return budgeted, dropped_labels
+
+
+def _trim_facts_by_priority(facts: list[KnownFact], max_count: int) -> list[KnownFact]:
+    """Trim facts to max_count, keeping higher-priority facts first.
+
+    Priority order: contact > project > service > trg > other.
+    Within a tier, keep all facts up to the tier cap.
+    """
+    tier_order = ["contact", "project", "service", "trg", "other"]
+
+    def _get_tier(fact: KnownFact) -> str:
+        path = getattr(fact, "path", "") or ""
+        if path.startswith("contact") or path.startswith("personal"):
+            return "contact"
+        if path.startswith("project"):
+            return "project"
+        if path.startswith("service"):
+            return "service"
+        if path.startswith("trg"):
+            return "trg"
+        return "other"
+
+    by_tier: dict[str, list[KnownFact]] = {t: [] for t in tier_order}
+    for fact in facts:
+        tier = _get_tier(fact)
+        by_tier[tier].append(fact)
+
+    result: list[KnownFact] = []
+    for tier in tier_order:
+        tier_facts = by_tier[tier]
+        cap = _FACT_PRIORITY_TIERS.get(tier, 5)
+        result.extend(tier_facts[:cap])
+        if len(result) >= max_count:
+            break
+
+    return result[:max_count]
 
 
 def _ordered_unique(values: list[str]) -> list[str]:

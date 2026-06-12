@@ -13,6 +13,7 @@ from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 
 from .context_arbitration import apply_context_arbitration
 from .schemas import (
+    CompiledRulePack,
     RulePack,
     TriMatchDimension,
     TriMatchEvidence,
@@ -70,17 +71,17 @@ class TriMatchEngine:
     shortcut_threshold: float = 0.97
     funnel_stage_weight: float = 0.0
     fuzzy_enabled: bool = False
+    compiled_pack: CompiledRulePack | None = None
 
     def classify(
         self,
         processed_message: ProcessedMessage,
         trg_context: TRGContext | None = None,
     ) -> TriMatchResult:
-        del trg_context
-        evidence = apply_context_arbitration(
-            self._collect_evidence(processed_message),
-            processed_message,
-        )
+        raw_evidence = self._collect_evidence(processed_message)
+        if trg_context is not None:
+            raw_evidence, _trg_audit = _apply_trg_arbitration(raw_evidence, trg_context)
+        evidence = apply_context_arbitration(raw_evidence, processed_message)
         scores = aggregate_scores(evidence)
         query_primary = _best_enum(scores[TriMatchDimension.QUERY_INTENT], QueryIntentType)
         service_primary = _best_enum(scores[TriMatchDimension.SERVICE_INTENT], ServiceCategory)
@@ -90,7 +91,19 @@ class TriMatchEngine:
             service_primary,
         )
         funnel_stage = _best_enum(scores[TriMatchDimension.FUNNEL_STAGE], SalesStage)
-        confidence = max((item.confidence for item in evidence), default=0.0)
+        service_scores = scores[TriMatchDimension.SERVICE_INTENT]
+        if service_primary is not None and service_scores:
+            winning_score = service_scores.get(service_primary.value, 0.0)
+            total_score = sum(service_scores.values())
+            confidence = winning_score / total_score if total_score > 0 else 0.0
+        else:
+            query_scores = scores[TriMatchDimension.QUERY_INTENT]
+            if query_primary is not None and query_scores:
+                winning_score = query_scores.get(query_primary.value, 0.0)
+                total_score = sum(query_scores.values())
+                confidence = winning_score / total_score if total_score > 0 else 0.0
+            else:
+                confidence = max((item.confidence for item in evidence), default=0.0)
         shortcut_eligible = self._shortcut_eligible(evidence)
         if funnel_stage is not None and (
             self.mode == TriMatchMode.SHADOW or self.funnel_stage_weight == 0
@@ -113,14 +126,69 @@ class TriMatchEngine:
 
     def _collect_evidence(self, message: ProcessedMessage) -> list[TriMatchEvidence]:
         evidence: list[TriMatchEvidence] = []
+
+        # EXACT layer fast pre-screen: if the compiled union pattern doesn't match,
+        # no EXACT rule can fire — skip all EXACT rules for this message.
+        exact_prescreened = (
+            self.compiled_pack is not None
+            and self.compiled_pack.exact_union_pattern is not None
+            and not self.compiled_pack.exact_union_pattern.search(message.normalized)
+        )
+
+        # SEMANTIC compiled path: when pre-computed embeddings are available, collect
+        # all SEMANTIC rules and run them via cosine similarity instead of match_rule.
+        use_semantic_compiled = (
+            self.compiled_pack is not None
+            and bool(self.compiled_pack.semantic_embeddings)
+            and bool(message.embedding)
+        )
+        if use_semantic_compiled:
+            semantic_rules = [
+                rule
+                for rule in self.rule_pack.rules
+                if rule.layer == TriMatchLayer.SEMANTIC
+            ]
+            for sem_ev in self._match_semantic_compiled(message, semantic_rules):
+                evidence.append(sem_ev)
+                TRIMATCH_VOTES.labels(
+                    dimension=sem_ev.dimension.value,
+                    layer=sem_ev.layer.value,
+                    result="hit",
+                ).inc()
+
         for rule in self.rule_pack.rules:
             if rule.layer == TriMatchLayer.FUZZY and not self.fuzzy_enabled:
                 continue
+
+            # Skip EXACT rules when union pre-screen ruled out any match
+            if rule.layer == TriMatchLayer.EXACT and exact_prescreened:
+                TRIMATCH_VOTES.labels(
+                    dimension=rule.target.dimension.value,
+                    layer=rule.layer.value,
+                    result="miss",
+                ).inc()
+                continue
+
+            # Skip SEMANTIC rules when the compiled path already handled them
+            if rule.layer == TriMatchLayer.SEMANTIC and use_semantic_compiled:
+                continue
+
             with TRIMATCH_LATENCY.labels(
                 dimension=rule.target.dimension.value,
                 layer=rule.layer.value,
             ).time():
-                matched = match_rule(rule, message)
+                # Use pre-compiled regex pattern when available
+                if (
+                    rule.layer == TriMatchLayer.REGEX
+                    and self.compiled_pack is not None
+                    and rule.id in self.compiled_pack.compiled_regex
+                ):
+                    matched = _match_rule_with_compiled_regex(
+                        rule, message, self.compiled_pack.compiled_regex[rule.id]
+                    )
+                else:
+                    matched = match_rule(rule, message)
+
             if matched is None:
                 TRIMATCH_VOTES.labels(
                     dimension=rule.target.dimension.value,
@@ -162,6 +230,59 @@ class TriMatchEngine:
             ).inc()
         return evidence
 
+    def _match_semantic_compiled(
+        self,
+        processed_message: ProcessedMessage,
+        rules: list[TriMatchRule],
+    ) -> list[TriMatchEvidence]:
+        """Use pre-computed embeddings for SEMANTIC matching via cosine similarity."""
+        if (
+            self.compiled_pack is None
+            or not self.compiled_pack.semantic_embeddings
+            or not processed_message.embedding
+        ):
+            return []
+
+        query_emb = processed_message.embedding
+        query_norm = math.sqrt(sum(x * x for x in query_emb)) or 1.0
+        query_unit = [x / query_norm for x in query_emb]
+
+        evidence: list[TriMatchEvidence] = []
+        for rule in rules:
+            if rule.layer != TriMatchLayer.SEMANTIC:
+                continue
+            idx = self.compiled_pack.semantic_rule_index.get(rule.id)
+            if idx is None:
+                continue
+            _, rule_emb = self.compiled_pack.semantic_embeddings[idx]
+            cosine = sum(a * b for a, b in zip(query_unit, rule_emb))
+            if cosine >= 0.6:  # threshold: ~36° angle
+                damped_confidence, flags = dampen_confidence(
+                    processed_message.normalized[:100],
+                    rule.confidence * cosine,
+                    processed_message,
+                )
+                if damped_confidence <= 0:
+                    TRIMATCH_VOTES.labels(
+                        dimension=rule.target.dimension.value,
+                        layer=rule.layer.value,
+                        result="damped",
+                    ).inc()
+                    continue
+                evidence.append(
+                    TriMatchEvidence(
+                        rule_id=rule.id,
+                        dimension=rule.target.dimension,
+                        target=rule.target.value,
+                        layer=TriMatchLayer.SEMANTIC,
+                        matched_text=processed_message.normalized[:100],
+                        confidence=damped_confidence,
+                        shortcut_eligible=False,
+                        **flags,
+                    )
+                )
+        return evidence
+
     def _shortcut_eligible(self, evidence: list[TriMatchEvidence]) -> bool:
         if self.mode != TriMatchMode.SHORTCUT_ENABLED:
             return False
@@ -174,6 +295,51 @@ class TriMatchEngine:
                     status="eligible",
                 ).inc()
         return eligible
+
+
+def _apply_trg_arbitration(
+    evidence: list[TriMatchEvidence],
+    trg_context: TRGContext,
+) -> tuple[list[TriMatchEvidence], list[str]]:
+    """Conservative TRG-aware evidence suppression. Suppression-only, never boosts.
+
+    Returns (filtered_evidence, audit_strings).
+    """
+    if not trg_context:
+        return evidence, []
+
+    audit: list[str] = []
+    filtered: list[TriMatchEvidence] = []
+
+    # Build set of declined/confirmed services from TRG service shifts
+    declined_services: set[str] = set()
+    for shift in trg_context.service_shifts:
+        # A shift away from a service means the user changed their mind
+        # Mark previously-active services as context-declined if there was an explicit switch
+        if shift.mode == "switch" and shift.previous_service:
+            declined_services.add(shift.previous_service.lower())
+
+    # Build set of forbidden re-ask targets from TRG
+    forbidden_lower = {f.lower() for f in trg_context.forbidden_reasks}
+
+    for item in evidence:
+        # Suppress SERVICE_INTENT evidence for services the user explicitly switched away from
+        if (
+            item.dimension == TriMatchDimension.SERVICE_INTENT
+            and item.target.lower() in declined_services
+        ):
+            audit.append(f"trg_suppressed:declined_service:{item.target}:{item.rule_id}")
+            continue
+
+        # Suppress evidence that re-fires on a topic in forbidden_reasks
+        # (e.g., re-asking genre when it's already captured)
+        if any(item.target.lower() in f or f in item.target.lower() for f in forbidden_lower):
+            audit.append(f"trg_suppressed:forbidden_reask:{item.target}:{item.rule_id}")
+            continue
+
+        filtered.append(item)
+
+    return filtered, audit
 
 
 def match_rule(rule: TriMatchRule, message: ProcessedMessage) -> str | None:
@@ -201,6 +367,16 @@ def match_rule(rule: TriMatchRule, message: ProcessedMessage) -> str | None:
     if rule.layer == TriMatchLayer.SEMANTIC:
         return semantic_match(rule, message)
     return None
+
+
+def _match_rule_with_compiled_regex(
+    rule: TriMatchRule,
+    message: ProcessedMessage,
+    compiled_pattern: re.Pattern[str],
+) -> str | None:
+    """Match a REGEX rule using a pre-compiled pattern object."""
+    match = compiled_pattern.search(message.normalized)
+    return match.group(0) if match else None
 
 
 def contains_subsequence(tokens: list[str], pattern: list[str]) -> bool:

@@ -111,6 +111,30 @@ class ThreadRepository:
 
         return event_hash
 
+    async def append_events_batch(
+        self,
+        *,
+        thread_id: UUID,
+        events: list[dict[str, Any]],
+    ) -> str:
+        """Insert multiple events in a single DB transaction. Returns last event hash."""
+        async with self.session_factory() as session:
+            for evt in events:
+                session.add(
+                    ThreadEvent(
+                        thread_id=thread_id,
+                        sequence=evt["sequence"],
+                        event_type=evt["event_type"],
+                        actor=evt.get("actor", "system"),
+                        payload=evt["payload"],
+                        previous_hash=evt["previous_hash"],
+                        event_hash=evt["event_hash"],
+                        created_at=utc_now(),
+                    )
+                )
+            await session.commit()
+        return events[-1]["event_hash"]
+
     async def save_state(
         self,
         *,
