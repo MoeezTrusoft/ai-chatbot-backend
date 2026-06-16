@@ -28,12 +28,14 @@ def test_sanitizer_preserves_nda_pending_confirmation_payload() -> None:
     assert payload["send_email"] is False
 
 
-def test_sanitizer_still_redacts_general_personal_info() -> None:
+def test_sanitizer_preserves_structured_contact() -> None:
+    # Policy change: structured contact (name/email/phone) is preserved in the
+    # persisted state so it shows in the CSR AI State panel and survives across turns.
     state = ThreadState()
     state.personal.email.value = "maya@example.com"
     state.personal.phone.value = "+1 555 123 4567"
 
     snapshot = sanitize_thread_state_for_persistence(state)
 
-    assert snapshot["personal"]["email"]["value"] == "[REDACTED_EMAIL]"
-    assert snapshot["personal"]["phone"]["value"] == "[REDACTED_PHONE]"
+    assert snapshot["personal"]["email"]["value"] == "maya@example.com"
+    assert snapshot["personal"]["phone"]["value"] == "+1 555 123 4567"

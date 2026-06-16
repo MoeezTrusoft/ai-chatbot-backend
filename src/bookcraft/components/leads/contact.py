@@ -12,7 +12,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bookcraft.components.leads.contact_utils import is_real_contact_value
+from bookcraft.components.leads.contact_utils import (
+    is_non_name_token,
+    is_real_contact_value,
+    is_valid_phone,
+)
 
 # ---------------------------------------------------------------------------
 # Models
@@ -56,12 +60,16 @@ _PHONE_RE = re.compile(
 _BARE_PHONE_RE = re.compile(r"\b(\d{10,})\b")
 
 # Strong name patterns only — avoid false positives on service/topic phrases.
+# The TRIGGER ("my name is", "I'm", …) is matched case-insensitively via a scoped
+# (?i:…) group, but the captured NAME must be genuinely capitalized ([A-Z][a-z]+).
+# This stops case-insensitive over-capture like "my name is Sarah Khan and my email"
+# → "Sarah Khan and my", or "this is great" → "great".
 _NAME_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bmy\s+name\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})", re.IGNORECASE),
-    re.compile(r"\bi(?:'m|[\s]+am)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})", re.IGNORECASE),
-    re.compile(r"\bthis\s+is\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})", re.IGNORECASE),
-    re.compile(r"\bname\s*[:=]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})", re.IGNORECASE),
-    re.compile(r"\bcall\s+me\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})", re.IGNORECASE),
+    re.compile(r"(?i:\bmy\s+name\s+is\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})"),
+    re.compile(r"(?i:\bi(?:'m|\s+am)\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})"),
+    re.compile(r"(?i:\bthis\s+is\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})"),
+    re.compile(r"(?i:\bname\s*[:=]\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})"),
+    re.compile(r"(?i:\bcall\s+me\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})"),
 ]
 
 # Phrases that should never be treated as a person's name.
@@ -91,7 +99,11 @@ _FAKE_NAME_TERMS: frozenset[str] = frozenset(
 
 def _is_fake_name(name: str) -> bool:
     lower = name.strip().lower()
-    return lower in _FAKE_NAME_TERMS or any(term in lower for term in _FAKE_NAME_TERMS)
+    if lower in _FAKE_NAME_TERMS or any(term in lower for term in _FAKE_NAME_TERMS):
+        return True
+    # Timezone abbreviations ("EST"), filler words ("looking for"), and bare
+    # abbreviations are never a person's name.
+    return is_non_name_token(name)
 
 
 # ---------------------------------------------------------------------------
@@ -170,15 +182,18 @@ class ContactCaptureDetector:
         if email:
             audit.append(f"email_found:{email}")
 
-        # Phone — formatted or bare 10+ digit number.
+        # Phone — formatted or bare 10+ digit number. A real phone carries 10–15
+        # digits and must not be a year/era range like "1770-1810" or an age range
+        # like "6-12" (both previously slipped through into personal.phone).
         phone_match = _PHONE_RE.search(text)
         phone_raw = phone_match.group(0).strip() if phone_match else None
-        # Require at least 10 digits for a valid phone number.
-        phone = phone_raw if phone_raw and sum(c.isdigit() for c in phone_raw) >= 10 else None
+        phone = phone_raw if is_valid_phone(phone_raw) else None
+        if phone_raw and phone is None:
+            audit.append("phone_rejected_not_a_number")
         # Fallback: a bare run of 10+ digits is a phone number (e.g. "8889050868").
         if phone is None:
             bare_match = _BARE_PHONE_RE.search(text)
-            if bare_match and len(bare_match.group(1)) >= 10:
+            if bare_match and is_valid_phone(bare_match.group(1)):
                 phone = bare_match.group(1)
                 audit.append("phone_bare_digits")
         if phone:

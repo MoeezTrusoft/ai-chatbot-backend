@@ -22,6 +22,7 @@ from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import StateDelta
+from bookcraft.components.leads.contact_utils import is_non_name_token, is_valid_phone
 from bookcraft.components.llm.protocols import LLMProvider
 from bookcraft.domain.enums import Source, coerce_manuscript_status
 from bookcraft.domain.state import ThreadState
@@ -45,6 +46,11 @@ LLM_EXTRACTION_FIELDS = Counter(
 NAME_AUTHORSHIP_REJECTED = Counter(
     "llm_extraction_name_authorship_rejected_total",
     "Customer-name deltas dropped because the name was a book author, not the customer.",
+)
+EXTRACTION_VALUE_REJECTED = Counter(
+    "llm_extraction_value_rejected_total",
+    "LLM-extracted values dropped by a validity guard (timezone-as-name, range-as-phone).",
+    ["field", "reason"],
 )
 
 # Authorship attribution cues. A name appearing in these contexts is the book's
@@ -211,6 +217,13 @@ EXTRACTION RULES:
 14. For book_title: extract ONLY the title itself, stripping any trailing authorship
     clause — "The Past & The Future written by Thomas Ray" → book_title "The Past & The
     Future" (and do NOT put "Thomas Ray" in name).
+15. A timezone abbreviation or phrase (EST, CST, PST, "eastern", "central time", "EST -
+    clifford@x.com") is a TIMEZONE, never a name. In "EST - clifford@x.com" the name is
+    EMPTY, timezone is "America/New_York", email is "clifford@x.com". Use the assistant's
+    question for context: a reply to "what timezone are you in?" is a timezone, not a name.
+16. For phone: extract ONLY a real phone number (10–15 digits). A year/era range
+    ("1770-1810"), an age range ("6-12"), page counts, word counts, ISBNs, or any number
+    that is not a dialable phone MUST NOT be extracted as phone — leave phone EMPTY.
 """
 
 _EXTRACTION_USER_TEMPLATE = """\
@@ -346,6 +359,21 @@ def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
                 source_quote=ev.source_quote,
                 book_title=str(raw_book_title) if raw_book_title is not None else None,
             )
+            continue
+
+        # Guard: a timezone abbreviation ("EST"), filler word, or bare abbreviation
+        # is not a customer name (bug: "EST - clifford@…" captured "EST" as the name).
+        if field_name == "name" and is_non_name_token(raw_value):
+            EXTRACTION_VALUE_REJECTED.labels(field="name", reason="non_name_token").inc()
+            logger.info("llm_name_rejected_non_name", rejected_name=str(raw_value))
+            continue
+
+        # Guard: a "phone" that is not a real number — a year/era range like
+        # "1770-1810", an age range like "6-12", or anything without 10–15 digits —
+        # must never reach personal.phone (bug: a historical period saved as phone).
+        if field_name == "phone" and not is_valid_phone(str(raw_value)):
+            EXTRACTION_VALUE_REJECTED.labels(field="phone", reason="not_a_phone").inc()
+            logger.info("llm_phone_rejected_not_a_number", rejected_phone=str(raw_value))
             continue
 
         # Keep the book title clean: "<Title> written by <Author>" → "<Title>".

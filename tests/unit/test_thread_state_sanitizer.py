@@ -3,7 +3,10 @@ from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
 
 
-def test_sanitize_thread_state_redacts_personal_contact_values() -> None:
+def test_sanitize_thread_state_preserves_contact_values() -> None:
+    """Product policy: the customer's structured contact fields are PRESERVED in the
+    persisted state (shown in the CSR AI State panel; needed for cross-turn lead
+    assembly). Only the source message excerpts are redacted."""
     state = ThreadState()
     state.personal.name = FieldMeta[str](
         value="Avery Author",
@@ -26,13 +29,13 @@ def test_sanitize_thread_state_redacts_personal_contact_values() -> None:
 
     snapshot = sanitize_thread_state_for_persistence(state)
 
-    serialized = str(snapshot)
-    assert "Avery Author" not in serialized
-    assert "avery@example.com" not in serialized
-    assert "+1 555-123-4567" not in serialized
-    assert snapshot["personal"]["name"]["value"] == "[REDACTED_NAME]"
-    assert snapshot["personal"]["email"]["value"] == "[REDACTED_EMAIL]"
-    assert snapshot["personal"]["phone"]["value"] == "[REDACTED_PHONE]"
+    # Structured contact values are preserved.
+    assert snapshot["personal"]["name"]["value"] == "Avery Author"
+    assert snapshot["personal"]["email"]["value"] == "avery@example.com"
+    assert snapshot["personal"]["phone"]["value"] == "+1 555-123-4567"
+    # …but the source message excerpts still have email/phone redacted.
+    assert "avery@example.com" not in str(snapshot["personal"]["email"]["raw_excerpt"])
+    assert "+1 555-123-4567" not in str(snapshot["personal"]["phone"]["raw_excerpt"])
 
 
 def test_sanitize_thread_state_redacts_raw_excerpts_and_summary() -> None:

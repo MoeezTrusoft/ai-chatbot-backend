@@ -12,7 +12,7 @@ from bookcraft.infra.config import Settings
 
 
 @pytest.mark.asyncio
-async def test_thread_repository_redacts_pii_before_persisting_state(tmp_path) -> None:
+async def test_thread_repository_preserves_contact_but_redacts_free_text(tmp_path) -> None:
     database_url = f"sqlite+aiosqlite:///{tmp_path}/thread-state.db"
     settings = Settings(app_env="integration", database_url=database_url)
     engine = create_engine(settings, database_url=database_url)
@@ -63,13 +63,17 @@ async def test_thread_repository_redacts_pii_before_persisting_state(tmp_path) -
 
     await engine.dispose()
 
-    serialized = str(row.state)
-    assert "Avery Author" not in serialized
-    assert "avery@example.com" not in serialized
-    assert "author@example.com" not in serialized
-    assert "+1 555-123-4567" not in serialized
-    assert row.state["personal"]["name"]["value"] == "[REDACTED_NAME]"
-    assert row.state["personal"]["email"]["value"] == "[REDACTED_EMAIL]"
-    assert row.state["personal"]["phone"]["value"] == "[REDACTED_PHONE]"
-    assert "[REDACTED_EMAIL]" in serialized
-    assert "[REDACTED_PHONE]" in serialized
+    # Structured contact fields are PRESERVED (shown in CSR AI State; needed for
+    # cross-turn lead assembly).
+    assert row.state["personal"]["name"]["value"] == "Avery Author"
+    assert row.state["personal"]["email"]["value"] == "avery@example.com"
+    assert row.state["personal"]["phone"]["value"] == "+1 555-123-4567"
+
+    # Free-text fields (synopsis) and the rolling summary still have PII redacted.
+    assert "author@example.com" not in str(row.state)  # synopsis email
+    assert "[REDACTED_EMAIL]" in row.state["project"]["synopsis"]["value"]
+    summary = row.state["rolling_summary"]
+    assert "avery@example.com" not in summary
+    assert "+1 555-123-4567" not in summary
+    assert "[REDACTED_EMAIL]" in summary
+    assert "[REDACTED_PHONE]" in summary
