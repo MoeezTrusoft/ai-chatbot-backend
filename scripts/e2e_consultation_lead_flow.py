@@ -107,12 +107,16 @@ class _FakeLLMExtractor:
         from bookcraft.domain.enums import Source
 
         deltas = []
-        # Sign-off name: a capitalized "First Last" on its own line near the end.
-        m = _re.search(r"(?:^|\n)\s*([A-Z][a-z]+ [A-Z][a-z]+)\s*(?:\n|$)", user_text)
+        # "my name is X" (may contain digits the deterministic capture rejects, e.g.
+        # "E2E Smoke Test"), or a capitalized "First Last" sign-off on its own line.
+        m = _re.search(
+            r"\bmy name is\s+([A-Za-z][A-Za-z0-9 ]*?)(?:\s+and\b|,|\.|\s+my\b|$)",
+            user_text, _re.IGNORECASE,
+        ) or _re.search(r"(?:^|\n)\s*([A-Z][a-z]+ [A-Z][a-z]+)\s*(?:\n|$)", user_text)
         if m:
             deltas.append(StateDelta(
-                path="personal.name", value=m.group(1), confidence=0.92,
-                source=Source.AI_EXTRACTED, extracted_by="fake_llm.v1", raw_excerpt=m.group(1),
+                path="personal.name", value=m.group(1).strip(), confidence=0.92,
+                source=Source.AI_EXTRACTED, extracted_by="fake_llm.v1", raw_excerpt=m.group(1).strip(),
             ))
         return LLMExtractionResult(state_deltas=deltas, rich_metadata={}, coreference_notes=[])
 
@@ -269,9 +273,8 @@ async def main() -> int:
         "story of about 110 pages. Could you please provide pricing details?\n"
         "Thank you,\nGonzalo Garcia\ngargonz@gmail.com"
     )
-    rg = await turn(gonzalo, None)
+    rg = await turn(gonzalo, None)  # SINGLE turn — lead must be created same-turn
     tidg = rg["thread_id"]
-    await turn("Yes please, go ahead.", tidg)  # follow-up so lead creation fires
     leads5 = await _leads(sf)
     lead5 = next((x for x in leads5 if (x.email or "") == "gargonz@gmail.com"), None)
     check("lead created from sign-off message", lead5 is not None)
@@ -288,8 +291,9 @@ async def main() -> int:
     print("\n▶ S6: Bot asks for phone before booking even when email is given (issue 3)")
     r = await turn("I'd like a free consultation for editing.", None)
     tid6 = r["thread_id"]
-    # Name + email but NO phone, and the customer prefers email.
-    await turn("My name is Carlos Mendez, carlos@example.com. Let's do this via email.", tid6)
+    # Digit-bearing name only the LLM catches (deterministic capture rejects "E2E"),
+    # email but NO phone — contact must go ready SAME turn and the phone ask must fire.
+    await turn("My name is E2E Smoke Test and my email is carlos@example.com. Let's do this via email.", tid6)
     dbg6 = await chat.get_thread_debug_state(tid6)
     stage6 = (dbg6.get("consultation") or {}).get("stage")
     check("bot asks for phone even with email (stage=requested_phone_needed)",

@@ -701,12 +701,22 @@ class ChatService:
             # bare-block capture. The lead / consultation / CSR-sync path reads contact_info,
             # so back-fill it from personal.* — otherwise the bot greets "Gonzalo" but the
             # lead and CSR record never receive the name.
+            _backfilled_contact = False
             for _pf in ("name", "email", "phone"):
                 if not _existing_ci.get(_pf):
                     _pv = getattr(getattr(state.personal, _pf, None), "value", None)
                     if is_real_contact_value(_pv):
                         _existing_ci[_pf] = _pv
+                        _backfilled_contact = True
             state.contact_info = _existing_ci
+            # Re-merge so contact readiness reflects the back-filled personal.* values
+            # THIS turn. Without this, a sign-off / digit-bearing name only the LLM caught
+            # (e.g. "Gonzalo Garcia", "E2E Smoke Test") would leave lead_contact_ready False
+            # until the next turn — stalling lead creation and the consultation flow.
+            if _backfilled_contact:
+                contact_capture = self.contact_capture_detector.merge_with_state(
+                    contact_capture, state
+                )
             # Phase 4 hotfix: sync contact_capture into personal + lead state so that
             # contact_slots() can find the contact on all subsequent turns.
             _sync_contact_capture_to_state(state, contact_capture)
