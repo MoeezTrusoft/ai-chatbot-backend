@@ -286,8 +286,13 @@ def reduce_consultation_state(
         if hasattr(state, "sales_actions")
         else None
     )
+    # Also honour a timezone captured into personal.timezone (this is where the LLM
+    # extractor stores "Eastern time" → "America/New_York"). Without this, a booking
+    # whose timezone only lives in personal.timezone stalls forever at
+    # time_captured_needs_timezone even though the timezone IS known (BUG-6040).
+    _tz_from_personal = getattr(getattr(getattr(state, "personal", None), "timezone", None), "value", None)
     timezone_unknown = is_relative_window and not (
-        getattr(state, "preferred_timezone", None) or _tz_from_consultation
+        getattr(state, "preferred_timezone", None) or _tz_from_consultation or _tz_from_personal
     )
 
     if timezone_unknown:

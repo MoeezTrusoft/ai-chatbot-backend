@@ -104,6 +104,38 @@ class TestAlwaysAskPhone:
         assert d.stage == ConsultationStage.REQUESTED_CONTACT_NEEDED
 
 
+class TestTimezoneFromPersonalUnblocksBooking:
+    """BUG-6040: the LLM stores the timezone in personal.timezone, but the reducer only
+    checked preferred_timezone / consultation.customer_timezone — so a relative-window
+    booking stalled forever at time_captured_needs_timezone even though the timezone
+    was known. The reducer must also honour personal.timezone."""
+
+    def _state_with_tz(self, tz: str | None):
+        from bookcraft.domain.enums import Source
+        from bookcraft.domain.meta import FieldMeta
+
+        st = ThreadState()
+        st.preferred_call_time = "Tuesday afternoon"  # relative window → needs a timezone
+        if tz:
+            st.personal.timezone = FieldMeta[str](value=tz, confidence=0.92, source=Source.USER_STATED)
+        return st
+
+    def test_personal_timezone_reaches_ready_to_schedule(self) -> None:
+        d = reduce_consultation_state(
+            state=self._state_with_tz("America/New_York"), message="book a consultation",
+            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+        )
+        assert d.stage == ConsultationStage.READY_TO_SCHEDULE
+        assert d.can_schedule is True
+
+    def test_no_timezone_anywhere_still_asks(self) -> None:
+        d = reduce_consultation_state(
+            state=self._state_with_tz(None), message="book a consultation",
+            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+        )
+        assert d.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
+
+
 # ── Booking executes: the reconcile path must carry a consumable pending key ──
 class TestReconcilePlanCarriesConfirmationKey:
     """BUG-6040: the live flow proposes the booking via _reconcile_consultation_action_plan.
