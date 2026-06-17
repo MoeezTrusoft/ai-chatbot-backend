@@ -129,7 +129,7 @@ fi
 # ── 5) Migrate (auto-rollback armed from here) ───────────────────────────────
 hr; log "Applying migrations:  uv run alembic upgrade head"
 MIGRATION_STARTED=1
-uv run alembic upgrade head
+uv run alembic upgrade heads
 
 # ── 6) Verify the result ─────────────────────────────────────────────────────
 hr; log "Verifying sales_* tables exist…"
