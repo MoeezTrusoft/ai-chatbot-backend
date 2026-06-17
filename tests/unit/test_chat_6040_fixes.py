@@ -102,3 +102,39 @@ class TestAlwaysAskPhone:
             contact_ready=False, has_email=False, has_phone=False, require_phone=True,
         )
         assert d.stage == ConsultationStage.REQUESTED_CONTACT_NEEDED
+
+
+# ── Booking executes: the reconcile path must carry a consumable pending key ──
+class TestReconcilePlanCarriesConfirmationKey:
+    """BUG-6040: the live flow proposes the booking via _reconcile_consultation_action_plan.
+    If that plan lacks confirmation_required / pending_confirmation_key, the stage shows
+    pending_confirmation but sales_actions.pending_confirmation.type stays None, so the
+    customer's 'yes' is never consumed and the consultation never books."""
+
+    def test_reconcile_sets_confirmation_key_and_expiry(self) -> None:
+        from types import SimpleNamespace
+
+        from bookcraft.components.actions.schemas import ActionPlan, ActionStatus, ActionType
+        from bookcraft.components.sales.consultation_state import ConsultationStateDecision
+        from bookcraft.services.chat import _reconcile_consultation_action_plan
+
+        cc = SimpleNamespace(
+            contact=SimpleNamespace(name="Maya Author", email="maya@example.com", phone=None)
+        )
+        decision = ConsultationStateDecision(
+            stage=ConsultationStage.READY_TO_SCHEDULE,
+            can_schedule=True,
+            preferred_call_time="next Tuesday at 2 PM",
+        )
+        plan = _reconcile_consultation_action_plan(
+            current_plan=ActionPlan(status=ActionStatus.NOT_NEEDED, reason="none"),
+            consultation_decision=decision,
+            state=ThreadState(),
+            contact_capture=cc,
+        )
+        assert plan.action_type == ActionType.SCHEDULE_CONSULTATION
+        assert plan.status == ActionStatus.NEEDS_CONFIRMATION
+        # The bits that make the pending confirmation consumable next turn:
+        assert plan.confirmation_required is True
+        assert plan.pending_confirmation_key == ActionType.SCHEDULE_CONSULTATION.value
+        assert plan.pending_expires_at is not None

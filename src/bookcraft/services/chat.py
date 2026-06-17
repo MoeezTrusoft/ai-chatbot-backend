@@ -4278,10 +4278,19 @@ def _reconcile_consultation_action_plan(
         if not email:
             slots["email_or_phone"] = phone
 
+    # Carry the confirmation key + expiry so the "yes" next turn is actually consumable.
+    # Without these, _apply_sales_action_plan_to_state sets the consultation STAGE to
+    # pending_confirmation but never sets sales_actions.pending_confirmation.type, so the
+    # planner can't match the confirmation and the booking never executes (BUG-6040).
+    from bookcraft.components.actions.slot_resolver import make_pending_expires_at
+
     return ActionPlan(
         action_type=ActionType.SCHEDULE_CONSULTATION,
         status=ActionStatus.NEEDS_CONFIRMATION,
         collected_slots=slots,
+        confirmation_required=True,
+        pending_confirmation_key=ActionType.SCHEDULE_CONSULTATION.value,
+        pending_expires_at=make_pending_expires_at(ActionType.SCHEDULE_CONSULTATION.value),
         reason="consultation_state_reducer:can_schedule",
     )
 
