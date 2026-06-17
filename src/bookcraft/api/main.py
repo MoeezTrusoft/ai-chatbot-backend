@@ -435,6 +435,7 @@ def build_chat_service(
         intent_classifier=build_intent_classifier(settings),
         extractor=CombinedExtractor(),
         state_applier=StateApplier(),
+        consultation_require_phone=settings.consultation_require_phone,
         response_generator=response_generator,
         llm_metadata_extractor=llm_metadata_extractor,
         trg_fact_store=trg_fact_store,

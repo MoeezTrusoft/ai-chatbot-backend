@@ -110,6 +110,46 @@ class TestGenuineContactsUnaffected:
         assert r.has_phone is True
 
 
+class TestDeterministicPreextractorPhone:
+    """The deterministic CombinedExtractor must also reject range-shaped 'phones'
+    from the preprocessor atoms (the (1770-1810) production bug entered here)."""
+
+    def _msg(self, raw: str, phones: list[str]):
+        import pytest as _pytest
+
+        from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
+
+        toks = [TokenInfo(text=w, lemma=w.lower(), start=i, end=i + len(w))
+                for i, w in enumerate(raw.split())]
+        return ProcessedMessage(
+            raw=raw, normalized=raw, tokens=toks, negation_spans=[], hedge_spans=[],
+            counterfactual_spans=[], deterministic_atoms={"phones": phones}, embedding=[1.0],
+            language="en", char_count=len(raw),
+        )
+
+    def test_range_atom_rejected(self) -> None:
+        import asyncio
+
+        from bookcraft.components.extraction.extractor import CombinedExtractor
+        from bookcraft.domain.state import ThreadState
+
+        msg = self._msg("frontier days 1770-1810", ["1770-1810"])
+        result = asyncio.run(CombinedExtractor().extract(msg, ThreadState()))
+        assert result.contact.phone is None
+        assert not any(d.path == "personal.phone" for d in result.state_deltas)
+
+    def test_real_phone_atom_kept(self) -> None:
+        import asyncio
+
+        from bookcraft.components.extraction.extractor import CombinedExtractor
+        from bookcraft.domain.state import ThreadState
+
+        msg = self._msg("call me at 3174134221", ["3174134221"])
+        result = asyncio.run(CombinedExtractor().extract(msg, ThreadState()))
+        assert result.contact.phone == "3174134221"
+        assert any(d.path == "personal.phone" for d in result.state_deltas)
+
+
 class TestLLMExtractorGuards:
     def test_timezone_name_dropped(self) -> None:
         facts = LLMExtractedFacts(

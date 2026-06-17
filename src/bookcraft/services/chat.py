@@ -55,7 +55,7 @@ from bookcraft.components.leads.contact_recovery import (
     user_has_complaint_or_privacy_concern,
     user_objects_to_pii_misuse,
 )
-from bookcraft.components.leads.contact_utils import contact_is_ready
+from bookcraft.components.leads.contact_utils import contact_is_ready, is_real_contact_value
 from bookcraft.components.metadata import ServiceMetadataExtractor
 from bookcraft.components.persona import BookCraftPersona
 from bookcraft.components.portfolio import (
@@ -228,6 +228,7 @@ class ChatService:
     answer_before_capture_policy: AnswerBeforeCapturePolicy = field(
         default_factory=AnswerBeforeCapturePolicy
     )
+    consultation_require_phone: bool = True
     consultation_objective_engine: ConsultationObjectiveEngine = field(
         default_factory=ConsultationObjectiveEngine
     )
@@ -695,6 +696,16 @@ class ChatService:
             for _field in ("name", "email", "phone", "source", "confidence"):
                 if _new_contact.get(_field) is not None:
                     _existing_ci[_field] = _new_contact[_field]
+            # BUG-6040: a sign-off name ("...\nGonzalo Garcia\ngargonz@gmail.com") is
+            # captured only by the LLM extractor (→ personal.name), not the deterministic
+            # bare-block capture. The lead / consultation / CSR-sync path reads contact_info,
+            # so back-fill it from personal.* — otherwise the bot greets "Gonzalo" but the
+            # lead and CSR record never receive the name.
+            for _pf in ("name", "email", "phone"):
+                if not _existing_ci.get(_pf):
+                    _pv = getattr(getattr(state.personal, _pf, None), "value", None)
+                    if is_real_contact_value(_pv):
+                        _existing_ci[_pf] = _pv
             state.contact_info = _existing_ci
             # Phase 4 hotfix: sync contact_capture into personal + lead state so that
             # contact_slots() can find the contact on all subsequent turns.
@@ -775,6 +786,10 @@ class ChatService:
                 priority=current_question_priority,
                 contact_ready=contact_capture.lead_contact_ready,
             )
+            # Capture the prior-turn consultation stage BEFORE any engine overwrites it
+            # this turn, so the once-only phone ask (reduce_consultation_state) is
+            # loop-safe across turns and the two intra-turn reducer passes.
+            _prior_consultation_stage = getattr(state, "consultation_stage", None)
             consultation_objective_decision = self.consultation_objective_engine.decide(
                 message=payload.message,
                 state=state,
@@ -874,6 +889,10 @@ class ChatService:
                 contact_ready=contact_capture.lead_contact_ready,
                 action_plan=action_plan,
                 action_result=None,
+                has_email=contact_capture.has_email,
+                has_phone=contact_capture.has_phone,
+                require_phone=self.consultation_require_phone,
+                prior_stage=_prior_consultation_stage,
             )
             if consultation_state_decision.can_schedule:
                 action_plan = _reconcile_consultation_action_plan(
@@ -909,6 +928,10 @@ class ChatService:
                 contact_ready=contact_capture.lead_contact_ready,
                 action_plan=action_plan,
                 action_result=action_result,
+                has_email=contact_capture.has_email,
+                has_phone=contact_capture.has_phone,
+                require_phone=self.consultation_require_phone,
+                prior_stage=_prior_consultation_stage,
             )
             state.consultation_stage = str(consultation_state_decision.stage)
             action_payload = action_trace_payload(action_plan, action_result)

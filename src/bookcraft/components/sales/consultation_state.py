@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ConsultationStage(StrEnum):
     NONE = "none"
     REQUESTED_CONTACT_NEEDED = "requested_contact_needed"
+    REQUESTED_PHONE_NEEDED = "requested_phone_needed"
     REQUESTED_TIME_NEEDED = "requested_time_needed"
     TIME_CAPTURED_NEEDS_TIMEZONE = "time_captured_needs_timezone"
     READY_TO_SCHEDULE = "ready_to_schedule"
@@ -100,6 +101,10 @@ def reduce_consultation_state(
     contact_ready: bool,
     action_plan: Any | None = None,
     action_result: Any | None = None,
+    has_email: bool = False,
+    has_phone: bool = False,
+    require_phone: bool = False,
+    prior_stage: Any | None = None,
 ) -> ConsultationStateDecision:
     """Reduce all consultation signals into a single deterministic decision.
 
@@ -232,6 +237,27 @@ def reduce_consultation_state(
             consultation_requested=True,
             preferred_call_time=preferred_call_time,
             next_question="name_and_email_or_phone",
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
+
+    # Contact ready, but ask for a phone number ONCE before moving on — even when the
+    # customer offered only an email or prefers email. Loop-safe via the persisted
+    # requested_phone_needed stage; skipped once a phone is captured or the user has
+    # explicitly declined (already in REQUESTED_PHONE_NEEDED last turn → proceed).
+    # Use the PRIOR turn's stage for the loop-safe check — within a single turn the
+    # reducer runs twice and would otherwise see its own first-pass mutation.
+    _ref_stage = prior_stage if prior_stage is not None else getattr(state, "consultation_stage", None)
+    _already_asked_phone = _ref_stage == ConsultationStage.REQUESTED_PHONE_NEEDED
+    if require_phone and has_email and not has_phone and not _already_asked_phone:
+        audit.append("signal:phone_needed_before_booking")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.REQUESTED_PHONE_NEEDED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            next_question="missing_phone",
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,

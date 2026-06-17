@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     context_pack_budget_enabled: bool = False  # P4-T3: hint-source token budgeting
     context_pack_hint_token_budget: int = 1200  # P4-T3: max approx tokens of response_hint
     staged_pipeline_enabled: bool = False  # P4-T2: staged TurnContext pipeline (foundation)
+    # Always ask the customer for a phone number once before booking, even when an
+    # email is already captured (the customer can still decline and proceed email-only).
+    consultation_require_phone: bool = True
 
     # CSR Node.js backend — direct API call after consultation is booked so the
     # appointment always appears on the CSR dashboard regardless of action-event sync.

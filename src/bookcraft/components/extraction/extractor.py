@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from prometheus_client import Counter, Histogram
 
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
+from bookcraft.components.leads.contact_utils import is_valid_phone
 from bookcraft.components.preprocessor.detectors.document_request_detector import (
     has_agreement_request,
     has_nda_request,
@@ -153,7 +154,9 @@ class CombinedExtractor:
                     EXTRACTION_FIELDS.labels(category="contact").inc()
             if phones := atoms.get("phones"):
                 phone = _first_string(phones)
-                if phone:
+                # Guard: reject year/era ranges ("1770-1810"), age ranges ("6-12"),
+                # and anything without 10–15 digits before it becomes personal.phone.
+                if phone and is_valid_phone(phone):
                     extraction.contact.phone = phone
                     extraction.state_deltas.append(
                         StateDelta(

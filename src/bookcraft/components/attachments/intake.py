@@ -87,6 +87,57 @@ _CATEGORY_PATTERNS: list[tuple[re.Pattern[str], _AttachmentCategory]] = [
 # File extension → audio category
 _AUDIO_EXTENSIONS = frozenset({"mp3", "wav", "m4a", "aac", "ogg", "flac", "wma", "opus"})
 
+# A pasted link to an uploaded file (e.g. the chat media host, or a direct document/
+# image/audio link) must be treated as an attachment so the bot acknowledges it instead
+# of replying "I don't see an attachment". The path may contain spaces, so we scan up to
+# the first known file extension on the same line. (BUG-6040: customer pasted
+# "https://server.trusoft.pk/media/assets/Chapter 2_….docx" and it was never registered.)
+_DOC_EXTS = (
+    "docx", "doc", "pdf", "rtf", "txt", "odt", "epub", "pages",
+    "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff",
+    "mp3", "wav", "m4a", "aac", "ogg", "flac",
+)
+_MEDIA_URL_RE = re.compile(
+    r"https?://\S[^\n]{0,300}?\.(?:" + "|".join(_DOC_EXTS) + r")\b",
+    re.IGNORECASE,
+)
+_EXT_TO_MIME = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
+    "pdf": "application/pdf",
+    "rtf": "application/rtf",
+    "txt": "text/plain",
+    "odt": "application/vnd.oasis.opendocument.text",
+    "epub": "application/epub+zip",
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "m4a": "audio/mp4",
+}
+
+
+def _attachments_from_message(message: str) -> list[ChatAttachment]:
+    """Synthesize attachments from media URLs pasted in the message text."""
+    import urllib.parse as _urlparse
+
+    out: list[ChatAttachment] = []
+    seen: set[str] = set()
+    for match in _MEDIA_URL_RE.finditer(message or ""):
+        url = match.group(0).strip()
+        if url in seen:
+            continue
+        seen.add(url)
+        tail = url.rsplit("/", 1)[-1]
+        filename = _urlparse.unquote(tail).strip() or "attachment"
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        out.append(
+            ChatAttachment(filename=filename, mime_type=_EXT_TO_MIME.get(ext), storage_key=url)
+        )
+    return out
+
 
 def _infer_category(filename: str) -> _AttachmentCategory:
     """Infer attachment category from filename without reading file contents."""
@@ -241,17 +292,23 @@ class AttachmentIntakeProcessor:
         active_service: str | None = None,
         manuscript_status: str | None = None,
     ) -> AttachmentIntakeResult:
-        del message  # not used for content analysis
+        # File CONTENTS are never analysed — but a media URL pasted in the message
+        # text counts as an attachment the customer shared (the widget/Node may not
+        # have forwarded the upload metadata).
+        url_attachments = _attachments_from_message(message)
+        combined: list[Any] = list(attachments or []) + list(url_attachments)
 
-        if not attachments:
+        if not combined:
             return AttachmentIntakeResult(
                 audit=["no_attachments"],
             )
 
         classified: list[ChatAttachment] = []
         audit: list[str] = []
+        if url_attachments:
+            audit.append(f"media_url_detected:{len(url_attachments)}")
 
-        for raw in attachments:
+        for raw in combined:
             if isinstance(raw, ChatAttachment):
                 att = raw
             elif isinstance(raw, dict):
