@@ -56,15 +56,26 @@ class TestChatSchemasShared:
         assert resp.action_events == []
 
     def test_chat_turn_request_message_required(self):
-        """message is required — must raise if missing."""
+        """A turn with neither text nor attachment must raise."""
         import pytest
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             ChatTurnRequest()  # type: ignore[call-arg]
 
-    def test_chat_turn_request_min_length(self):
-        """message must have min_length=1."""
+    def test_chat_turn_request_empty_message_without_attachment_rejected(self):
+        """An empty message and no attachment is not a valid turn."""
         import pytest
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             ChatTurnRequest(message="")
+        with pytest.raises(ValidationError):
+            ChatTurnRequest(message="   ")
+
+    def test_chat_turn_request_attachment_only_allowed(self):
+        """An attachment-only turn (empty message + a file) is valid."""
+        req = ChatTurnRequest(
+            message="",
+            attachments=[{"filename": "manuscript.docx"}],
+        )
+        assert req.message == ""
+        assert req.attachments[0].filename == "manuscript.docx"

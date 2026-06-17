@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS sales_consultations (
     id UUID PRIMARY KEY,
-    customer_id VARCHAR(64) NOT NULL,
+    customer_id VARCHAR(64),
     lead_id VARCHAR(64),
     thread_id VARCHAR(64),
     customer_name VARCHAR(255) NOT NULL,

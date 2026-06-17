@@ -855,7 +855,7 @@ def _response_hint_segments(pack: ContextPack) -> list[tuple[str, str]]:
             "The author has written material. At the natural point in the conversation "
             "— after acknowledging their work — weave in ONE offer of a free editorial assessment: "
             "'Since you have [chapters/a draft/notes] written, our specialists can provide a "
-            "free editorial assessment — just upload your manuscript or a sample chapter "
+            "free editorial assessment — just upload your manuscript "
             "directly here in this chat using the 📎 attach button at the bottom of the chat.' "
             "Say this ONCE, naturally and conversationally. "
             "Do not repeat it, do not make it sound like an advertisement, "

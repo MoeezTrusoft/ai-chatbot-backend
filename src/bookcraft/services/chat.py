@@ -272,6 +272,18 @@ class ChatService:
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
+        # Attachment-only turn (file uploaded with no typed text): synthesize a
+        # message so the whole pipeline (safety, preprocessing, intent, attachment
+        # intake) has text to work with and the bot acknowledges the upload by name
+        # instead of silently dropping the turn.
+        if not payload.message.strip() and payload.attachments:
+            _att_names = ", ".join(
+                a.filename for a in payload.attachments if getattr(a, "filename", None)
+            )
+            payload = payload.model_copy(
+                update={"message": f"Attachment received: {_att_names}" if _att_names else "Attachment received"}
+            )
+
         CHAT_TURNS_TOTAL.inc()
         turn_started = time.perf_counter()
         with CHAT_TURN_LATENCY.time():
@@ -1888,6 +1900,33 @@ class ChatService:
 
         thread = await self._load_greet_thread(payload)
         thread_id = thread.thread_id
+
+        # Anchor the thread's active service to the page the visitor landed on
+        # (e.g. /book-cover-design/ → cover_design_illustration). Without this the
+        # landing signal is lost after the greeting, and an ambiguous first message
+        # (a genre/story description on the cover page) gets mis-classified as a
+        # different service. An explicit service in a later message still overrides.
+        _landing_service = _service_from_landing(
+            payload.landing_page, payload.landing_keyword
+        )
+        if _landing_service is not None and _active_service_from_state(thread.state) is None:
+            _append_service_focus(thread.state, _landing_service)
+            if self.thread_repository is not None:
+                try:
+                    await self.thread_repository.save_state(
+                        thread_id=thread_id,
+                        state=thread.state,
+                        expected_version=thread.version,
+                        language="en",
+                    )
+                except Exception as _seed_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "greet_landing_service_seed_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_seed_exc.__class__.__name__,
+                    )
+            elif thread_id in self.threads:
+                self.threads[thread_id].state = thread.state
 
         if self.response_generator.adapter is not None:
             greeting_text = await _llm_proactive_greeting(
@@ -4687,6 +4726,39 @@ def _normalise_page_slug(page: str | None) -> str | None:
     slug = _re.sub(r"^https?://[^/]+", "", page.strip().lower())
     slug = slug.strip("/").split("?")[0].split("#")[0]
     return slug.replace("_", "-") or None
+
+
+# Landing-page / search-keyword substrings → the service the visitor came for.
+# Ordered most-specific-first; the first hit wins. Used to anchor the thread's
+# active service so an ambiguous first message (e.g. a genre description on the
+# cover-design page) does not get mis-classified as a different service.
+_LANDING_SERVICE_PATTERNS: list[tuple[tuple[str, ...], ServiceCategory]] = [
+    (("ghostwrit", "ghost-writ", "book-writing", "write-my-book"), ServiceCategory.GHOSTWRITING),
+    (("cover", "illustration", "jacket", "book-cover"), ServiceCategory.COVER_DESIGN_ILLUSTRATION),
+    (("proofread", "editing", "editor", "line-edit", "copy-edit"), ServiceCategory.EDITING_PROOFREADING),
+    (("interior", "formatting", "typeset", "layout"), ServiceCategory.INTERIOR_FORMATTING),
+    (("audiobook", "narration", "audio-book"), ServiceCategory.AUDIOBOOK_PRODUCTION),
+    (("translation", "foreign-rights", "foreign-right"), ServiceCategory.TRANSLATION_FOREIGN_RIGHTS),
+    (("video-trailer", "book-trailer", "trailer"), ServiceCategory.VIDEO_TRAILER),
+    (("author-website", "website"), ServiceCategory.AUTHOR_WEBSITE),
+    (("marketing", "promotion", "book-launch", "book-marketing"), ServiceCategory.MARKETING_PROMOTION),
+    (("publishing", "distribution", "self-publish", "publish"), ServiceCategory.PUBLISHING_DISTRIBUTION),
+]
+
+
+def _service_from_landing(
+    landing_page: str | None,
+    landing_keyword: str | None,
+) -> ServiceCategory | None:
+    """Infer the service a visitor came for from the landing page slug / keyword."""
+    slug = _normalise_page_slug(landing_page) or ""
+    keyword = (landing_keyword or "").strip().lower().replace("_", "-").replace(" ", "-")
+    haystacks = (slug, keyword)
+    for needles, service in _LANDING_SERVICE_PATTERNS:
+        for needle in needles:
+            if any(needle in hay for hay in haystacks):
+                return service
+    return None
 
 
 class _GreetingResponse(BaseModel):

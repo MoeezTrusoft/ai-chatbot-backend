@@ -2,7 +2,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from bookcraft.api.auth import authenticate_websocket, require_http_auth
 from bookcraft.api.correlation import sanitize_correlation_id
@@ -251,19 +251,31 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
                 )
                 continue
             message = data.get("message")
-            if not isinstance(message, str) or not message.strip():
+            raw_attachments = data.get("attachments")
+            attachments = raw_attachments if isinstance(raw_attachments, list) else []
+            message_str = message if isinstance(message, str) else ""
+            # A turn is valid with either typed text OR an attachment. Previously an
+            # attachment-only upload (no text) was rejected here, and attachments were
+            # never forwarded to the service at all — so a bare file upload got no reply.
+            if not message_str.strip() and not attachments:
                 await websocket.send_json({"type": "error", "message": "message is required"})
                 continue
             corr_id = data.get("correlation_id")
             raw_corr = corr_id if isinstance(corr_id, str) else None
-            response = await service.handle_turn(
-                ChatTurnRequest(
+            try:
+                turn_request = ChatTurnRequest(
                     thread_id=thread_id,
                     customer_id=principal.customer_id,
-                    message=message,
+                    message=message_str,
                     correlation_id=sanitize_correlation_id(raw_corr),
+                    attachments=attachments,
                 )
-            )
+            except ValidationError:
+                await websocket.send_json(
+                    {"type": "error", "message": "a message or attachment is required"}
+                )
+                continue
+            response = await service.handle_turn(turn_request)
             for bubble in response.bubbles:
                 await websocket.send_json({"type": "typing_start"})
                 await websocket.send_json({"type": "typing_stop"})

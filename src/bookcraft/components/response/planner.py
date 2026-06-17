@@ -341,7 +341,12 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
     # Phase 13: attachment acknowledgement.
     if context_pack.attachments_received:
         cats = [a.category or "other" for a in context_pack.attachments_received]
+        names = [a.filename for a in context_pack.attachments_received if a.filename]
         facts.append(f"attachment_received: {', '.join(cats)}")
+        # Surface the actual filename(s) so the bot confirms receipt by name
+        # ("Got your file 'Chapter 2.docx'") rather than only by category.
+        if names:
+            facts.append(f"attachment_filename: {', '.join(names)}")
         if context_pack.assessment_type:
             facts.append(f"assessment_type: {context_pack.assessment_type}")
         if context_pack.specialist_role:

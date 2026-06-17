@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.intent.schemas import IntentVote
@@ -19,9 +19,19 @@ class ChatTurnRequest(BaseModel):
 
     thread_id: UUID | None = None
     customer_id: UUID | None = None
-    message: str = Field(min_length=1, max_length=8000)
+    # An attachment-only turn (file uploaded with no typed text) is valid, so the
+    # message itself may be empty — but a turn with neither text nor an attachment
+    # is rejected by the validator below. (Previously min_length=1 here 422'd every
+    # attachment-only upload, so the bot never replied to a bare file upload.)
+    message: str = Field(default="", max_length=8000)
     correlation_id: str | None = Field(default=None, max_length=128)
     attachments: list[ChatAttachment] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_message_or_attachment(self) -> "ChatTurnRequest":
+        if not self.message.strip() and not self.attachments:
+            raise ValueError("a message or at least one attachment is required")
+        return self
 
 
 class ChatTurnResponse(BaseModel):
