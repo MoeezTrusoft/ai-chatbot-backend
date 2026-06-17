@@ -42,6 +42,19 @@ class SalesActionPlanner:
         extraction: CombinedExtraction,
     ) -> ActionPlan:
         pending = state.sales_actions.pending_confirmation
+        if pending.type:
+            import structlog as _structlog
+
+            _matched = is_confirmation_text(
+                processed.normalized, pending_action_type=pending.type
+            )
+            _structlog.get_logger(__name__).info(
+                "pending_confirmation_eval",
+                pending_type=str(pending.type),
+                normalized=(processed.normalized or "")[:120],
+                raw=(getattr(processed, "raw", "") or "")[:120],
+                matched=bool(_matched),
+            )
         if pending.type and is_confirmation_text(
             processed.normalized, pending_action_type=pending.type
         ):
