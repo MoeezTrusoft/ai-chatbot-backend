@@ -5,6 +5,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field
 
 from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.intent.hardening import _service_from_text
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.preprocessor.detectors.document_request_detector import (
     has_agreement_request,
@@ -97,6 +98,39 @@ def _arbitrate_service(
     active_service = _active_service_from_state(state)
 
     if active_service is None:
+        # No durable thread focus yet. If the only thing pointing at a service is a bare
+        # LLM-ensemble inference — the visitor named no service this turn and there is no
+        # deterministic service cue — do NOT let that inference drive a confident pivot.
+        # A genre/premise description on a cover-design thread ("cozy mystery with magic
+        # and food") otherwise gets classified as GHOSTWRITING, which both pivots the
+        # reply ("our ghostwriters…") and gets stamped downstream as a durable 0.94
+        # USER_STATED focus, poisoning the rest of the conversation. Clear it so the bot
+        # keeps neutral discovery until the visitor states a service (or the landing /
+        # greet anchor supplies one).
+        if (
+            intent.service_primary is not None
+            and not explicit_services
+            and _service_from_text(processed.normalized.casefold()) is None
+            and not _service_primary_has_deterministic_support(intent)
+        ):
+            corrections.append(
+                f"unanchored_inferred_service_cleared:{intent.service_primary.value}"
+            )
+            audit.append("service_arbiter:unanchored_inferred_service_cleared")
+            return intent.model_copy(
+                update={
+                    "service_primary": None,
+                    "service_secondary": [],
+                    "rationale": (
+                        f"{intent.rationale} Inferred service cleared: no service named "
+                        "this turn and no active thread focus."
+                    ),
+                    "evidence": [
+                        *intent.evidence,
+                        "context_arbiter_unanchored_inferred_service_cleared",
+                    ],
+                }
+            )
         audit.append("service_arbiter:no_active_service")
         return intent
 
@@ -400,6 +434,22 @@ def _audit_known_facts(
 # ---------------------------------------------------------------------------
 # Helpers (private, not re-exported)
 # ---------------------------------------------------------------------------
+
+
+# Evidence tags stamped when service_primary was set by a DETERMINISTIC layer
+# (hardening keyword match, negation-target swap) rather than a bare LLM inference.
+_DETERMINISTIC_SERVICE_EVIDENCE = (
+    "deterministic_service_signal",
+    "deterministic_service_override",
+    "negation_target_service_replacement",
+)
+
+
+def _service_primary_has_deterministic_support(intent: IntentVote) -> bool:
+    """True when service_primary is backed by a deterministic cue, not just inference."""
+    return any(
+        str(ev).startswith(_DETERMINISTIC_SERVICE_EVIDENCE) for ev in (intent.evidence or [])
+    )
 
 
 def _explicit_services_from_message(processed: ProcessedMessage) -> list[ServiceCategory]:

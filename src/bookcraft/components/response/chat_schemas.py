@@ -26,6 +26,13 @@ class ChatTurnRequest(BaseModel):
     message: str = Field(default="", max_length=8000)
     correlation_id: str | None = Field(default=None, max_length=128)
     attachments: list[ChatAttachment] = Field(default_factory=list)
+    # The page the visitor is chatting from / the keyword that brought them. Mirrors the
+    # greet request so the active service can be anchored even when the frontend skips the
+    # proactive /greet call (or calls it without landing data). An ambiguous first message
+    # — a bare genre/premise description on a cover-design page — then stays on the correct
+    # service instead of being mis-inferred (e.g. as ghostwriting).
+    landing_page: str | None = Field(default=None, max_length=200)
+    landing_keyword: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _require_message_or_attachment(self) -> "ChatTurnRequest":

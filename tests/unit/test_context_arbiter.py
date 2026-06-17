@@ -212,6 +212,49 @@ def test_no_inertia_when_no_active_service() -> None:
     assert any("no_active_service" in a for a in result.audit)
 
 
+def test_unanchored_inferred_service_is_cleared() -> None:
+    """BUG-6060: a bare genre/premise description on an unanchored thread must NOT pivot
+    to an inferred service. "cozy mystery with magic and food" names no service and has
+    no deterministic cue, yet the LLM ensemble infers GHOSTWRITING. The arbiter clears it
+    so the reply stays neutral instead of pivoting to ghostwriting (and downstream never
+    stamps a durable 0.94 ghostwriting focus)."""
+    state = ThreadState()  # no active service (e.g. landing anchor missing)
+    intent = _intent(service=ServiceCategory.GHOSTWRITING)  # evidence=[] → pure inference
+    processed = _processed("cozy mystery with magic and food")  # no "services" atom
+
+    result = _arbiter.arbitrate(intent=intent, processed=processed, state=state)
+
+    assert result.intent.service_primary is None
+    assert result.intent.service_secondary == []
+    assert any("unanchored_inferred_service_cleared" in c for c in result.corrections)
+
+
+def test_unanchored_explicit_service_is_kept() -> None:
+    """A service the visitor explicitly named is kept even with no active thread focus."""
+    state = ThreadState()
+    intent = _intent(service=ServiceCategory.GHOSTWRITING)
+    processed = _processed("I need ghostwriting help", services=["ghostwriting"])
+
+    result = _arbiter.arbitrate(intent=intent, processed=processed, state=state)
+
+    assert result.intent.service_primary == ServiceCategory.GHOSTWRITING
+
+
+def test_unanchored_deterministically_supported_service_is_kept() -> None:
+    """A service set by the deterministic hardening layer (keyword match) is kept even
+    without an active focus — only bare LLM inferences are cleared."""
+    state = ThreadState()
+    intent = _intent(service=ServiceCategory.COVER_DESIGN_ILLUSTRATION)
+    intent = intent.model_copy(
+        update={"evidence": ["deterministic_service_signal:cover_design_illustration"]}
+    )
+    processed = _processed("I want a book cover")  # no atoms, but hardening-backed
+
+    result = _arbiter.arbitrate(intent=intent, processed=processed, state=state)
+
+    assert result.intent.service_primary == ServiceCategory.COVER_DESIGN_ILLUSTRATION
+
+
 def test_inertia_noop_when_intent_already_matches_active() -> None:
     state = _state_with_service(ServiceCategory.COVER_DESIGN_ILLUSTRATION)
     intent = _intent(service=ServiceCategory.COVER_DESIGN_ILLUSTRATION)

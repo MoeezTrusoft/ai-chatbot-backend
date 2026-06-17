@@ -180,6 +180,18 @@ def _bind_to_slot(
     context_pack: Any | None,
     audit: list[str],
 ) -> str | None:
+    # An explicit slot keyword in the user's OWN message is the strongest signal: it
+    # names the slot the user is talking about and must override whatever the planner
+    # merely assumed was the current question. Without this, "I don't know the cover
+    # style, you guys decide" binds to the planner's pending question (e.g. word count)
+    # instead of cover_style — mis-recording the delegation and letting the slot be
+    # re-asked. The text the user typed wins over an inferred current_slot.
+    for keywords, slot in _SLOT_KEYWORDS:
+        for kw in keywords:
+            if kw in text:
+                audit.append(f"bind:text_infer:{slot}")
+                return slot
+
     if current_slot:
         audit.append(f"bind:current_slot:{current_slot}")
         return current_slot
@@ -197,12 +209,6 @@ def _bind_to_slot(
         if missing:
             audit.append(f"bind:missing[0]:{missing[0]}")
             return str(missing[0])
-
-    for keywords, slot in _SLOT_KEYWORDS:
-        for kw in keywords:
-            if kw in text:
-                audit.append(f"bind:text_infer:{slot}")
-                return slot
 
     audit.append("bind:none")
     return None

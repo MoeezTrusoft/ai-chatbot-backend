@@ -118,6 +118,52 @@ def test_no_consultation_request_returns_none_stage() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_objective_engine_engaging_stage_is_not_a_consultation_request() -> None:
+    """Regression (BUG-6060): the ConsultationObjectiveEngine overwrites
+    state.consultation_stage with "engaging" on ordinary chat turns. The reducer must
+    NOT treat that as a consultation request, or every turn from turn 1 latches into
+    REQUESTED_CONTACT_NEEDED.
+    """
+    s = _state(consultation_stage="engaging")
+    decision = reduce_consultation_state(
+        state=s,
+        message="cozy mystery with magic and food",
+        intent=_intent(),  # non-consultation intent
+        contact_ready=False,
+        prior_stage=None,  # turn 1: nothing persisted yet
+    )
+    assert decision.stage == ConsultationStage.NONE
+    assert decision.consultation_requested is False
+
+
+def test_prior_active_request_stage_latches_across_turns() -> None:
+    """A genuine prior request stage keeps the consultation alive even when the current
+    message neither restates the request nor carries a consultation intent."""
+    s = _state(consultation_stage="engaging")  # live value already polluted by the engine
+    decision = reduce_consultation_state(
+        state=s,
+        message="sure, go ahead",
+        intent=_intent(),  # non-consultation intent this turn
+        contact_ready=False,
+        prior_stage=ConsultationStage.REQUESTED_CONTACT_NEEDED,
+    )
+    assert decision.stage == ConsultationStage.REQUESTED_CONTACT_NEEDED
+    assert decision.consultation_requested is True
+
+
+def test_prior_none_stage_does_not_latch() -> None:
+    s = _state(consultation_stage="engaging")
+    decision = reduce_consultation_state(
+        state=s,
+        message="tell me about cover design",
+        intent=_intent(),
+        contact_ready=False,
+        prior_stage=ConsultationStage.NONE,
+    )
+    assert decision.stage == ConsultationStage.NONE
+    assert decision.consultation_requested is False
+
+
 def test_consultation_requested_no_contact_needs_contact() -> None:
     s = _state()
     decision = reduce_consultation_state(

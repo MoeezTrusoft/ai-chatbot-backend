@@ -85,6 +85,19 @@ def test_infers_cover_style_from_text() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_explicit_slot_in_text_overrides_current_slot() -> None:
+    """The slot the user explicitly names wins over the planner's assumed current_slot.
+    "I don't know the cover style, you guys decide" while the planner was about to ask for
+    word count must bind to cover_style — not word_or_page_count."""
+    d = _detector.detect(
+        text="I don't know the cover style, you guys decide.",
+        current_slot="word_or_page_count",
+        response_plan_next_question="word_or_page_count",
+    )
+    assert d.detected is True
+    assert d.target_slot == "cover_style"
+
+
 def test_no_signal_returns_not_delegated() -> None:
     d = _detector.detect(text="I need ghostwriting for a 50,000-word fantasy novel.")
     assert d.detected is False

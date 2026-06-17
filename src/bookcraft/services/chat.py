@@ -292,6 +292,21 @@ class ChatService:
             state = thread.state
             event_sequence = thread.event_count
             previous_event_hash = thread.last_event_hash
+
+            # Anchor the active service from landing context when the thread has none yet.
+            # The proactive /greet flow normally seeds this, but the widget may skip /greet
+            # or omit landing data — without an anchor, an ambiguous first message (a bare
+            # genre/premise description on a cover-design page, e.g. "cozy mystery with magic
+            # and food") gets mis-inferred as a different service (ghostwriting) and pivots
+            # the reply. Seed BEFORE intent classification so the ContextArbiter's service
+            # inertia keeps this turn on the landing service. An explicit service named in
+            # this or a later message still overrides via the arbiter's switch handling.
+            _landing_service = _service_from_landing(
+                getattr(payload, "landing_page", None),
+                getattr(payload, "landing_keyword", None),
+            )
+            if _landing_service is not None and _active_service_from_state(state) is None:
+                _append_service_focus(state, _landing_service)
             _evt_buf: _EventBuffer | None = _EventBuffer() if self.event_log_batching_enabled and self.thread_repository is not None else None
             _preloaded_trg_graph: TemporalRelationGraph | None = None
 
