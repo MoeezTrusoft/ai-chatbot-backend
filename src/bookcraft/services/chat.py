@@ -739,6 +739,17 @@ class ChatService:
                 intent=intent,
                 extraction=extraction,
             )
+            # When the planner has already produced a CONFIRMED pending action (the user
+            # said "yes" to a pending booking/quote/etc.), that ready-to-execute plan must
+            # not be clobbered by the lead-objective override or the consultation reconcile
+            # below — otherwise the confirmation is lost and the action never dispatches
+            # (BUG-6040: "yes" stalled at ready_to_schedule and never booked).
+            _is_confirmed_pending = bool(
+                action_plan.status == ActionStatus.READY
+                and getattr(action_plan, "pending_confirmation_key", None)
+                and isinstance(action_plan.collected_slots, dict)
+                and action_plan.collected_slots.get("confirmed")
+            )
             lead_objective_decision = self.lead_objective_engine.decide(
                 message=payload.message,
                 intent=intent,
@@ -883,6 +894,7 @@ class ChatService:
                 lead_objective_decision.objective_move == "create_lead"
                 and not state.lead_created
                 and contact_capture.lead_contact_ready
+                and not _is_confirmed_pending
             ):
                 action_plan = self._create_lead_action_plan_from_contact(
                     state=state,
@@ -904,7 +916,7 @@ class ChatService:
                 require_phone=self.consultation_require_phone,
                 prior_stage=_prior_consultation_stage,
             )
-            if consultation_state_decision.can_schedule:
+            if consultation_state_decision.can_schedule and not _is_confirmed_pending:
                 action_plan = _reconcile_consultation_action_plan(
                     current_plan=action_plan,
                     consultation_decision=consultation_state_decision,
