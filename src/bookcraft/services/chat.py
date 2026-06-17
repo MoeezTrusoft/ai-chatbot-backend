@@ -2064,6 +2064,7 @@ class ChatService:
                 "preferred_call_time": getattr(state, "preferred_call_time", None),
                 "handoff_created": getattr(state, "consultation_handoff_created", False),
             },
+            "pending_confirmation": _pending_confirmation_debug(state),
             "sales_stage": str(getattr(getattr(state, "sales_stage", None), "value", None) or ""),
             "csr_commitments": list(getattr(state, "csr_commitments", None) or []),
             "service_metadata": dict(getattr(state, "service_metadata", None) or {}),
@@ -4129,6 +4130,25 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _pending_confirmation_debug(state: ThreadState) -> dict[str, Any] | None:
+    """Diagnostic view of the pending action confirmation (for /debug/state)."""
+    from bookcraft.components.actions.slot_resolver import is_pending_expired
+
+    pend = getattr(getattr(state, "sales_actions", None), "pending_confirmation", None)
+    if pend is None or getattr(pend, "type", None) is None:
+        return None
+    try:
+        expired = is_pending_expired(pend)
+    except Exception:  # noqa: BLE001
+        expired = None
+    return {
+        "type": getattr(pend, "type", None),
+        "has_payload": bool(getattr(pend, "payload", None)),
+        "expires_at": str(getattr(pend, "expires_at", None)),
+        "expired": expired,
+    }
 
 
 def _sync_contact_capture_to_state(

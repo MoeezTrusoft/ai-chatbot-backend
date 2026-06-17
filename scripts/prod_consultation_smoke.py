@@ -89,10 +89,13 @@ def main() -> int:
             tid = body.get("thread_id") or thread_id
             evts = [e.get("type") for e in (body.get("action_events") or [])]
             stg = None
+            pend = None
             if tid:
                 _, d = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
                 stg = (d.get("consultation") or {}).get("stage")
-            print(f"     · sent {message[:40]!r:<42} → stage={stg!r} events={evts}", flush=True)
+                pend = d.get("pending_confirmation")
+            print(f"     · sent {message[:38]!r:<40} → stage={stg!r} events={evts} pending={pend}",
+                  flush=True)
         return body
 
     print("=" * 74)
