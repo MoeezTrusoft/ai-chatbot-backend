@@ -109,6 +109,17 @@ class TestGenuineContactsUnaffected:
         assert r.contact.name == "Sarah Khan"
         assert r.has_phone is True
 
+    def test_email_digits_not_mistaken_for_phone(self) -> None:
+        # Plus-addressing / numeric local parts must not be read as a phone number.
+        r = self.d.extract("My email is e2e-smoke+20260617-162931@trusoft.pk")
+        assert r.contact.email == "e2e-smoke+20260617-162931@trusoft.pk"
+        assert r.has_phone is False, "digits inside the email must not become a phone"
+
+    def test_real_phone_alongside_email_still_captured(self) -> None:
+        r = self.d.extract("john+1999@example.com and my phone is 415-555-0142")
+        assert r.has_email is True
+        assert r.contact.phone == "415-555-0142"
+
 
 class TestDeterministicPreextractorPhone:
     """The deterministic CombinedExtractor must also reject range-shaped 'phones'

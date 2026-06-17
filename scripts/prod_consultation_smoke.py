@@ -73,7 +73,8 @@ def main() -> int:
 
     turn_url = f"{args.bot_url.rstrip('/')}/api/v1/chat/turn"
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    test_email = f"e2e-smoke+{stamp}@trusoft.pk"
+    # Letter-prefixed tag so the email's digits are never mis-read as a phone number.
+    test_email = f"e2e-smoke+t{time.strftime('%H%M%S')}@trusoft.pk"
     test_name = "E2E Smoke Test"
 
     def turn(message: str, thread_id: str | None) -> dict:

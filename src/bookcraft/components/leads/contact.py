@@ -185,14 +185,20 @@ class ContactCaptureDetector:
         # Phone — formatted or bare 10+ digit number. A real phone carries 10–15
         # digits and must not be a year/era range like "1770-1810" or an age range
         # like "6-12" (both previously slipped through into personal.phone).
-        phone_match = _PHONE_RE.search(text)
+        # Exclude the email span from the phone search so digits inside an address
+        # (plus-addressing, numeric local parts, e.g. "name+15551234567@x.com") are
+        # never mistaken for a phone number.
+        phone_text = text
+        if email_match:
+            phone_text = text[: email_match.start()] + "  " + text[email_match.end() :]
+        phone_match = _PHONE_RE.search(phone_text)
         phone_raw = phone_match.group(0).strip() if phone_match else None
         phone = phone_raw if is_valid_phone(phone_raw) else None
         if phone_raw and phone is None:
             audit.append("phone_rejected_not_a_number")
         # Fallback: a bare run of 10+ digits is a phone number (e.g. "8889050868").
         if phone is None:
-            bare_match = _BARE_PHONE_RE.search(text)
+            bare_match = _BARE_PHONE_RE.search(phone_text)
             if bare_match and is_valid_phone(bare_match.group(1)):
                 phone = bare_match.group(1)
                 audit.append("phone_bare_digits")
