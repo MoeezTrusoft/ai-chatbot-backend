@@ -117,9 +117,9 @@ def main() -> int:
           isinstance(name_in_state, dict) and name_in_state.get("value") == test_name,
           str(name_in_state.get("value") if isinstance(name_in_state, dict) else None))
 
-    # Provide phone, time, timezone → propose → confirm.
-    turn("Sure, my phone is 555-0100.", tid)
-    turn("Let's do Friday afternoon, Eastern time.", tid)
+    # Provide a VALID 10-digit phone, then an explicit time + timezone, then confirm.
+    turn("Sure, my phone is +1 202 555 0147.", tid)
+    turn("Let's schedule the call for next Tuesday at 2 PM Eastern time.", tid)
     rc = turn("yes, go ahead and schedule it", tid)
     events = rc.get("action_events") or []
     sched = next((e for e in events if e.get("type") == "consultation_scheduled"), None)
@@ -137,17 +137,16 @@ def main() -> int:
           consult.get("stage") in ("scheduled", "pending_confirmation", "handoff_created"),
           str(consult.get("stage")))
 
-    # ── CSR Node verification (best-effort; read endpoint may differ) ──
-    print("\n▶ CSR Node check")
+    # ── CSR Node verification (best-effort; /api/consultations is POST-only) ──
+    print("\n▶ CSR Node check (informational — not counted)")
     cs, cbody = _get(f"{args.csr_url.rstrip('/')}/api/consultations", args.bearer)
     if cs == 200:
         rows = cbody if isinstance(cbody, list) else (cbody.get("data") or cbody.get("consultations") or [])
-        found = any(test_email in json.dumps(rows))
-        check("consultation visible in CSR Node /api/consultations", found,
-              f"{len(rows) if isinstance(rows, list) else '?'} rows")
+        found = test_email in json.dumps(rows)
+        print(f"   {'✓' if found else '·'} consultation visible in CSR Node list ({len(rows) if isinstance(rows, list) else '?'} rows)")
     else:
-        check("CSR Node /api/consultations readable", False,
-              f"HTTP {cs} — verify manually on the CSR dashboard (this endpoint may be POST-only)")
+        print(f"   · /api/consultations is not GET-readable (HTTP {cs}) — confirm the test "
+              f"booking on the CSR dashboard for {test_email}")
 
     # ── Summary + cleanup ──
     passed = sum(1 for _, ok, _ in RESULTS if ok)
