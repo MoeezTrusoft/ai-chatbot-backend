@@ -77,14 +77,23 @@ def main() -> int:
     test_email = f"e2e-smoke+t{time.strftime('%H%M%S')}@trusoft.pk"
     test_name = "E2E Smoke Test"
 
-    def turn(message: str, thread_id: str | None) -> dict:
+    def turn(message: str, thread_id: str | None, *, trace: bool = False) -> dict:
         payload = {"message": message}
         if thread_id:
             payload["thread_id"] = thread_id
         status, body = _post(turn_url, payload, args.bearer)
         if status != 200:
             print(f"   [turn HTTP {status}] {body.get('_error','')}", flush=True)
-        return body if status == 200 else {}
+            return {}
+        if trace:
+            tid = body.get("thread_id") or thread_id
+            evts = [e.get("type") for e in (body.get("action_events") or [])]
+            stg = None
+            if tid:
+                _, d = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
+                stg = (d.get("consultation") or {}).get("stage")
+            print(f"     · sent {message[:40]!r:<42} → stage={stg!r} events={evts}", flush=True)
+        return body
 
     print("=" * 74)
     print(" PRODUCTION consultation + lead + confirmation smoke test")
@@ -108,7 +117,8 @@ def main() -> int:
         return 2
 
     # Email only (no phone yet) → the bot should ask for a phone number.
-    turn(f"My name is {test_name} and my email is {test_email}.", tid)
+    print("   per-turn trace:")
+    turn(f"My name is {test_name} and my email is {test_email}.", tid, trace=True)
     _, dbg = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
     stage = (dbg.get("consultation") or {}).get("stage")
     name_in_state = ((dbg.get("personal") or {}).get("name") or {})
@@ -119,9 +129,11 @@ def main() -> int:
           str(name_in_state.get("value") if isinstance(name_in_state, dict) else None))
 
     # Provide a VALID 10-digit phone, then an explicit time + timezone, then confirm.
-    turn("Sure, my phone is +1 202 555 0147.", tid)
-    turn("Let's schedule the call for next Tuesday at 2 PM Eastern time.", tid)
-    rc = turn("yes, go ahead and schedule it", tid)
+    # Per-turn trace so we can see exactly where the booking stalls in production.
+    print("   per-turn trace:")
+    turn("Sure, my phone is +1 202 555 0147.", tid, trace=True)
+    turn("Let's schedule the call for next Tuesday at 2 PM Eastern time.", tid, trace=True)
+    rc = turn("yes, go ahead and schedule it", tid, trace=True)
     events = rc.get("action_events") or []
     sched = next((e for e in events if e.get("type") == "consultation_scheduled"), None)
     check("consultation_scheduled action_event emitted",
