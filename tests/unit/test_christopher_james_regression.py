@@ -374,6 +374,81 @@ class TestContactNextQuestion:
 
 
 # ---------------------------------------------------------------------------
+# Phone is the primary contact — always solicited, even with email-only / email-preferred.
+# Regression: an email-only customer was created as a lead and taken straight to
+# scheduling ("preferred_call_time") without ever being asked for a phone number.
+# ---------------------------------------------------------------------------
+
+class TestPhoneIsAlwaysAsked:
+    def _email_only_ready_capture(self) -> ContactCaptureResult:
+        from bookcraft.components.leads.contact import ContactInfo
+
+        return ContactCaptureResult(
+            contact=ContactInfo(name="Deyah Lara", email="d@example.com"),
+            has_name=True,
+            has_email=True,
+            has_phone=False,
+            lead_contact_ready=True,   # name + email is "ready" — but phone still missing
+            contact_complete=False,
+        )
+
+    def test_objective_create_lead_requests_phone_when_only_email(self):
+        """create_lead with name+email but no phone must carry next_question=missing_phone."""
+        from bookcraft.components.leads.objective import LeadObjectiveEngine
+        from bookcraft.domain.enums import QueryIntentType as QIT
+
+        cc = self._email_only_ready_capture()
+        decision = LeadObjectiveEngine().decide(
+            message="please proceed and book me in",
+            intent=_intent(query=QIT.READY_TO_BUY),
+            state=ThreadState(),
+            contact_capture=cc,
+        )
+        assert decision.objective_move == "create_lead"
+        assert decision.next_question == "missing_phone"
+
+    def test_planner_asks_phone_before_call_time_when_only_email(self):
+        """Lead-ready (name+email, no phone) must ask missing_phone, NOT preferred_call_time."""
+        planner = ResponsePlanner()
+        pack = _pack_with_known_facts([
+            _known_fact("personal.name", "author_name", "Deyah Lara"),
+            _known_fact("personal.email", "author_email", "d@example.com"),
+        ])
+        plan = planner.plan(
+            intent=_intent(query=QueryIntentType.CONTACT_INFO_PROVIDED),
+            state=ThreadState(),
+            context_pack=pack,
+            lead_objective_decision=_lead_stop(next_question="missing_phone"),
+            contact_capture_result=self._email_only_ready_capture(),
+        )
+        assert plan.next_question == "missing_phone"
+
+    def test_lead_created_confirmation_still_asks_phone_when_missing(self):
+        """On the create-lead turn (lead_created_confirmation), still solicit the phone."""
+        planner = ResponsePlanner()
+        pack = _pack_with_known_facts([
+            _known_fact("personal.name", "author_name", "Deyah Lara"),
+            _known_fact("personal.email", "author_email", "d@example.com"),
+        ])
+        lod = LeadObjectiveDecision(
+            stage="lead_ready",
+            stop_discovery=True,
+            objective_move="create_lead",
+            next_question="missing_phone",
+            recommended_primary_goal="lead_contact_capture",
+            reason="test",
+        )
+        plan = planner.plan(
+            intent=_intent(query=QueryIntentType.CONTACT_INFO_PROVIDED),
+            state=ThreadState(),
+            context_pack=pack,
+            lead_objective_decision=lod,
+            contact_capture_result=self._email_only_ready_capture(),
+        )
+        assert plan.next_question == "missing_phone"
+
+
+# ---------------------------------------------------------------------------
 # Bug 1+2 integration — pack_builder forbidden_reasks covers manuscript phrases
 # ---------------------------------------------------------------------------
 

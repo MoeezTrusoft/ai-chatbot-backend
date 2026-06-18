@@ -562,6 +562,11 @@ def _next_question(
         return nq or "consultation_interest"
 
     if primary_goal == "lead_created_confirmation":
+        # Even while confirming the lead, secure the primary contact method: if the
+        # customer gave only an email (or prefers email) and we still have no phone,
+        # ask for the phone in the same breath. Never blocks lead creation.
+        if getattr(lead_objective_decision, "next_question", None) == "missing_phone":
+            return "missing_phone"
         return None
 
     # Greeting-only turns: ask how we can help, never scoping.
@@ -586,6 +591,13 @@ def _next_question(
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:
+            # Phone is the primary contact method: secure it before moving on to
+            # scheduling, even when the customer offered only an email or prefers
+            # email. Honour an explicit phone request from the lead objective engine
+            # (loop-safe — it asks once via contact_second_method_requested). The lead
+            # itself is never blocked; it was already created above.
+            if getattr(lead_objective_decision, "next_question", None) == "missing_phone":
+                return "missing_phone"
             # PR 2: contact ready — ask for call time instead of no-op.
             if not context_pack.preferred_call_time:
                 return "preferred_call_time"
