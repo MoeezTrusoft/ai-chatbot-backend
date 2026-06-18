@@ -24,6 +24,11 @@ from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtra
 from bookcraft.components.extraction.schemas import StateDelta
 from bookcraft.components.leads.contact_utils import is_non_name_token, is_valid_phone
 from bookcraft.components.llm.protocols import LLMProvider
+from bookcraft.components.metadata.service_metadata import (
+    coerce_metadata_value,
+    describe_field_accepted,
+    get_service_field_specs,
+)
 from bookcraft.domain.enums import Source, coerce_manuscript_status
 from bookcraft.domain.state import ThreadState
 
@@ -106,6 +111,9 @@ def _strip_authorship_from_title(title_value: object) -> object:
 
 _HIGH_CONFIDENCE_THRESHOLD = 0.85
 _LOW_CONFIDENCE_FILL_VALUE = 0.3  # fills only empty fields via StateApplier rules
+
+# Minimum confidence to confirm a service-specific metadata fact into state.
+_SERVICE_METADATA_MIN_CONFIDENCE = 0.70
 
 # Fields that have FieldMeta state paths and are converted to StateDelta.
 _FIELD_TO_STATE_PATH: dict[str, str] = {
@@ -406,19 +414,64 @@ def _facts_to_rich_metadata(facts: LLMExtractedFacts) -> dict[str, str]:
     return result
 
 
+def _build_service_metadata_section(active_service: str | None) -> str:
+    """Enumerate the active service's registry fields + accepted values for the prompt.
+
+    Returns an empty string when there is no active service or it has no registry fields,
+    so ordinary turns pay no extra prompt cost.
+    """
+    if not active_service:
+        return ""
+    specs = get_service_field_specs(active_service)
+    if not specs:
+        return ""
+    lines = [
+        "",
+        f"SERVICE-SPECIFIC METADATA (active service: {active_service}):",
+        "If the user states any of these for their project, extract it into the "
+        '"service_metadata" array as {key, value, confidence, source_quote}. Use the EXACT '
+        "accepted token (map natural phrasing to the closest one — e.g. a "
+        '"photo composite" / "photo" cover → "photographic"). Omit fields with no evidence; '
+        "never guess.",
+    ]
+    for key, spec in specs.items():
+        lines.append(f"  - {key}: {describe_field_accepted(spec)}")
+    return "\n".join(lines)
+
+
+def _facts_to_service_metadata(
+    facts: LLMExtractedFacts, active_service: str | None
+) -> dict[str, dict[str, object]]:
+    """Validate LLM service_metadata items against the registry → {service: {key: value}}."""
+    if not active_service or not facts.service_metadata:
+        return {}
+    confirmed: dict[str, object] = {}
+    for item in facts.service_metadata:
+        if not item.key or item.confidence < _SERVICE_METADATA_MIN_CONFIDENCE:
+            continue
+        coerced = coerce_metadata_value(active_service, item.key, item.value)
+        if coerced is None:
+            continue
+        confirmed[item.key] = coerced
+        LLM_EXTRACTION_FIELDS.labels(field=f"{active_service}.{item.key}").inc()
+    return {active_service: confirmed} if confirmed else {}
+
+
 class LLMExtractionResult:
     """Result from LLMMetadataExtractor.extract()."""
 
-    __slots__ = ("state_deltas", "rich_metadata", "coreference_notes")
+    __slots__ = ("state_deltas", "rich_metadata", "service_metadata", "coreference_notes")
 
     def __init__(
         self,
         state_deltas: list[StateDelta],
         rich_metadata: dict[str, str],
         coreference_notes: list[str],
+        service_metadata: dict[str, dict[str, object]] | None = None,
     ) -> None:
         self.state_deltas = state_deltas
         self.rich_metadata = rich_metadata
+        self.service_metadata = service_metadata or {}
         self.coreference_notes = coreference_notes
 
 
@@ -426,6 +479,7 @@ _EMPTY_RESULT = LLMExtractionResult(
     state_deltas=[],
     rich_metadata={},
     coreference_notes=[],
+    service_metadata={},
 )
 
 
@@ -440,6 +494,7 @@ class LLMMetadataExtractor:
         user_text: str,
         assistant_text: str,
         state: ThreadState,
+        active_service: str | None = None,
     ) -> LLMExtractionResult:
         if not user_text.strip():
             LLM_EXTRACTION_CALLS.labels(outcome="skipped").inc()
@@ -451,6 +506,7 @@ class LLMMetadataExtractor:
             user_message=user_text,
             assistant_message=assistant_text or "(none)",
         )
+        user_prompt += _build_service_metadata_section(active_service)
 
         try:
             with LLM_EXTRACTION_SECONDS.time():
@@ -479,6 +535,7 @@ class LLMMetadataExtractor:
 
         deltas = _facts_to_deltas(facts)
         rich = _facts_to_rich_metadata(facts)
+        service_metadata = _facts_to_service_metadata(facts, active_service)
 
         if facts.coreference_notes:
             logger.debug(
@@ -491,4 +548,5 @@ class LLMMetadataExtractor:
             state_deltas=deltas,
             rich_metadata=rich,
             coreference_notes=facts.coreference_notes,
+            service_metadata=service_metadata,
         )

@@ -622,12 +622,14 @@ class ChatService:
             # section structure, page dimensions, etc.) that regex cannot capture.
             _llm_extraction_delta_count = 0
             _llm_extraction_task: asyncio.Task | None = None
+            _llm_active_svc = getattr(_active_service_from_state(state), "value", None)
             if self.llm_metadata_extractor is not None and self.llm_extraction_overlap_enabled:
                 _llm_extraction_task = asyncio.create_task(
                     self.llm_metadata_extractor.extract(
                         user_text=payload.message,
                         assistant_text=state.last_assistant_text or "",
                         state=state.model_copy(deep=True),
+                        active_service=_llm_active_svc,
                     )
                 )
             if self.llm_metadata_extractor is not None and not self.llm_extraction_overlap_enabled:
@@ -636,6 +638,7 @@ class ChatService:
                         user_text=payload.message,
                         assistant_text=state.last_assistant_text or "",
                         state=state,
+                        active_service=_llm_active_svc,
                     )
                     if _llm_result.state_deltas:
                         _llm_extraction_delta_count = len(_llm_result.state_deltas)
@@ -653,6 +656,9 @@ class ChatService:
                         for _k, _v in _llm_result.rich_metadata.items():
                             if _k not in state.service_metadata["book_specs"]:
                                 state.service_metadata["book_specs"][_k] = _v
+                    # Service-specific metadata (cover visual_style, editing_level, …) →
+                    # state.service_metadata[service]; pack_builder then surfaces/locks it.
+                    self._apply_llm_service_metadata(state, _llm_result)
                     # Upsert extracted facts into ES entity memory index.
                     if self.entity_index is not None:
                         for _delta in _llm_result.state_deltas:
@@ -1101,6 +1107,7 @@ class ChatService:
                         for _k, _v in _llm_result.rich_metadata.items():
                             if _k not in state.service_metadata["book_specs"]:
                                 state.service_metadata["book_specs"][_k] = _v
+                    self._apply_llm_service_metadata(state, _llm_result)
                     if self.entity_index is not None:
                         for _delta in _llm_result.state_deltas:
                             try:
@@ -2033,11 +2040,13 @@ class ChatService:
                     user_text=payload.user_message,
                     assistant_text=payload.csr_message,
                     state=state,
+                    active_service=getattr(_active_service_from_state(state), "value", None),
                 )
                 if _llm_result.state_deltas:
                     from bookcraft.components.extraction.schemas import CombinedExtraction as _CE
 
                     state = self.state_applier.apply(state, _CE(state_deltas=_llm_result.state_deltas))
+                self._apply_llm_service_metadata(state, _llm_result)
             except Exception as _exc:  # noqa: BLE001
                 structlog.get_logger(__name__).warning(
                     "csr_turn_llm_extraction_failed",
@@ -2771,6 +2780,23 @@ class ChatService:
 
         for service in services_to_store:
             _append_service_focus(state, service)
+
+    @staticmethod
+    def _apply_llm_service_metadata(state: ThreadState, llm_result: object) -> None:
+        """Merge LLM-extracted, registry-validated service metadata into state.
+
+        Safe merge: fills only keys not already confirmed for that service (deterministic
+        extraction and earlier turns win). Once stored, pack_builder surfaces these as
+        known facts and forbidden re-asks automatically.
+        """
+        svc_meta = getattr(llm_result, "service_metadata", None) or {}
+        for svc_key, kv in svc_meta.items():
+            if not isinstance(kv, dict) or not kv:
+                continue
+            bucket = state.service_metadata.setdefault(svc_key, {})
+            for meta_key, meta_value in kv.items():
+                if meta_key not in bucket:
+                    bucket[meta_key] = meta_value
 
     async def _bg_trg_update_and_persist(
         self,

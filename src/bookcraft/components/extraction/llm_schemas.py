@@ -72,6 +72,29 @@ class ExtractedValue(BaseModel):
             return 0.9  # safe fallback confidence
 
 
+class ServiceMetadataItem(BaseModel):
+    """One service-specific metadata fact (e.g. cover visual_style=photographic).
+
+    ``key`` must be one of the active service's registry fields; ``value`` is validated
+    against that field's accepted set by the extractor before it is stored.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    key: str = ""
+    value: Any = None
+    confidence: float = Field(ge=0.0, le=1.0, default=0.85)
+    source_quote: str = ""
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def coerce_confidence(cls, v: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.85
+
+
 class LLMExtractedFacts(BaseModel):
     """Structured output of the LLM metadata extraction pass.
 
@@ -157,6 +180,10 @@ class LLMExtractedFacts(BaseModel):
     cover_preferences: ExtractedValue | None = None  # e.g. "dark cover with forest imagery"
     section_structure: ExtractedValue | None = None  # e.g. "6 sections, ~50 poems total"
     target_audience: ExtractedValue | None = None    # e.g. "young adults aged 14–18"
+
+    # Service-specific metadata for the active service (cover visual_style, editing_level,
+    # platforms, etc.). Validated against the service registry by the extractor.
+    service_metadata: list[ServiceMetadataItem] = Field(default_factory=list)
 
     # Coreference notes — LLM explains any reference resolution it performed
     coreference_notes: list[str] = Field(default_factory=list)

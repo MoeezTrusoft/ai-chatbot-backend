@@ -364,3 +364,74 @@ SERVICE_METADATA_REGISTRY: dict[str, dict[str, dict[str, Any]]] = {
 def get_service_keys(service: str) -> list[str]:
     """Return all extractable metadata key names for a service."""
     return list(SERVICE_METADATA_REGISTRY.get(service, {}).keys())
+
+
+def get_service_field_specs(service: str) -> dict[str, dict[str, Any]]:
+    """Return the full field spec map ({key: {accepted, priority, ...}}) for a service."""
+    return dict(SERVICE_METADATA_REGISTRY.get(service, {}))
+
+
+def describe_field_accepted(spec: dict[str, Any]) -> str:
+    """Human-readable description of a field's accepted values, for an LLM prompt."""
+    accepted = spec.get("accepted")
+    if accepted in ([True, False], [False, True]):
+        return "true or false"
+    if accepted == "integer":
+        return "a whole number"
+    if accepted == "string":
+        return "free text"
+    if accepted == "list_of_strings":
+        return "a list of short values"
+    if isinstance(accepted, list):
+        return "one of: " + ", ".join(str(a) for a in accepted)
+    return "free text"
+
+
+def coerce_metadata_value(service: str, key: str, value: Any) -> Any | None:
+    """Validate/normalise an extracted value against a service field's accepted spec.
+
+    Returns the canonical value to store, or ``None`` when the value is empty or does not
+    match the field's accepted set. Enum matching is case-insensitive and returns the
+    registry's canonical token.
+    """
+    spec = SERVICE_METADATA_REGISTRY.get(service, {}).get(key)
+    if spec is None or value is None:
+        return None
+    accepted = spec.get("accepted")
+
+    # Boolean fields (checked before the generic list branch — [True, False] is a list).
+    if accepted in ([True, False], [False, True]):
+        if isinstance(value, bool):
+            return value
+        token = str(value).strip().lower()
+        if token in {"true", "yes", "y", "1"}:
+            return True
+        if token in {"false", "no", "n", "0"}:
+            return False
+        return None
+
+    if accepted == "integer":
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    if accepted == "string":
+        token = str(value).strip()
+        return token or None
+
+    if accepted == "list_of_strings":
+        if isinstance(value, list):
+            items = [str(v).strip() for v in value if str(v).strip()]
+            return items or None
+        token = str(value).strip()
+        return [token] if token else None
+
+    if isinstance(accepted, list):
+        token = str(value).strip().lower()
+        for candidate in accepted:
+            if isinstance(candidate, str) and candidate.lower() == token:
+                return candidate
+        return None
+
+    return None
