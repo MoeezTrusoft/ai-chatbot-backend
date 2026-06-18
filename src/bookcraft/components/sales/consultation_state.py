@@ -28,6 +28,38 @@ class ConsultationStage(StrEnum):
     HANDOFF_CREATED = "handoff_created"
 
 
+# Stages that mean a consultation request is genuinely in flight and should persist
+# across turns (as opposed to NONE, or the ConsultationObjectiveEngine's own vocabulary
+# like "engaging" which does NOT indicate a request).
+_ACTIVE_REQUEST_STAGES = frozenset(
+    {
+        ConsultationStage.REQUESTED_CONTACT_NEEDED,
+        ConsultationStage.REQUESTED_PHONE_NEEDED,
+        ConsultationStage.REQUESTED_TIME_NEEDED,
+        ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
+        ConsultationStage.READY_TO_SCHEDULE,
+        ConsultationStage.PENDING_CONFIRMATION,
+        ConsultationStage.SCHEDULED,
+        ConsultationStage.HANDOFF_CREATED,
+    }
+)
+
+
+def _prior_stage_is_active_request(prior_stage: Any) -> bool:
+    """True only when the prior-turn stage is one of THIS reducer's request stages.
+
+    `prior_stage` is the consultation stage captured at the start of the turn, before any
+    engine overwrote it. Values foreign to ConsultationStage (e.g. the objective engine's
+    "engaging") normalise to "no active request".
+    """
+    if not prior_stage:
+        return False
+    try:
+        return ConsultationStage(str(prior_stage)) in _ACTIVE_REQUEST_STAGES
+    except ValueError:
+        return False
+
+
 class ConsultationStateDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -123,7 +155,14 @@ def reduce_consultation_state(
     query_primary = getattr(intent, "query_primary", None)
     consultation_from_intent = query_primary == QueryIntentType.CONSULTATION_REQUEST
     consultation_from_text = bool(_CONSULTATION_REQUEST_RE.search(message))
-    consultation_from_state = bool(getattr(state, "consultation_stage", None)) or bool(
+    # Persisted-request signal. Do NOT read the live `state.consultation_stage`: by the
+    # time this reducer runs, the ConsultationObjectiveEngine has already overwritten that
+    # field with its OWN vocabulary (e.g. "engaging" for any ordinary chat turn). Treating
+    # a non-empty value as a request made EVERY turn look like a consultation request and
+    # latched the bot into REQUESTED_CONTACT_NEEDED from turn 1. Use `prior_stage` (captured
+    # before the objective engine ran) and count only genuine request stages from this
+    # reducer's own enum.
+    consultation_from_state = _prior_stage_is_active_request(prior_stage) or bool(
         getattr(state, "sales_actions", None) and state.sales_actions.consultation.requested
     )
     consultation_requested = (

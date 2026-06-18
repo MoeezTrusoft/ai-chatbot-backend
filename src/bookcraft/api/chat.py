@@ -127,9 +127,18 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
             headers={"Retry-After": str(decision.reset_after_seconds)},
         )
 
-    payload = payload.model_copy(
-        update={"correlation_id": sanitize_correlation_id(payload.correlation_id)}
-    )
+    update: dict[str, object] = {
+        "correlation_id": sanitize_correlation_id(payload.correlation_id)
+    }
+    # Landing-context fallback: if the widget did not pass landing_page on the turn, use
+    # the browser's Referer (the embedding page URL, sent automatically). This lets the
+    # service anchor the active service from the page even without any frontend change, so
+    # an ambiguous first message on, e.g., the cover-design page is not mis-classified.
+    if payload.landing_page is None:
+        referer = request.headers.get("referer") or request.headers.get("referrer")
+        if referer:
+            update["landing_page"] = referer[:200]
+    payload = payload.model_copy(update=update)
     service: ChatService = request.app.state.chat_service
     return await service.handle_turn(payload)
 
