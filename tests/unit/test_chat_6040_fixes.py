@@ -84,12 +84,14 @@ class TestAlwaysAskPhone:
         d = _reduce(has_email=True, has_phone=True)
         assert d.stage != ConsultationStage.REQUESTED_PHONE_NEEDED
 
-    def test_loop_safe_after_asked_once(self) -> None:
+    def test_phone_is_hard_required_for_consultation(self) -> None:
         st = ThreadState()
         st.consultation_stage = ConsultationStage.REQUESTED_PHONE_NEEDED.value
         d = _reduce(state=st, has_email=True, has_phone=False)
-        # Already asked → proceeds to the time ask, does not loop on phone.
-        assert d.stage == ConsultationStage.REQUESTED_TIME_NEEDED
+        # Consultation hard-requires a phone: keeps requiring it (no booking without it),
+        # even after it was already asked on a prior turn.
+        assert d.stage == ConsultationStage.REQUESTED_PHONE_NEEDED
+        assert d.can_schedule is False
 
     def test_flag_off_disables(self) -> None:
         d = _reduce(has_email=True, has_phone=False, require_phone=False)

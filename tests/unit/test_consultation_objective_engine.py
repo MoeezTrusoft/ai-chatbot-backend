@@ -131,13 +131,13 @@ def _contact(*, ready=True, has_email=True, has_phone=False) -> MagicMock:
     return m
 
 
-def test_email_only_contact_asks_phone_before_scheduling(
+def test_email_only_contact_requires_phone_before_scheduling(
     engine: ConsultationObjectiveEngine,
 ) -> None:
-    """require_phone + email-only + not yet asked → ask phone before pivoting to call time."""
+    """require_phone + email-only → ask phone before pivoting to call time."""
     decision = engine.decide(
         message="ok",
-        state=_state(lead_created=True),  # consultation_phone_asked defaults False
+        state=_state(lead_created=True),
         lead_objective_decision=_lod("no_change"),
         contact_capture=_contact(has_email=True, has_phone=False),
         require_phone=True,
@@ -147,19 +147,31 @@ def test_email_only_contact_asks_phone_before_scheduling(
     assert decision.stage == "consultation_phone_requested"
 
 
-def test_phone_gate_is_loop_safe_after_asked(engine: ConsultationObjectiveEngine) -> None:
-    """Once asked, never block — proceed to call-time even if phone still missing."""
-    s = _state(lead_created=True)
-    s.consultation_phone_asked = True
+def test_phone_is_a_hard_gate_keeps_requiring(engine: ConsultationObjectiveEngine) -> None:
+    """Consultation HARD-requires a phone: keep asking until one is provided (no bypass)."""
     decision = engine.decide(
-        message="ok",
-        state=s,
+        message="Tuesday at 3pm works",  # even with a definite time on the table
+        state=_state(lead_created=True, preferred_call_time="Tuesday at 3pm"),
         lead_objective_decision=_lod("no_change"),
         contact_capture=_contact(has_email=True, has_phone=False),
         require_phone=True,
     )
+    assert decision.next_question == "missing_phone"
+    assert decision.create_handoff is False
+
+
+def test_phone_gate_yields_to_priority_question(engine: ConsultationObjectiveEngine) -> None:
+    """A direct question/refusal is answered first — phone gate doesn't steamroll it."""
+    decision = engine.decide(
+        message="actually how much does this cost?",
+        state=_state(),  # lead not yet confirmed → Priority 3 (answer) is reachable
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=False),
+        current_question_priority=_priority(True, "pricing"),
+        require_phone=True,
+    )
     assert decision.next_question != "missing_phone"
-    assert decision.objective_move == "ask_preferred_call_time"
+    assert decision.objective_move == "answer_then_consultation"
 
 
 def test_phone_gate_skipped_when_phone_present(engine: ConsultationObjectiveEngine) -> None:

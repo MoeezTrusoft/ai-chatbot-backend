@@ -1333,12 +1333,6 @@ class ChatService:
                         update={"primary_goal": "consultation_status_in_progress"}
                     )
 
-            # Loop-safe phone guard: once the plan asks an email-only contact for their
-            # phone (via the lead path or the consultation phone gate), remember it so we
-            # solicit the phone exactly once and then let scheduling proceed.
-            if response_plan.next_question == "missing_phone":
-                state.consultation_phone_asked = True
-
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
                 message=payload.message,

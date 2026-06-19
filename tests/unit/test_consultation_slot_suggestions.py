@@ -115,6 +115,39 @@ def test_reducer_offers_slots_for_indefinite_time() -> None:
     assert decision.can_schedule is False
 
 
+def test_reducer_hard_gates_scheduling_without_phone() -> None:
+    # Consultation requires a phone: even a fully definite time cannot be scheduled
+    # while the contact is email-only.
+    decision = reduce_consultation_state(
+        state=_consultation_state("Tuesday at 3pm"),
+        message="Tuesday at 3pm please",
+        intent=_intent(),
+        contact_ready=True,
+        has_email=True,
+        has_phone=False,
+        require_phone=True,
+        prior_stage=ConsultationStage.REQUESTED_TIME_NEEDED,
+    )
+    assert decision.stage == ConsultationStage.REQUESTED_PHONE_NEEDED
+    assert decision.next_question == "missing_phone"
+    assert decision.can_schedule is False
+
+
+def test_reducer_schedules_with_phone_present() -> None:
+    decision = reduce_consultation_state(
+        state=_consultation_state("Tuesday at 3pm"),
+        message="Tuesday at 3pm please",
+        intent=_intent(),
+        contact_ready=True,
+        has_email=True,
+        has_phone=True,
+        require_phone=True,
+        prior_stage=ConsultationStage.REQUESTED_TIME_NEEDED,
+    )
+    assert decision.stage == ConsultationStage.READY_TO_SCHEDULE
+    assert decision.can_schedule is True
+
+
 def test_reducer_schedules_for_definite_time() -> None:
     decision = reduce_consultation_state(
         state=_consultation_state("Tuesday at 3pm"),

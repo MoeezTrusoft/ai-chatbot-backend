@@ -318,22 +318,19 @@ def reduce_consultation_state(
             audit=audit,
         )
 
-    # Contact ready, but ask for a phone number ONCE before moving on — even when the
-    # customer offered only an email or prefers email. Loop-safe via the persisted
-    # requested_phone_needed stage; skipped once a phone is captured or the user has
-    # explicitly declined (already in REQUESTED_PHONE_NEEDED last turn → proceed).
-    # Use the PRIOR turn's stage for the loop-safe check — within a single turn the
-    # reducer runs twice and would otherwise see its own first-pass mutation.
-    _ref_stage = prior_stage if prior_stage is not None else getattr(state, "consultation_stage", None)
-    _already_asked_phone = _ref_stage == ConsultationStage.REQUESTED_PHONE_NEEDED
-    if require_phone and has_email and not has_phone and not _already_asked_phone:
-        audit.append("signal:phone_needed_before_booking")
+    # A consultation HARD-requires a phone number (unlike a lead, which may be
+    # email-only). Block scheduling — keep asking for the phone — until one is present.
+    # This is a hard gate: can_schedule stays False and we never reach READY_TO_SCHEDULE
+    # without a phone, so no booking is created without it.
+    if require_phone and not has_phone:
+        audit.append("signal:phone_required_for_consultation")
         return ConsultationStateDecision(
             stage=ConsultationStage.REQUESTED_PHONE_NEEDED,
             contact_ready=True,
             consultation_requested=True,
             preferred_call_time=preferred_call_time,
             next_question="missing_phone",
+            can_schedule=False,
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,

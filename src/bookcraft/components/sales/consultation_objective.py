@@ -142,27 +142,26 @@ class ConsultationObjectiveEngine:
         _is_manuscript_update = bool(_MANUSCRIPT_STATUS_RE.search(message))
         audit.append(f"has_definite_time:{_has_definite_time}")
 
-        # ── Priority 0: secure a phone before scheduling ──────────────────
-        # Phone is the primary contact for a consultation CALL. When the contact is
-        # email-only and a phone is required, ask for it ONCE before pivoting to the
-        # call-time/handoff — even if the customer prefers email. Loop-safe via
-        # state.consultation_phone_asked; never blocks (asked once, then scheduling
-        # proceeds). Skipped on the create_lead turn (the lead path asks there) and when
-        # celebrating a manuscript milestone.
-        _has_email = bool(getattr(contact_capture, "has_email", False))
+        # ── Priority 0: phone is REQUIRED to create a consultation ────────
+        # Unlike a lead (which can be email-only), a consultation CANNOT be booked
+        # without a phone number. Keep asking until we have one — booking is also blocked
+        # below (Priority 1/2) and in reduce_consultation_state until a phone is present.
+        # Yield only to a direct question/refusal (answered by Priority 3), a manuscript
+        # milestone, and the create-lead turn (the lead path handles that turn).
         _has_phone = bool(getattr(contact_capture, "has_phone", False))
-        _phone_already_asked = bool(getattr(state, "consultation_phone_asked", False))
+        _priority_question = bool(
+            current_question_priority is not None and current_question_priority.has_priority
+        )
         if (
             require_phone
             and contact_ready
-            and _has_email
             and not _has_phone
-            and not _phone_already_asked
             and not handoff_created
             and lod_move not in {"create_lead"}
             and not _is_manuscript_update
+            and not _priority_question
         ):
-            audit.append("move:ask_phone_before_scheduling")
+            audit.append("move:require_phone_for_consultation")
             return ConsultationObjectiveDecision(
                 stage="consultation_phone_requested",
                 objective_move="ask_preferred_call_time",
@@ -174,12 +173,14 @@ class ConsultationObjectiveEngine:
                 audit=audit,
             )
 
-        # ── Priority 1: contact + DEFINITE call time → handoff ────────────
+        # ── Priority 1: contact + DEFINITE call time + phone → handoff ────
         # Skip if handoff was already created on a prior turn — don't re-trigger it.
+        # A phone is mandatory when require_phone (consultation hard gate).
         if (
             contact_ready
             and preferred_call_time
             and _has_definite_time
+            and (not require_phone or _has_phone)
             and not handoff_created
             and lod_move not in {"create_lead"}
         ):
@@ -231,6 +232,21 @@ class ConsultationObjectiveEngine:
             # user provided it on the same turn as a follow-up.
             extracted_time = _extract_preferred_call_time(message)
             if extracted_time and is_definite_call_time(extracted_time):
+                # Definite time, but a consultation still cannot be booked without a
+                # phone — capture the time and ask for the phone instead of handing off.
+                if require_phone and not _has_phone:
+                    audit.append(f"definite_time_but_phone_required:{extracted_time}")
+                    return ConsultationObjectiveDecision(
+                        stage="consultation_phone_requested",
+                        objective_move="ask_preferred_call_time",
+                        consultation_first=True,
+                        stop_discovery=True,
+                        ask_contact=True,
+                        recommended_primary_goal="consultation_time_capture",
+                        next_question="missing_phone",
+                        extracted_preferred_call_time=extracted_time,
+                        audit=audit,
+                    )
                 audit.append(f"call_time_extracted_this_turn:{extracted_time}")
                 return ConsultationObjectiveDecision(
                     stage="consultation_pending",
