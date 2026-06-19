@@ -21,6 +21,9 @@ class ConsultationStage(StrEnum):
     REQUESTED_CONTACT_NEEDED = "requested_contact_needed"
     REQUESTED_PHONE_NEEDED = "requested_phone_needed"
     REQUESTED_TIME_NEEDED = "requested_time_needed"
+    # Customer gave an *indefinite* time (e.g. "anytime", "next week", "Friday");
+    # we offer concrete half-hour slots to pin it to a definite one.
+    REQUESTED_TIME_SLOTS_OFFERED = "requested_time_slots_offered"
     TIME_CAPTURED_NEEDS_TIMEZONE = "time_captured_needs_timezone"
     READY_TO_SCHEDULE = "ready_to_schedule"
     PENDING_CONFIRMATION = "pending_confirmation"
@@ -36,6 +39,7 @@ _ACTIVE_REQUEST_STAGES = frozenset(
         ConsultationStage.REQUESTED_CONTACT_NEEDED,
         ConsultationStage.REQUESTED_PHONE_NEEDED,
         ConsultationStage.REQUESTED_TIME_NEEDED,
+        ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED,
         ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
         ConsultationStage.READY_TO_SCHEDULE,
         ConsultationStage.PENDING_CONFIRMATION,
@@ -123,6 +127,39 @@ _CALL_TIME_FULL_RE = re.compile(
 def _extract_call_time(text: str) -> str | None:
     m = _CALL_TIME_FULL_RE.search(text)
     return m.group(0).strip() if m else None
+
+
+# A call time is bookable-*definite* only when it pins down BOTH a specific day and
+# a specific clock time — e.g. "Tuesday at 3pm", "June 24 at 10:30am". Anything
+# vaguer ("anytime", "next week", "Friday", "afternoon", "3pm" with no day) is
+# indefinite: we should offer concrete slots rather than silently coerce it.
+_CLOCK_TIME_RE = re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE)
+_SPECIFIC_DAY_RE = re.compile(
+    r"\b(?:"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"tomorrow|today|"
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+    r"aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
+    r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}"
+    r")\b",
+    re.IGNORECASE,
+)
+# "next Friday" / "this Monday" still name a specific weekday — fine. But "next week"
+# / "next weekend" name no day, so exclude those bare phrases from the day check.
+_VAGUE_DAY_RE = re.compile(r"\bnext\s+(?:week|weekend)\b", re.IGNORECASE)
+
+
+def is_definite_call_time(text: str | None) -> bool:
+    """True when the call-time text names BOTH a specific day and a clock time."""
+    if not text:
+        return False
+    has_clock = bool(_CLOCK_TIME_RE.search(text))
+    if not has_clock:
+        return False
+    # A bare "next week"/"next weekend" with no weekday is not a specific day.
+    day_text = _VAGUE_DAY_RE.sub(" ", text)
+    has_day = bool(_SPECIFIC_DAY_RE.search(day_text))
+    return has_day
 
 
 def reduce_consultation_state(
@@ -310,6 +347,24 @@ def reduce_consultation_state(
             contact_ready=True,
             consultation_requested=True,
             next_question="preferred_call_time",
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
+
+    # Contact + a time window that is INDEFINITE ("anytime", "next week", "Friday",
+    # "afternoon") — don't silently coerce it into a booking. Offer concrete
+    # half-hour slots so the customer narrows it to a definite day+time. Loop-safe:
+    # once they pick a slot the time becomes definite and we fall through to booking.
+    if not is_definite_call_time(preferred_call_time):
+        audit.append(f"signal:indefinite_time_offer_slots(time={preferred_call_time!r})")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            can_schedule=False,
+            next_question="preferred_call_time_slots",
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,

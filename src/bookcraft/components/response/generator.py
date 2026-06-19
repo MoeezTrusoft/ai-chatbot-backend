@@ -947,6 +947,27 @@ def _question_for_missing_fact(
     *,
     context_pack: ContextPack,
 ) -> str | None:
+    # Indefinite call time → offer concrete half-hour openings to pick from.
+    if missing_fact == "preferred_call_time_slots":
+        slots = list(getattr(context_pack, "suggested_call_slots", None) or [])
+        if slots:
+            if len(slots) == 1:
+                options = slots[0]
+            elif len(slots) == 2:
+                options = f"{slots[0]} or {slots[1]}"
+            else:
+                options = f"{', '.join(slots[:-1])}, or {slots[-1]}"
+            return (
+                "To lock in your call, which of these works best — "
+                f"{options}? If none fit, just tell me a day and time "
+                "(Monday–Friday, 10 AM to 7 PM Central) and I'll set it up."
+            )
+        # No precomputed slots — fall back to the open call-time ask.
+        return (
+            "What specific day and time works best for a call? "
+            "Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time."
+        )
+
     questions = {
         "cover_style": "What cover style or visual direction should I use for the design scope?",
         "word_or_page_count": "What rough word count or page count should I use?",

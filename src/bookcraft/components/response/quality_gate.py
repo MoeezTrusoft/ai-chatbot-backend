@@ -778,6 +778,7 @@ def _missing_next_step(text: str, response_plan: ResponsePlan | None) -> bool:
         "deadline",
         "cover_style",
         "preferred_call_time",
+        "preferred_call_time_slots",
         "name_and_email_or_phone",
         "preferred_call_timezone",
         "manuscript_upload_pitch",
@@ -1373,6 +1374,10 @@ def _fact_key_to_question(key: str) -> str:
         # Consultation-first questions (PR 2).
         "preferred_call_time": (
             "What's the best time to reach you — morning, afternoon, or evening?"
+        ),
+        "preferred_call_time_slots": (
+            "Which specific day and time works best for your call? "
+            "We're available Monday–Friday, 10 AM to 7 PM Central."
         ),
         # Step 17 (Batch 2): timezone slot name must not appear raw.
         "preferred_call_timezone": (

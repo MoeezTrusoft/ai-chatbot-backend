@@ -115,7 +115,11 @@ class TestTimezoneFromPersonalUnblocksBooking:
         from bookcraft.domain.meta import FieldMeta
 
         st = ThreadState()
-        st.preferred_call_time = "Tuesday afternoon"  # relative window → needs a timezone
+        # Definite time (day + clock) that still names a relative window → exercises the
+        # timezone path. A window WITHOUT a clock ("Tuesday afternoon") is now treated as
+        # indefinite and routed to concrete slot suggestions instead (see
+        # test_consultation_slot_suggestions.py).
+        st.preferred_call_time = "Tuesday afternoon at 2pm"
         if tz:
             st.personal.timezone = FieldMeta[str](value=tz, confidence=0.92, source=Source.USER_STATED)
         return st

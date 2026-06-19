@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.consultations.slots import suggest_consultation_slot_labels
+from bookcraft.components.sales.consultation_state import (
+    ConsultationStage,
+    is_definite_call_time,
+)
 from bookcraft.components.leads.contact_utils import (
     contact_is_complete,
     contact_status_from_dict,
@@ -439,6 +446,22 @@ class ContextPackBuilder:
                 if _ct_slot not in disallowed_next_questions:
                     disallowed_next_questions.append(_ct_slot)
 
+        # When the customer's call time is INDEFINITE, surface concrete half-hour
+        # openings so the response can offer specific options to pick from.
+        suggested_call_slots: list[str] = []
+        _needs_slots = (
+            consultation_stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED
+        ) or (
+            contact_ready
+            and bool(state_preferred_call_time)
+            and not is_definite_call_time(state_preferred_call_time)
+        )
+        if _needs_slots:
+            suggested_call_slots = suggest_consultation_slot_labels(
+                now=datetime.now(ZoneInfo("America/Chicago")),
+                count=3,
+            )
+
         # Context enforcement (PR: context-enforcement).
         _enforcement_negated_svcs: list[str] = []
         _enforcement_negated_platforms: list[str] = []
@@ -573,6 +596,7 @@ class ContextPackBuilder:
             audience=audience,
             pending_slots=pending_slots,
             preferred_call_time=state_preferred_call_time,
+            suggested_call_slots=suggested_call_slots,
             language_ignored_segments=language_ignored_segments,
             is_greeting_turn=is_greeting_only,
             consultation_stage=consultation_stage,

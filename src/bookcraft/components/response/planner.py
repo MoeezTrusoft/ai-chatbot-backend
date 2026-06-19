@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
+from bookcraft.components.sales.consultation_state import is_definite_call_time
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType
@@ -542,11 +543,28 @@ def _next_question(
 
     # PR 2 — Consultation-first next questions.
     if primary_goal == "consultation_handoff_confirmation":
-        # Never confirm without a scheduled time — collect it first.
+        # Never confirm without a *definite* scheduled time — collect it first.
         if not context_pack.preferred_call_time:
             return "preferred_call_time"
+        # A vague time on file ("anytime", "Friday") can't be confirmed — pin it
+        # down with concrete slots rather than booking on a guess.
+        if not is_definite_call_time(context_pack.preferred_call_time):
+            return "preferred_call_time_slots"
         return None
     if primary_goal == "consultation_time_capture":
+        # Honour an explicit slot-offer request from the consultation objective engine.
+        nq = (
+            getattr(consultation_objective_decision, "next_question", None)
+            if consultation_objective_decision is not None
+            else None
+        )
+        if nq == "preferred_call_time_slots":
+            return "preferred_call_time_slots"
+        # Already holding a vague time? Narrow it with concrete slots.
+        if context_pack.preferred_call_time and not is_definite_call_time(
+            context_pack.preferred_call_time
+        ):
+            return "preferred_call_time_slots"
         return "preferred_call_time"
     # consultation_scoping: customer just said YES to a consultation offer.
     # Never ask a scoping question here — go straight to contact collection.
