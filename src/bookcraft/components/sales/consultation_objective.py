@@ -107,6 +107,7 @@ class ConsultationObjectiveEngine:
         lead_objective_decision: Any,  # LeadObjectiveDecision
         contact_capture: Any | None = None,  # ContactCaptureResult
         current_question_priority: CurrentQuestionPriorityResult | None = None,
+        require_phone: bool = False,
     ) -> ConsultationObjectiveDecision:
         audit: list[str] = []
 
@@ -140,6 +141,38 @@ class ConsultationObjectiveEngine:
         # Manuscript/project news — celebrate first, don't interrupt to schedule.
         _is_manuscript_update = bool(_MANUSCRIPT_STATUS_RE.search(message))
         audit.append(f"has_definite_time:{_has_definite_time}")
+
+        # ── Priority 0: secure a phone before scheduling ──────────────────
+        # Phone is the primary contact for a consultation CALL. When the contact is
+        # email-only and a phone is required, ask for it ONCE before pivoting to the
+        # call-time/handoff — even if the customer prefers email. Loop-safe via
+        # state.consultation_phone_asked; never blocks (asked once, then scheduling
+        # proceeds). Skipped on the create_lead turn (the lead path asks there) and when
+        # celebrating a manuscript milestone.
+        _has_email = bool(getattr(contact_capture, "has_email", False))
+        _has_phone = bool(getattr(contact_capture, "has_phone", False))
+        _phone_already_asked = bool(getattr(state, "consultation_phone_asked", False))
+        if (
+            require_phone
+            and contact_ready
+            and _has_email
+            and not _has_phone
+            and not _phone_already_asked
+            and not handoff_created
+            and lod_move not in {"create_lead"}
+            and not _is_manuscript_update
+        ):
+            audit.append("move:ask_phone_before_scheduling")
+            return ConsultationObjectiveDecision(
+                stage="consultation_phone_requested",
+                objective_move="ask_preferred_call_time",
+                consultation_first=True,
+                stop_discovery=True,
+                ask_contact=True,
+                recommended_primary_goal="consultation_time_capture",
+                next_question="missing_phone",
+                audit=audit,
+            )
 
         # ── Priority 1: contact + DEFINITE call time → handoff ────────────
         # Skip if handoff was already created on a prior turn — don't re-trigger it.

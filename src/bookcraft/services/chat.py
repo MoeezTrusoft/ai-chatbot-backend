@@ -850,6 +850,7 @@ class ChatService:
                 lead_objective_decision=lead_objective_decision,
                 contact_capture=contact_capture,
                 current_question_priority=current_question_priority,
+                require_phone=self.consultation_require_phone,
             )
             # Apply extracted preferred_call_time to state if found this turn.
             if consultation_objective_decision.extracted_preferred_call_time:
@@ -1331,6 +1332,12 @@ class ChatService:
                     response_plan = response_plan.model_copy(
                         update={"primary_goal": "consultation_status_in_progress"}
                     )
+
+            # Loop-safe phone guard: once the plan asks an email-only contact for their
+            # phone (via the lead path or the consultation phone gate), remember it so we
+            # solicit the phone exactly once and then let scheduling proceed.
+            if response_plan.next_question == "missing_phone":
+                state.consultation_phone_asked = True
 
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(

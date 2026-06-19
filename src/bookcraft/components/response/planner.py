@@ -552,12 +552,15 @@ def _next_question(
             return "preferred_call_time_slots"
         return None
     if primary_goal == "consultation_time_capture":
-        # Honour an explicit slot-offer request from the consultation objective engine.
+        # Honour an explicit ask from the consultation objective engine — the phone gate
+        # (email-only contact) or a slot-offer request — before defaulting to call time.
         nq = (
             getattr(consultation_objective_decision, "next_question", None)
             if consultation_objective_decision is not None
             else None
         )
+        if nq == "missing_phone":
+            return "missing_phone"
         if nq == "preferred_call_time_slots":
             return "preferred_call_time_slots"
         # Already holding a vague time? Narrow it with concrete slots.

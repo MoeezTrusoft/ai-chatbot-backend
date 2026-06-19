@@ -853,6 +853,16 @@ def _cta_for_intent(
     context_pack: ContextPack | None = None,
     response_plan: ResponsePlan | None = None,
 ) -> str:
+    # Phone is the primary contact: if the plan's outstanding ask is the phone number
+    # (e.g. an email-only contact), always surface it — even for goals that otherwise
+    # suppress the CTA, like lead_created_confirmation. "Always ask, never block."
+    if response_plan is not None and response_plan.next_question == "missing_phone":
+        if context_pack is not None:
+            mapped = _question_for_missing_fact("missing_phone", context_pack=context_pack)
+            if mapped is not None:
+                return mapped
+        return "missing_phone"
+
     # Goals that must NOT produce a scoping or discovery CTA.
     if response_plan is not None and response_plan.primary_goal in {
         "lead_created_confirmation",

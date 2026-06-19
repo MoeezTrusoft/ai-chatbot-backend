@@ -218,6 +218,8 @@ class ThreadState(BaseModel):
     safety_events: list[dict[str, Any]] = Field(default_factory=list)
     # Consultation-first sales planner (PR 2).
     consultation_stage: str | None = None  # engaging → consultation_pending → etc.
+    # Loop-safe guard: phone solicited once for an email-only contact before scheduling.
+    consultation_phone_asked: bool = False
     preferred_call_time: str | None = None  # e.g. "tomorrow afternoon", "Friday 3pm"
     preferred_timezone: str | None = None
     preferred_contact_channel: str | None = None
