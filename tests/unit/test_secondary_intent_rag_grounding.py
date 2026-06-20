@@ -177,8 +177,10 @@ def test_rag_prompt_label_is_authoritative() -> None:
     assert "authoritative" in prompt or "bookcraft grounding" in prompt.lower()
 
 
-def test_template_fallback_includes_rag_context() -> None:
-    """_humanized_template_response must include top RAG chunk in its output."""
+def test_template_fallback_never_splices_raw_rag_text() -> None:
+    """A deterministic fallback template CANNOT paraphrase, so it must never echo
+    raw retrieved-document text verbatim (chat 6211 RAG leak). RAG grounding lives
+    only in the LLM prompt path, which is paraphrase-instructed and quality-gated."""
     chunks = [_rag_chunk("BookCraft specialises in fantasy and thriller genres.")]
     result = _humanized_template_response(
         intent=_intent(QueryIntentType.SERVICE_QUESTION),
@@ -188,8 +190,10 @@ def test_template_fallback_includes_rag_context() -> None:
         rag_chunks=chunks,
         route_name="direct_answer",
     )
-    # The snippet should appear in the template response
-    assert "BookCraft specialises" in result or "fantasy" in result.lower()
+    # The raw chunk text must NOT appear verbatim in the deterministic template.
+    assert "BookCraft specialises" not in result
+    # Still a real, human-readable fallback reply.
+    assert isinstance(result, str) and len(result) > 10
 
 
 def test_template_fallback_without_rag_does_not_crash() -> None:

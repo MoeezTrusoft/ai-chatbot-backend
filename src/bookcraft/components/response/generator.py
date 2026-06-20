@@ -618,24 +618,13 @@ def _humanized_template_response(
     context_pack: ContextPack | None = None,
     response_plan: ResponsePlan | None = None,
 ) -> str:
-    del message, route_name
+    del message, route_name, rag_chunks
 
-    # Gap 5 (mission audit): include top RAG chunk so fallback is grounding-aware.
-    # Strip markdown/doc artifacts so they never appear in customer-facing output.
-    _rag_context = ""
-    if rag_chunks:
-        raw_snippet = (rag_chunks[0].content or "")[:300].strip()
-        # Strip markdown/table/source lines; remove inline table characters.
-        clean_lines = [
-            ln
-            for ln in raw_snippet.splitlines()
-            if not any(ln.lstrip().startswith(ch) for ch in ("#", "|", "Source:"))
-            and "|" not in ln  # skip any line with table syntax
-        ]
-        snippet = " ".join(clean_lines).strip()
-        # Final guard: reject if doc artifacts remain.
-        if snippet and not _contains_doc_artifacts(snippet) and "Source:" not in snippet:
-            _rag_context = f" {snippet}."
+    # A deterministic fallback template CANNOT paraphrase, so it must never splice
+    # verbatim retrieved-document text into a customer reply (that produced the
+    # "Welcome to BookCraft! <raw FAQ prose> ..." leak seen in chat 6211). RAG
+    # grounding belongs solely in the LLM prompt, which is instructed to paraphrase
+    # and is screened by the quality gate. The fallback stays generic-but-safe.
 
     services = _ordered_human_services(intent, runtime_atoms)
     service_phrase = _service_phrase(services)
@@ -659,7 +648,7 @@ def _humanized_template_response(
     # Greeting: welcome warmly without a scoping question.
     if response_plan is not None and response_plan.primary_goal == "greeting_welcome":
         welcome = (
-            f"Welcome to BookCraft!{_rag_context} "
+            "Welcome to BookCraft! "
             "What are you working on — is it a manuscript you're looking to publish, "
             "or are you still in the writing stage?"
         )
@@ -730,7 +719,7 @@ def _humanized_template_response(
 
     if intent.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE:
         _body = (
-            f"That’s great progress.{_rag_context} "
+            "That’s great progress. "
             f"For {service_phrase}, the next step depends on whether you need "
             "creation, restructuring, or polishing."
         )
@@ -745,7 +734,7 @@ def _humanized_template_response(
         return _single_q(_body, cta)
 
     _body = (
-        f"Thanks — {service_phrase} is the main direction here.{_rag_context} "
+        f"Thanks — {service_phrase} is the main direction here. "
         "I’d confirm the manuscript stage first, then map the right services around that."
     )
     return _single_q(_body, cta)
@@ -1052,6 +1041,13 @@ def _contains_doc_artifacts(text: str) -> bool:
         r"approved registry samples only",
         r"This is a .*stage conversation",
         r"Pricing tiers and rates are maintained",
+        # Verbatim knowledge-base FAQ prose bleeding through (chat 6211): a Q&A pair
+        # where a question is immediately self-answered ("...for my book? Yes. ...").
+        # A synthesized customer reply never answers its own embedded question.
+        r"\?\s+(?:Yes|No)[\s,.:;]",
+        # Copied spec/reference tables — two or more trim-size-style dimension pairs
+        # ("4.25×6.87 ... 5.5×8.5"). Real replies don't quote dimension lists verbatim.
+        r"\d+(?:\.\d+)?\s*[×xX]\s*\d+(?:\.\d+)?\b.*\d+(?:\.\d+)?\s*[×xX]\s*\d+(?:\.\d+)?",
     ]
     return any(re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE) for pattern in patterns)
 
