@@ -116,3 +116,31 @@ class TestStreamMethod:
         assert "state" in params
         assert "intent" in params
         assert "extraction" in params
+
+
+# ── Chat 6211 (H1): the WS streaming endpoint chunks already-VALIDATED text ────
+class TestStreamChunker:
+    """The streaming endpoint now runs handle_turn (quality-gated) and streams the
+    validated bubble text in chunks. The chunker must reproduce the text exactly."""
+
+    def test_roundtrip_is_byte_identical(self):
+        from bookcraft.api.chat import _chunk_text_for_stream
+
+        text = (
+            "Welcome to BookCraft! What are you working on — is it a manuscript "
+            "you're looking to publish, or are you still in the writing stage?"
+        )
+        chunks = _chunk_text_for_stream(text)
+        assert "".join(chunks) == text
+        assert len(chunks) > 1  # genuinely chunked, not one blob
+
+    def test_empty_text_yields_no_chunks(self):
+        from bookcraft.api.chat import _chunk_text_for_stream
+
+        assert _chunk_text_for_stream("") == []
+
+    def test_whitespace_preserved(self):
+        from bookcraft.api.chat import _chunk_text_for_stream
+
+        text = "one  two\tthree\nfour"
+        assert "".join(_chunk_text_for_stream(text)) == text

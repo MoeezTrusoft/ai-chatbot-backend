@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 from uuid import UUID
 
@@ -305,6 +306,21 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
         return
 
 
+def _chunk_text_for_stream(text: str, words_per_chunk: int = 4) -> list[str]:
+    """Split already-validated text into small chunks for incremental delivery.
+
+    Whitespace is preserved so that ``"".join(chunks) == text`` exactly — the client
+    reassembles the byte-identical, quality-gated message.
+    """
+    if not text:
+        return []
+    tokens = re.findall(r"\S+\s*", text)
+    return [
+        "".join(tokens[i : i + words_per_chunk])
+        for i in range(0, len(tokens), words_per_chunk)
+    ]
+
+
 @router.websocket("/ws/stream")
 async def chat_websocket_stream(websocket: WebSocket) -> None:
     """WebSocket endpoint for streaming chat responses.
@@ -321,9 +337,9 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
       {"type": "error",       "message": "<reason>"}   — request parsing error
       {"type": "error", "code": "rate_limited", ...}   — rate limit hit
 
-    TODO: wire the streaming path through the full handle_turn pipeline so that
-    safety checks, tool governance, and bubble formatting are applied before
-    tokens are sent.
+    The streaming path runs the full handle_turn pipeline (safety checks, tool
+    governance, quality gate, bubble formatting) and then streams the validated
+    bubble text out in chunks, so only quality-gated output reaches the client.
     """
     settings: Settings = websocket.app.state.settings
     origin = websocket.headers.get("origin")
@@ -380,21 +396,29 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
                     {"type": "response", "data": response.model_dump(mode="json")}
                 )
             else:
-                # Streaming path: send tokens as they arrive from the generator.
-                # NOTE: this bypasses the full handle_turn pipeline (safety checks,
-                # tool governance, bubble formatting).  Full pipeline streaming
-                # requires refactoring handle_turn to yield intermediate results.
-                # TODO: replace this scaffold with a streaming-aware handle_turn.
+                # Streaming delivery MUST NOT bypass the safety pipeline. Run the full
+                # handle_turn (intent, tool governance, quality gate, bubble formatting),
+                # then stream the ALREADY-VALIDATED bubble text out in chunks. The
+                # customer only ever sees quality-gated output. (Chat 6211: the old
+                # scaffold streamed raw, un-gated generator tokens straight to the
+                # client, so a verbatim RAG/document bleed would reach the user before
+                # any validation could run.)
+                response = await service.handle_turn(request)
                 await websocket.send_json({"type": "stream_start"})
                 full_text = ""
-                async for token in service.response_generator.stream(  # type: ignore[attr-defined]
-                    message=request,  # type: ignore[arg-type]
-                    state=None,  # type: ignore[arg-type]
-                    intent=None,  # type: ignore[arg-type]
-                    extraction=None,  # type: ignore[arg-type]
-                ):
-                    full_text += token
-                    await websocket.send_json({"type": "token", "text": token})
+                last_index = len(response.bubbles) - 1
+                for bubble_index, bubble in enumerate(response.bubbles):
+                    for chunk in _chunk_text_for_stream(bubble.text):
+                        full_text += chunk
+                        await websocket.send_json({"type": "token", "text": chunk})
+                    if bubble_index != last_index:
+                        # Preserve bubble boundaries as a paragraph break.
+                        full_text += "\n\n"
+                        await websocket.send_json({"type": "token", "text": "\n\n"})
                 await websocket.send_json({"type": "stream_end", "full_text": full_text})
+                # Structured payload for parity (thread_id, blocked, intent, etc.).
+                await websocket.send_json(
+                    {"type": "response", "data": response.model_dump(mode="json")}
+                )
     except WebSocketDisconnect:
         return

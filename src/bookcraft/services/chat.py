@@ -1415,6 +1415,7 @@ class ChatService:
                 context_pack=context_pack,
                 response_plan=response_plan,
                 tool_governance=governance_decision,
+                rag_chunks=rag_chunks,
             )
             contract = CustomerResponseContract()
             production_like = self.environment not in {"test", "dev", "development", "local"}

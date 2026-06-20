@@ -413,6 +413,24 @@ def _must_not_mention(
     return _ordered_unique(items)
 
 
+def _thread_is_established(context_pack: ContextPack) -> bool:
+    """True once the customer has shared anything about themselves or their project.
+
+    A bare greeting ("hi", "hello again") on such a thread must NOT be treated as a
+    brand-new visitor welcome (chat 6211: a turn-3 greeting re-triggered
+    "Welcome to BookCraft! What are you working on..." on an established thread).
+    ``is_greeting_turn`` is computed purely from the current message string and has no
+    notion of history, so this is the history-aware guard the greeting path lacked.
+    """
+    return bool(
+        context_pack.known_facts
+        or context_pack.lead_created
+        or context_pack.active_service
+        or context_pack.active_genre
+        or context_pack.manuscript_status
+    )
+
+
 def _primary_goal(
     intent: IntentVote,
     context_pack: ContextPack,
@@ -444,8 +462,12 @@ def _primary_goal(
     if lead_objective_decision is not None and getattr(lead_objective_decision, "objective_move", None) == "create_lead":
         return "lead_created_confirmation"
 
-    # Greeting-only turns always map to greeting_welcome regardless of classifier output.
-    if getattr(context_pack, "is_greeting_turn", False):
+    # Greeting-only turns map to greeting_welcome ONLY on a fresh thread. On an
+    # established thread a bare greeting falls through to normal goal selection so a
+    # returning customer is not re-welcomed as a brand-new visitor (chat 6211).
+    if getattr(context_pack, "is_greeting_turn", False) and not _thread_is_established(
+        context_pack
+    ):
         return "greeting_welcome"
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
@@ -521,7 +543,12 @@ def _primary_goal(
     if context_pack.active_service == "cover_design_illustration" and not _has_manuscript_update:
         return "cover_design_scoping"
 
-    return _GOAL_BY_QUERY.get(intent.query_primary.value, "continue_discovery")
+    goal = _GOAL_BY_QUERY.get(intent.query_primary.value, "continue_discovery")
+    # A bare greeting classified as GREETING must not re-welcome an established thread
+    # via the fallthrough either; continue the conversation instead (chat 6211).
+    if goal == "greeting_welcome" and _thread_is_established(context_pack):
+        return "continue_discovery"
+    return goal
 
 
 def _next_question(

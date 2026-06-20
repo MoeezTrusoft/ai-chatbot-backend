@@ -1041,13 +1041,6 @@ def _contains_doc_artifacts(text: str) -> bool:
         r"approved registry samples only",
         r"This is a .*stage conversation",
         r"Pricing tiers and rates are maintained",
-        # Verbatim knowledge-base FAQ prose bleeding through (chat 6211): a Q&A pair
-        # where a question is immediately self-answered ("...for my book? Yes. ...").
-        # A synthesized customer reply never answers its own embedded question.
-        r"\?\s+(?:Yes|No)[\s,.:;]",
-        # Copied spec/reference tables — two or more trim-size-style dimension pairs
-        # ("4.25×6.87 ... 5.5×8.5"). Real replies don't quote dimension lists verbatim.
-        r"\d+(?:\.\d+)?\s*[×xX]\s*\d+(?:\.\d+)?\b.*\d+(?:\.\d+)?\s*[×xX]\s*\d+(?:\.\d+)?",
     ]
     return any(re.search(pattern, text, flags=re.IGNORECASE | re.MULTILINE) for pattern in patterns)
 

@@ -691,20 +691,31 @@ def test_manuscript_update_template_never_splices_raw_rag_text():
     assert "4.25" not in response
 
 
-def test_doc_artifact_filter_catches_faq_and_spec_bleed():
-    """The doc-artifact guard (also screens LLM output) must flag FAQ self-answers
-    and verbatim dimension/spec tables, while passing normal sales prose."""
-    from bookcraft.components.response.generator import _contains_doc_artifacts
+def test_verbatim_bleed_caught_by_ngram_not_brittle_regex():
+    """Verbatim document bleed is caught by the document-agnostic n-gram overlap
+    detector (quality gate Check 24), NOT by brittle phrase regexes. Crucially, a
+    PARAPHRASED reply that conversationally mentions trim sizes must NOT be rejected
+    (a real live reply: "6x9 is the most common ... 5.5x8.5 is a solid alternative")."""
+    from types import SimpleNamespace
 
-    assert _contains_doc_artifacts("...best trim size for my book? Yes. Trim size matters")
-    assert _contains_doc_artifacts("paperbacks are 4.25×6.87; trade is 5.5×8.5 or 6×9")
-    # Legitimate synthesized replies must NOT be flagged:
-    assert not _contains_doc_artifacts(
-        "Welcome to BookCraft! What are you working on — a manuscript to publish?"
+    from bookcraft.components.response.generator import _contains_doc_artifacts
+    from bookcraft.components.response.quality_gate import _verbatim_rag_overlap
+
+    chunk = SimpleNamespace(
+        content=(
+            "Will you advise on the best trim size for my book? Yes. Trim size matters "
+            "for genre conventions (mass-market paperbacks are 4.25x6.87)."
+        )
     )
-    assert not _contains_doc_artifacts(
-        "Happy to help with formatting! What page count are you working with?"
+    # Verbatim copy → n-gram detector flags it.
+    leaked = "Sure. Will you advise on the best trim size for my book? Yes. Trim size matters."
+    assert _verbatim_rag_overlap(leaked, [chunk]) is not None
+
+    # Good paraphrased advice → NOT flagged by the n-gram detector...
+    good = (
+        "For dark fantasy, 6x9 is the most common trade paperback trim. "
+        "5.5x8.5 is a solid alternative for a more mass-market feel. What's your page count?"
     )
-    assert not _contains_doc_artifacts(
-        "Great progress. Do you need editing, design, or publishing next?"
-    )
+    assert _verbatim_rag_overlap(good, [chunk]) is None
+    # ...and NOT over-rejected by the coarse doc-artifact guard either.
+    assert not _contains_doc_artifacts(good)
