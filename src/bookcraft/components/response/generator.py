@@ -1,7 +1,9 @@
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import structlog
 from prometheus_client import Histogram
@@ -1154,9 +1156,35 @@ def _recent_turns_prompt_section(
     return "\n".join(lines)
 
 
+_BUSINESS_TZ_NAME = "America/Chicago"
+
+
+def _current_datetime_line(now: datetime | None = None) -> str:
+    """A human-readable 'now' the model uses to ground all date/time reasoning."""
+    if now is None:
+        now = datetime.now(ZoneInfo(_BUSINESS_TZ_NAME))
+    # e.g. "Monday, June 22, 2026, 3:14 PM Central Time (CDT)"
+    pretty = now.strftime("%A, %B %d, %Y, %-I:%M %p")
+    tz_abbr = now.strftime("%Z")
+    return (
+        "Current date and time (authoritative — use this as 'now' for ALL "
+        f"scheduling and date reasoning): {pretty} Central Time ({tz_abbr}). "
+        f"Today is {now.strftime('%Y-%m-%d')}.\n"
+        "- Resolve every relative day the customer mentions ('Monday', 'tomorrow', "
+        "'the 22nd', 'next week') against this current date.\n"
+        "- NEVER confirm, repeat, or propose a date or time that is in the past "
+        "relative to now. If the customer names a day/time that has already passed, "
+        "say so plainly and ask for an upcoming day and time instead.\n"
+        "- Do NOT invent or guess a specific calendar date. Only state a date once "
+        "it has been confirmed by the scheduling engine; otherwise reflect back the "
+        "customer's own words for the day/time.\n\n"
+    )
+
+
 def _response_system_prompt(
     active_service: str | None = None,
     persona_decision: Any | None = None,
+    now: datetime | None = None,
 ) -> str:
     style = _STYLE_POLICY.style_instructions(active_service=active_service)
 
@@ -1198,6 +1226,7 @@ def _response_system_prompt(
         f"{identity_instruction}\n"
         "Your job is to help them get clarity and move one concrete step closer "
         "to a quote, sample request, NDA, or consultation.\n\n"
+        f"{_current_datetime_line(now)}"
         f"{style}\n\n"
         "Source of truth: the BookCraft context provided in this prompt is your source "
         "of facts. State BookCraft facts from it in your own words. When something is "
@@ -1270,7 +1299,10 @@ def _response_system_prompt(
         "(5) Preferred date and time — REQUIRED before confirming. When asking, always include: "
         "'Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time.' "
         "Do NOT say 'you're all set', 'a specialist will be in touch', 'confirmed', or any "
-        "closing phrase until the preferred date AND time is captured.\n"
+        "closing phrase until the preferred date AND time is captured. "
+        "The date and time MUST be in the future relative to the current date above — if the "
+        "customer names a day or time that has already passed, point it out and ask for an "
+        "upcoming slot before booking.\n"
         "Ask for one missing piece at a time. "
         "Never redirect them to contact BookCraft manually.\n\n"
         "After a lead is created:\n"

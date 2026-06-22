@@ -12,8 +12,10 @@ from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
 from bookcraft.components.consultations import (
+    AmbiguousDateError,
     ConsultationActionRequest,
     ConsultationActionService,
+    RequestedTimeInPastError,
 )
 from bookcraft.components.document_actions import (
     AgreementActionRequest,
@@ -259,6 +261,31 @@ class SalesActionDispatcher:
                     duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,
                     metadata={"action_plan_reason": plan.reason},
                 )
+            )
+        except RequestedTimeInPastError as exc:
+            return ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=False,
+                customer_safe_summary=(
+                    "That time has already passed — our specialists are available "
+                    "Monday–Friday, 10 AM to 7 PM Central Time. What upcoming day and "
+                    "time works best for you?"
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="requested_time_in_past",
+                duration_ms=_elapsed_ms(started),
+            )
+        except AmbiguousDateError as exc:
+            return ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=False,
+                customer_safe_summary=(
+                    "I want to get the date right — could you confirm the exact day? "
+                    "For example, 'Monday, June 22' works best."
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="ambiguous_requested_date",
+                duration_ms=_elapsed_ms(started),
             )
         except Exception as exc:
             return ActionResult(

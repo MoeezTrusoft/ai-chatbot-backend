@@ -46,3 +46,35 @@ async def test_portfolio_pricing_nda_mixed_request_uses_deterministic_guard() ->
     assert "service and genre" in draft.text
     assert "word or page count" in draft.text
     assert "author name, email, phone" in draft.text
+
+
+def test_system_prompt_includes_current_date_and_past_rule() -> None:
+    """The bot must be told 'now' and must be forbidden from booking the past."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from bookcraft.components.response.generator import (
+        _current_datetime_line,
+        _response_system_prompt,
+    )
+
+    now = datetime(2026, 6, 22, 15, 14, tzinfo=ZoneInfo("America/Chicago"))
+
+    line = _current_datetime_line(now)
+    assert "Monday, June 22, 2026" in line
+    assert "2026-06-22" in line
+    assert "past" in line.lower()
+
+    prompt = _response_system_prompt(now=now)
+    assert "June 22, 2026" in prompt
+    # The date block is wired in ahead of the consultation flow.
+    assert "Current date and time" in prompt
+
+
+def test_current_datetime_line_defaults_to_now() -> None:
+    """With no explicit 'now', it still renders a valid, non-empty date line."""
+    from bookcraft.components.response.generator import _current_datetime_line
+
+    line = _current_datetime_line()
+    assert "Current date and time" in line
+    assert "Today is" in line
