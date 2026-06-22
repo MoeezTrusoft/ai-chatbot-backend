@@ -87,19 +87,33 @@ def _intent():
     )
 
 
-async def _generate(generator, *, message, document_status_message=None):
+async def _generate(generator, *, message, document_status_message=None, state=None):
     from bookcraft.components.extraction.schemas import CombinedExtraction
     from bookcraft.domain.state import ThreadState
 
     return await generator.generate(
         message=_processed(message),
-        state=ThreadState(),
+        state=state if state is not None else ThreadState(),
         intent=_intent(),
         extraction=CombinedExtraction(),
         rag_chunks=[],
         portfolio_response=None,
         document_status_message=document_status_message,
     )
+
+
+def _booked_state(csr_name="Robert Williams", when="Monday, June 22, 2026 11:00 AM CDT"):
+    from bookcraft.domain.state import ThreadState
+
+    state = ThreadState()
+    c = state.sales_actions.consultation
+    c.requested = True
+    c.confirmed_appointment_id = "appt-live-1"
+    c.csr_name = csr_name
+    c.customer_timezone = "America/Chicago"
+    c.confirmed_display_time = when
+    state.personal.name.value = "Theodora Green"
+    return state
 
 
 _PAST_MESSAGE = "Can you book my consultation for January 5th, 2020 at 2pm?"
@@ -141,3 +155,40 @@ async def test_live_bot_relays_past_clarification_not_silent_booking() -> None:
     )
     text = draft.text.lower()
     assert not any(w in text for w in _BOOKED_WORDS), draft.text
+
+
+@pytest.mark.asyncio
+async def test_live_followup_keeps_confirmed_specialist_and_date() -> None:
+    """After booking, an unrelated question must not drift the CSR or date (audit C1)."""
+    generator = _make_live_generator()
+    state = _booked_state(csr_name="Robert Williams", when="Monday, June 22, 2026 11:00 AM CDT")
+    draft = await _generate(
+        generator,
+        message="Do you handle both the writing and the publishing of the book?",
+        state=state,
+    )
+    text = draft.text
+
+    # If it names a specialist at all, it must be the confirmed one — never a different
+    # roster member (the chat-6070 "Jerry Miller appeared from nowhere" failure).
+    assert "Jerry Miller" not in text, text
+    assert "Alex Vartan" not in text, text
+    # It must not invent a different calendar date for the existing booking.
+    for bad in ("June 17", "June 18", "June 19", "June 20", "June 21", "June 23"):
+        assert bad not in text, text
+
+
+@pytest.mark.asyncio
+async def test_live_followup_restates_correct_date_when_asked() -> None:
+    """When the customer asks to confirm the time, the bot echoes the booked date."""
+    generator = _make_live_generator()
+    state = _booked_state(csr_name="Robert Williams", when="Monday, June 22, 2026 11:00 AM CDT")
+    draft = await _generate(
+        generator,
+        message="Sorry, what day and time is my consultation again?",
+        state=state,
+    )
+    text = draft.text
+    assert "Jerry Miller" not in text and "Alex Vartan" not in text, text
+    # Should reflect the real booked day, not a fabricated one.
+    assert ("June 22" in text) or ("Monday" in text), text

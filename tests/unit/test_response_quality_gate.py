@@ -818,3 +818,47 @@ def test_engine_text_guard_rejects_doc_formatting() -> None:
     assert not _engine_text_is_safe("**Crafting Clarity, Perfecting Prose** is our brand.")
     assert not _engine_text_is_safe("Our backend classifier handles that.")
     assert not _engine_text_is_safe("")
+
+
+# ---------------------------------------------------------------------------
+# Check 25: Consultation CSR-name drift (audit C1)
+# ---------------------------------------------------------------------------
+
+
+def _booked_state(csr_name: str = "Robert Williams") -> ThreadState:
+    state = ThreadState()
+    state.sales_actions.consultation.confirmed_appointment_id = "appt-1"
+    state.sales_actions.consultation.csr_name = csr_name
+    state.sales_actions.consultation.confirmed_display_time = (
+        "Monday, June 22, 2026 11:00 AM CDT"
+    )
+    return state
+
+
+def test_csr_name_drift_flagged_when_naming_wrong_specialist() -> None:
+    result = _gate.evaluate(
+        text="You're all set — Jerry Miller will call you Monday at 11 AM.",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=_booked_state(csr_name="Robert Williams"),
+    )
+    assert not result.passed
+    assert any("consultation_csr_name_drift" in f for f in result.failures)
+
+
+def test_correct_specialist_name_passes_csr_check() -> None:
+    result = _gate.evaluate(
+        text="You're all set — Robert Williams will call you Monday at 11 AM.",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=_booked_state(csr_name="Robert Williams"),
+    )
+    assert not any("consultation_csr_name_drift" in f for f in result.failures)
+
+
+def test_csr_drift_not_flagged_before_booking() -> None:
+    # No confirmed appointment yet — listing the roster in a pre-booking prompt is fine.
+    result = _gate.evaluate(
+        text="I'll check Jerry Miller, Robert Williams, then Alex Vartan. Should I book it?",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=ThreadState(),
+    )
+    assert not any("consultation_csr_name_drift" in f for f in result.failures)

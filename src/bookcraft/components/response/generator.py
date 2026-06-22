@@ -1422,6 +1422,11 @@ def _response_user_prompt(
         known.append(f"author phone: {state.personal.phone.value}")
     known_str = "; ".join(known) if known else "nothing confirmed yet"
 
+    # C1: authoritative confirmed-consultation facts. Once an appointment exists,
+    # the model may restate ONLY these exact values and must never invent or drift
+    # the date, time, specialist, or timezone (audit chat 6070).
+    confirmed_consultation_str = _confirmed_consultation_clause(state)
+
     _cp_forbidden: set[str] = set(context_pack.forbidden_reasks) if context_pack else set()
     missing: list[str] = []
     if state.project.word_count.value is None and state.project.page_count.value is None:
@@ -1540,6 +1545,7 @@ def _response_user_prompt(
         f"- Services in scope: {service_phrase}\n"
         f"- What we already know about the project: {known_str}\n"
         f"- What we still need: {missing_str}"
+        f"{confirmed_consultation_str}"
         f"{secondary_str}"
         f"{_persona_note}"
         f"{negated_str}"
@@ -1551,6 +1557,37 @@ def _response_user_prompt(
         f"{history_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
+    )
+
+
+def _confirmed_consultation_clause(state: ThreadState) -> str:
+    """Authoritative confirmed-appointment facts for the prompt (audit C1).
+
+    Returns an empty string until a consultation is actually booked. Once booked,
+    it pins the specialist, date/time, and timezone so the model restates only
+    these exact values and never fabricates or drifts them on later turns.
+    """
+    consult = getattr(getattr(state, "sales_actions", None), "consultation", None)
+    if consult is None:
+        return ""
+    if not (consult.confirmed_appointment_id and consult.confirmed_display_time):
+        return ""
+
+    csr = consult.csr_name or "your specialist"
+    when = consult.confirmed_display_time
+    tz_note = ""
+    if consult.confirmed_customer_display_time and (
+        consult.confirmed_customer_display_time != when
+    ):
+        tz_note = f" (the customer's local time: {consult.confirmed_customer_display_time})"
+
+    return (
+        "\n- CONFIRMED CONSULTATION — AUTHORITATIVE, do not alter: booked with "
+        f"{csr} for {when}{tz_note}. "
+        "When the appointment comes up, restate EXACTLY this specialist and this "
+        "date/time — never invent, guess, or change the day, time, specialist, or "
+        "timezone. If the customer asks to change it, say you'll get it updated "
+        "rather than stating a different time yourself."
     )
 
 

@@ -78,3 +78,33 @@ def test_current_datetime_line_defaults_to_now() -> None:
     line = _current_datetime_line()
     assert "Current date and time" in line
     assert "Today is" in line
+
+
+def test_confirmed_consultation_clause_grounds_specialist_and_time() -> None:
+    """Once booked, the user prompt pins the exact specialist + date/time (audit C1)."""
+    from bookcraft.components.response.generator import _confirmed_consultation_clause
+    from bookcraft.domain.state import ThreadState
+
+    state = ThreadState()
+    assert _confirmed_consultation_clause(state) == ""  # nothing booked yet
+
+    c = state.sales_actions.consultation
+    c.confirmed_appointment_id = "appt-9"
+    c.csr_name = "Robert Williams"
+    c.confirmed_display_time = "Monday, June 22, 2026 11:00 AM CDT"
+
+    clause = _confirmed_consultation_clause(state)
+    assert "Robert Williams" in clause
+    assert "Monday, June 22, 2026 11:00 AM CDT" in clause
+    assert "do not alter" in clause.lower()
+    assert "never invent" in clause.lower()
+
+
+def test_confirmed_consultation_clause_needs_both_id_and_time() -> None:
+    from bookcraft.components.response.generator import _confirmed_consultation_clause
+    from bookcraft.domain.state import ThreadState
+
+    state = ThreadState()
+    # appointment id without a captured display time should not assert a date
+    state.sales_actions.consultation.confirmed_appointment_id = "appt-9"
+    assert _confirmed_consultation_clause(state) == ""

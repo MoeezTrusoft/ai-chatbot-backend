@@ -2630,6 +2630,13 @@ class ChatService:
             state.sales_actions.consultation.customer_timezone = _optional_string(
                 action_result.payload.get("customer_timezone")
             )
+            # C1: persist the authoritative booked time so later turns ground on it.
+            state.sales_actions.consultation.confirmed_display_time = _optional_string(
+                action_result.payload.get("houston_display_time")
+            )
+            state.sales_actions.consultation.confirmed_customer_display_time = _optional_string(
+                action_result.payload.get("customer_display_time")
+            )
             state.sales_actions.pending_confirmation.type = None
             state.sales_actions.pending_confirmation.payload = None
             state.sales_actions.pending_confirmation.created_at = None

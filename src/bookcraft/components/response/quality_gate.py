@@ -19,6 +19,12 @@ _ASSUMPTION_GUARD = AssumptionGuard()
 # Module-level style-policy instance used to drive slippy-word detection.
 _STYLE_POLICY = ResponseStylePolicy.default()
 
+# Canonical specialist roster names, used by the CSR-drift check (audit C1).
+# Sourced from the same roster the scheduler assigns from, so the two never diverge.
+from bookcraft.components.consultations.service import DEFAULT_CSR_ROSTER  # noqa: E402
+
+_ROSTER_CSR_NAMES: tuple[str, ...] = tuple(profile.name for profile in DEFAULT_CSR_ROSTER)
+
 # ---------------------------------------------------------------------------
 # Compiled patterns — module-level for reuse
 # ---------------------------------------------------------------------------
@@ -469,6 +475,16 @@ class ResponseQualityGate:
             audit.append(f"quality:verbatim_rag_bleed:FAIL:{verbatim_span[:40]}")
         else:
             audit.append("quality:verbatim_rag_bleed:clean")
+
+        # Check 25 — Consultation CSR drift (audit C1, chat 6070). Once an
+        # appointment is booked, the reply must not name a DIFFERENT roster
+        # specialist than the one actually assigned.
+        drifted_csr = _consultation_csr_drift(text, state)
+        if drifted_csr is not None:
+            failures.append("consultation_csr_name_drift")
+            audit.append(f"quality:consultation_csr_drift:FAIL:{drifted_csr}")
+        else:
+            audit.append("quality:consultation_csr_drift:ok")
 
         sales_tone_report = self.style_policy.evaluate(
             text=text,
@@ -1084,6 +1100,30 @@ def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
     return not (confirmed_id or handoff_created)
 
 
+def _consultation_csr_drift(text: str, state: ThreadState) -> str | None:
+    """Return a roster specialist name the reply wrongly states (audit C1).
+
+    Once an appointment is booked with a specific specialist, the reply must not
+    name a DIFFERENT specialist from the roster. Returns the drifted name, or None.
+    Premature naming (before any booking) is not flagged here — the pre-booking
+    prompt legitimately lists the roster priority order.
+    """
+    consultation = getattr(getattr(state, "sales_actions", None), "consultation", None)
+    if consultation is None:
+        return None
+    if not getattr(consultation, "confirmed_appointment_id", None):
+        return None
+
+    confirmed = (getattr(consultation, "csr_name", None) or "").strip().casefold()
+    lowered = text.casefold()
+    for name in _ROSTER_CSR_NAMES:
+        if name.casefold() == confirmed:
+            continue
+        if re.search(rf"\b{re.escape(name.casefold())}\b", lowered):
+            return name
+    return None
+
+
 def _raw_url_in_text(text: str, context_pack: ContextPack | None) -> bool:
     """Fail when the response text contains raw portfolio/sample URLs."""
     if not _RAW_URL_RE.search(text):
@@ -1303,6 +1343,11 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
             parts.append(
                 "- Do not copy reference material word-for-word. State only the relevant "
                 "fact in your own words; never paste sentences from the knowledge base."
+            )
+        elif "consultation_csr_name_drift" in f:
+            parts.append(
+                "- Use only the specialist named in the CONFIRMED CONSULTATION facts. "
+                "Do not name a different specialist."
             )
         elif "sales_tone" in f:
             parts.append(

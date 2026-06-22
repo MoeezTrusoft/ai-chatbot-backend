@@ -120,6 +120,11 @@ class ConsultationActionState(BaseModel):
     preferred_date: str | None = None
     preferred_time_window: str | None = None
     duration_minutes: int = 30
+    # Authoritative confirmation facts captured at booking time. Once set, the
+    # response layer grounds every later mention of the appointment on these exact
+    # values so the LLM cannot drift the date/time/CSR (audit C1: chat 6070).
+    confirmed_display_time: str | None = None
+    confirmed_customer_display_time: str | None = None
 
 
 class PricingActionState(BaseModel):
