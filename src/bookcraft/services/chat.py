@@ -2108,9 +2108,20 @@ class ChatService:
                 "source": str(getattr(field_obj, "source", "")),
             }
 
+        # Complete, raw ThreadState dump for deep diagnosis in the CSR "AI STATE"
+        # panel — includes everything the curated view below omits (full
+        # sales_actions tree: consultation confirmed_appointment_id / csr_name /
+        # confirmed_display_time / customer_timezone, pricing, documents, portfolio,
+        # lead; greeting/handoff flags; known facts; service metadata; etc.).
+        try:
+            raw_state = state.model_dump(mode="json")
+        except Exception as exc:  # never let serialization break the debug view
+            raw_state = {"error": f"raw_state_serialization_failed: {exc}"}
+
         return {
             "thread_id": str(tid),
             "turn_count": turn_count,
+            "raw": raw_state,
             "personal": {
                 "name": _fv(state.personal.name),
                 "email": _fv(state.personal.email),
