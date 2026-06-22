@@ -235,6 +235,23 @@ def test_morning_window_offers_slots() -> None:
 
 
 def test_specific_time_with_digits_ready_to_schedule() -> None:
+    # A definite clock time IS bookable — but only once the timezone is known, so
+    # we never silently assume Central (audit chat 6070).
+    s = _state(preferred_call_time="Friday at 3pm", preferred_timezone="EST")
+    decision = reduce_consultation_state(
+        state=s,
+        message="I'd like to book for Friday at 3pm Eastern.",
+        intent=_consultation_intent(),
+        contact_ready=True,
+    )
+    assert decision.stage == ConsultationStage.READY_TO_SCHEDULE
+    assert decision.can_schedule is True
+    assert decision.timezone_needed is False
+
+
+def test_specific_time_without_timezone_asks_for_timezone() -> None:
+    # Same definite time but NO timezone stated — must confirm the zone before booking,
+    # rather than defaulting to Central.
     s = _state(preferred_call_time="Friday at 3pm")
     decision = reduce_consultation_state(
         state=s,
@@ -242,9 +259,10 @@ def test_specific_time_with_digits_ready_to_schedule() -> None:
         intent=_consultation_intent(),
         contact_ready=True,
     )
-    assert decision.stage == ConsultationStage.READY_TO_SCHEDULE
-    assert decision.can_schedule is True
-    assert decision.timezone_needed is False
+    assert decision.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
+    assert decision.can_schedule is False
+    assert decision.timezone_needed is True
+    assert decision.next_question == "preferred_call_timezone"
 
 
 def test_relative_window_even_with_timezone_offers_slots() -> None:

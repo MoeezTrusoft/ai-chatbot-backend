@@ -78,18 +78,20 @@ def test_definite_requires_day_and_clock() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _consultation_state(preferred_call_time: str | None) -> SimpleNamespace:
+def _consultation_state(
+    preferred_call_time: str | None, timezone: str | None = None
+) -> SimpleNamespace:
     consultation = SimpleNamespace(
         requested=True,
         preferred_time_window=None,
         confirmed_appointment_id=None,
         pending_confirmation=False,
-        customer_timezone=None,
+        customer_timezone=timezone,
     )
     return SimpleNamespace(
         sales_actions=SimpleNamespace(consultation=consultation),
         preferred_call_time=preferred_call_time,
-        preferred_timezone=None,
+        preferred_timezone=timezone,
         consultation_handoff_created=False,
         consultation_stage=ConsultationStage.REQUESTED_TIME_NEEDED,
         personal=None,
@@ -135,7 +137,7 @@ def test_reducer_hard_gates_scheduling_without_phone() -> None:
 
 def test_reducer_schedules_with_phone_present() -> None:
     decision = reduce_consultation_state(
-        state=_consultation_state("Tuesday at 3pm"),
+        state=_consultation_state("Tuesday at 3pm", timezone="America/Chicago"),
         message="Tuesday at 3pm please",
         intent=_intent(),
         contact_ready=True,
@@ -150,7 +152,7 @@ def test_reducer_schedules_with_phone_present() -> None:
 
 def test_reducer_schedules_for_definite_time() -> None:
     decision = reduce_consultation_state(
-        state=_consultation_state("Tuesday at 3pm"),
+        state=_consultation_state("Tuesday at 3pm", timezone="America/Chicago"),
         message="Tuesday at 3pm please",
         intent=_intent(),
         contact_ready=True,
@@ -158,6 +160,23 @@ def test_reducer_schedules_for_definite_time() -> None:
     )
     assert decision.stage == ConsultationStage.READY_TO_SCHEDULE
     assert decision.can_schedule is True
+
+
+def test_reducer_asks_timezone_when_unknown_for_definite_time() -> None:
+    # Definite time but no timezone known anywhere — confirm the zone before booking.
+    decision = reduce_consultation_state(
+        state=_consultation_state("Tuesday at 3pm"),
+        message="Tuesday at 3pm please",
+        intent=_intent(),
+        contact_ready=True,
+        has_email=True,
+        has_phone=True,
+        require_phone=True,
+        prior_stage=ConsultationStage.REQUESTED_TIME_NEEDED,
+    )
+    assert decision.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
+    assert decision.can_schedule is False
+    assert decision.next_question == "preferred_call_timezone"
 
 
 # ---------------------------------------------------------------------------

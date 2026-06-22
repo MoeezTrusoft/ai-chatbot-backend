@@ -382,12 +382,17 @@ def reduce_consultation_state(
     # whose timezone only lives in personal.timezone stalls forever at
     # time_captured_needs_timezone even though the timezone IS known (BUG-6040).
     _tz_from_personal = getattr(getattr(getattr(state, "personal", None), "timezone", None), "value", None)
-    timezone_unknown = is_relative_window and not (
+    # Require a known timezone before booking ANY clock time — not just relative
+    # windows. A definite "Monday 11am" with no stated zone must NOT be silently
+    # booked as Central; confirm the customer's timezone first (audit chat 6070).
+    timezone_unknown = not (
         getattr(state, "preferred_timezone", None) or _tz_from_consultation or _tz_from_personal
     )
 
     if timezone_unknown:
-        audit.append(f"signal:timezone_needed(relative_window={is_relative_window})")
+        audit.append(
+            f"signal:timezone_needed(relative_window={is_relative_window})"
+        )
         return ConsultationStateDecision(
             stage=ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
             contact_ready=True,
