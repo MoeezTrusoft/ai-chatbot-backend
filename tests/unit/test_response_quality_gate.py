@@ -751,3 +751,114 @@ def test_quality_gate_includes_sales_tone_failure_and_repair_suggestions() -> No
     assert any("sales_tone:tone:fake_excitement:FAIL" == a for a in result.audit)
     assert result.repair_instructions is not None
     assert "Use calm consultative language." in result.repair_instructions
+
+
+# ── Chat 6211: general verbatim RAG/document-bleed detection (Check 24) ────────
+from types import SimpleNamespace
+
+from bookcraft.components.response.quality_gate import (
+    _engine_text_is_safe,
+    _verbatim_rag_overlap,
+)
+
+
+def _chunk(content: str) -> SimpleNamespace:
+    return SimpleNamespace(content=content)
+
+
+_FAQ_CHUNK = _chunk(
+    "Will you advise on the best trim size for my book? Yes. Trim size matters for "
+    "genre conventions (mass-market paperbacks are 4.25x6.87; trade paperbacks are "
+    "typically 5.5x8.5 or 6x9; literary fiction often uses 5.25x8)."
+)
+
+
+def test_verbatim_chunk_copy_is_flagged() -> None:
+    leaked = (
+        "Welcome to BookCraft! Will you advise on the best trim size for my book? "
+        "Yes. Trim size matters for genre conventions. What are you working on?"
+    )
+    result = _gate.evaluate(
+        text=leaked, intent=_intent(), state=ThreadState(), rag_chunks=[_FAQ_CHUNK]
+    )
+    assert not result.passed
+    assert any("verbatim_rag_document_bleed" in f for f in result.failures)
+
+
+def test_paraphrased_reply_with_chunk_present_passes() -> None:
+    paraphrase = (
+        "Great question on trim size — the right one really depends on your genre and "
+        "how the book will be printed. What page count are you working with?"
+    )
+    result = _gate.evaluate(
+        text=paraphrase, intent=_intent(), state=ThreadState(), rag_chunks=[_FAQ_CHUNK]
+    )
+    # No verbatim-bleed failure (other checks may still pass; assert the specific one absent).
+    assert not any("verbatim_rag_document_bleed" in f for f in result.failures)
+
+
+def test_no_chunks_no_verbatim_failure() -> None:
+    result = _gate.evaluate(
+        text="I can help with cover design. What style are you thinking?",
+        intent=_intent(), state=ThreadState(), rag_chunks=None,
+    )
+    assert not any("verbatim_rag_document_bleed" in f for f in result.failures)
+
+
+def test_verbatim_detector_unit() -> None:
+    assert _verbatim_rag_overlap("a b c d e f g h", [_chunk("x a b c d e f g h y")]) is not None
+    assert _verbatim_rag_overlap("totally different short reply", [_FAQ_CHUNK]) is None
+    assert _verbatim_rag_overlap("anything", []) is None
+
+
+# ── M2: engine-authored safe-fallback text is screened for doc artifacts ──────
+def test_engine_text_guard_rejects_doc_formatting() -> None:
+    assert _engine_text_is_safe("Your request needs a manuscript stage. What stage are you at?")
+    assert not _engine_text_is_safe("## Service Tiers\nWe offer editing and proofreading.")
+    assert not _engine_text_is_safe("**Crafting Clarity, Perfecting Prose** is our brand.")
+    assert not _engine_text_is_safe("Our backend classifier handles that.")
+    assert not _engine_text_is_safe("")
+
+
+# ---------------------------------------------------------------------------
+# Check 25: Consultation CSR-name drift (audit C1)
+# ---------------------------------------------------------------------------
+
+
+def _booked_state(csr_name: str = "Robert Williams") -> ThreadState:
+    state = ThreadState()
+    state.sales_actions.consultation.confirmed_appointment_id = "appt-1"
+    state.sales_actions.consultation.csr_name = csr_name
+    state.sales_actions.consultation.confirmed_display_time = (
+        "Monday, June 22, 2026 11:00 AM CDT"
+    )
+    return state
+
+
+def test_csr_name_drift_flagged_when_naming_wrong_specialist() -> None:
+    result = _gate.evaluate(
+        text="You're all set — Jerry Miller will call you Monday at 11 AM.",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=_booked_state(csr_name="Robert Williams"),
+    )
+    assert not result.passed
+    assert any("consultation_csr_name_drift" in f for f in result.failures)
+
+
+def test_correct_specialist_name_passes_csr_check() -> None:
+    result = _gate.evaluate(
+        text="You're all set — Robert Williams will call you Monday at 11 AM.",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=_booked_state(csr_name="Robert Williams"),
+    )
+    assert not any("consultation_csr_name_drift" in f for f in result.failures)
+
+
+def test_csr_drift_not_flagged_before_booking() -> None:
+    # No confirmed appointment yet — listing the roster in a pre-booking prompt is fine.
+    result = _gate.evaluate(
+        text="I'll check Jerry Miller, Robert Williams, then Alex Vartan. Should I book it?",
+        intent=_intent(query=QueryIntentType.CONSULTATION_REQUEST),
+        state=ThreadState(),
+    )
+    assert not any("consultation_csr_name_drift" in f for f in result.failures)

@@ -211,3 +211,92 @@ async def test_dispatcher_handles_nda_generation_without_email() -> None:
     assert result.action_type == ActionType.GENERATE_NDA
     assert result.result_id is not None
     assert result.payload["recipient_email"] == "maya@example.com"
+
+
+# ---------------------------------------------------------------------------
+# Date/time awareness: past-date and ambiguous-date routing
+# ---------------------------------------------------------------------------
+
+
+def _consultation_dispatcher() -> SalesActionDispatcher:
+    from bookcraft.components.consultations import (
+        ConsultationActionService,
+        InMemoryConsultationRepository,
+    )
+
+    return SalesActionDispatcher(
+        lead_service=LeadService(repository=InMemoryLeadRepository()),
+        consultation_action_service=ConsultationActionService(
+            repository=InMemoryConsultationRepository()
+        ),
+    )
+
+
+def _schedule_plan(requested_time_text: str) -> ActionPlan:
+    return ActionPlan(
+        action_type=ActionType.SCHEDULE_CONSULTATION,
+        status=ActionStatus.READY,
+        collected_slots={
+            "name": "Theodora Green",
+            "phone": "+1 813 846 1018",
+            "email": "theodora@example.com",
+            "services": ["ghostwriting"],
+            "customer_timezone": "America/Chicago",
+            "business_timezone": "America/Chicago",
+            "requested_time_text": requested_time_text,
+            "confirmed": True,
+        },
+        reason="test",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_past_date_returns_clarifying_message() -> None:
+    dispatcher = _consultation_dispatcher()
+
+    result = await dispatcher.dispatch(
+        _schedule_plan("January 5, 2020 at 2pm"),
+        thread_id=uuid4(),
+        customer_id=uuid4(),
+    )
+
+    assert result is not None
+    assert result.success is False
+    assert result.error_code == "requested_time_in_past"
+    assert "already passed" in result.customer_safe_summary
+    # Must NOT claim a booking happened.
+    assert result.result_id is None
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_ambiguous_date_returns_clarifying_message() -> None:
+    from datetime import date
+
+    dispatcher = _consultation_dispatcher()
+
+    # Build an explicit future date and deliberately name the WRONG weekday, so the
+    # weekday-vs-date cross-check fires regardless of the wall clock.
+    target = date(2027, 3, 15)
+    weekdays = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
+    wrong_weekday = weekdays[(target.weekday() + 1) % 7]
+    text = f"{wrong_weekday} march 15, 2027 at 11am"
+
+    result = await dispatcher.dispatch(
+        _schedule_plan(text),
+        thread_id=uuid4(),
+        customer_id=uuid4(),
+    )
+
+    assert result is not None
+    assert result.success is False
+    assert result.error_code == "ambiguous_requested_date"
+    assert "confirm" in result.customer_safe_summary.lower()
+    assert result.result_id is None

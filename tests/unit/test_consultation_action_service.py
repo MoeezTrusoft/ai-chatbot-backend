@@ -55,6 +55,98 @@ async def test_consultation_conflict_uses_next_priority_csr() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Customer-level dedup / reschedule (no double-booking)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_same_customer_rebooking_reschedules_not_duplicates() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    first = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 4pm")
+    )
+    second = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 5pm")
+    )
+
+    # One row, not two — the second booking rescheduled the first.
+    assert len(repo.records) == 1
+    assert second.appointment_id == first.appointment_id
+    assert second.metadata.get("rescheduled") is True
+    assert "updated to" in second.customer_safe_summary
+    # The new time is reflected on the single record.
+    assert repo.records[0].starts_at_utc == second.starts_at_utc.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_reschedule_keeps_original_csr() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    first = await service.schedule(_req(customer_id=customer_id))
+    second = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 6pm")
+    )
+
+    assert first.csr_name == "Jerry Miller"
+    assert second.csr_name == "Jerry Miller"  # not reassigned on reschedule
+
+
+@pytest.mark.asyncio
+async def test_different_customers_are_not_deduped() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+
+    await service.schedule(_req(customer_id=uuid4()))
+    await service.schedule(_req(customer_id=uuid4()))
+
+    assert len(repo.records) == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_appointment_is_not_a_reschedule_target() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    await service.schedule(_req(customer_id=customer_id))
+    # Simulate the existing booking having been cancelled.
+    from datetime import UTC, datetime
+
+    repo.records[0].cancelled_at = datetime.now(UTC).replace(tzinfo=None)
+    repo.records[0].status = "cancelled"
+
+    await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 7pm")
+    )
+
+    # A fresh appointment is created rather than reviving the cancelled one.
+    assert len(repo.records) == 2
+
+
+@pytest.mark.asyncio
+async def test_dedup_falls_back_to_thread_when_no_customer_id() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    thread_id = uuid4()
+
+    await service.schedule(_req(customer_id=None, thread_id=thread_id))
+    await service.schedule(
+        _req(
+            customer_id=None,
+            thread_id=thread_id,
+            requested_time_text="tomorrow at 5pm",
+        )
+    )
+
+    assert len(repo.records) == 1
+
+
+# ---------------------------------------------------------------------------
 # Validation — new required fields: phone + customer_timezone
 # ---------------------------------------------------------------------------
 
@@ -125,19 +217,126 @@ def test_consultation_accepts_email_when_provided() -> None:
 # ---------------------------------------------------------------------------
 
 def test_consultation_parser_respects_absolute_houston_date() -> None:
+    from datetime import datetime
     from zoneinfo import ZoneInfo
     from bookcraft.components.consultations.service import _parse_requested_start
 
     business_tz = ZoneInfo("America/Chicago")
+    # Deterministic "now" earlier than the requested date so the absolute date is future.
+    now = datetime(2026, 5, 1, 9, 0, tzinfo=business_tz)
     parsed = _parse_requested_start(
         text="Please schedule a consultation on May 20, 2026 at 11:00 AM Houston time.",
         customer_tz=business_tz,
         business_tz=business_tz,
         business_start_hour=10,
         business_end_hour=19,
+        now=now,
     )
     assert parsed.year == 2026
     assert parsed.month == 5
     assert parsed.day == 20
     assert parsed.hour == 11
     assert parsed.minute == 0
+
+
+# ---------------------------------------------------------------------------
+# Date/time awareness: forward resolution, ordinals, past-date and ambiguity
+# ---------------------------------------------------------------------------
+
+_TZ_NAME = "America/Chicago"
+
+
+def _parse(text: str, now):
+    from zoneinfo import ZoneInfo
+    from bookcraft.components.consultations.service import _parse_requested_start
+
+    tz = ZoneInfo(_TZ_NAME)
+    return _parse_requested_start(
+        text=text,
+        customer_tz=tz,
+        business_tz=tz,
+        business_start_hour=10,
+        business_end_hour=19,
+        now=now,
+    )
+
+
+def _wed_jun_17_2026():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # Wednesday, June 17, 2026, 8:00 PM Central — matches the audited transcript.
+    return datetime(2026, 6, 17, 20, 0, tzinfo=ZoneInfo(_TZ_NAME))
+
+
+def test_weekday_plus_ordinal_agree_resolves_correctly() -> None:
+    # "Monday the 22nd" from Wed Jun 17 -> Mon Jun 22 (the transcript's intended date).
+    parsed = _parse("monday the 22nd at 11am", _wed_jun_17_2026())
+    assert (parsed.year, parsed.month, parsed.day) == (2026, 6, 22)
+    assert parsed.weekday() == 0  # Monday
+    assert parsed.hour == 11
+
+
+def test_bare_ordinal_day_is_parsed() -> None:
+    # Regression: "the 22nd" used to be ignored entirely (weekday-only fallback).
+    parsed = _parse("the 22nd at 11am", _wed_jun_17_2026())
+    assert (parsed.year, parsed.month, parsed.day) == (2026, 6, 22)
+
+
+def test_weekday_and_ordinal_disagree_raises_ambiguous() -> None:
+    from bookcraft.components.consultations.service import AmbiguousDateError
+
+    # The next 22nd is a Monday, so "Tuesday the 22nd" is contradictory.
+    with pytest.raises(AmbiguousDateError):
+        _parse("tuesday the 22nd", _wed_jun_17_2026())
+
+
+def test_weekday_contradicting_explicit_date_raises_ambiguous() -> None:
+    from bookcraft.components.consultations.service import AmbiguousDateError
+
+    # June 22, 2026 is a Monday; calling it "Tuesday" is contradictory.
+    with pytest.raises(AmbiguousDateError):
+        _parse("tuesday june 22 at 11am", _wed_jun_17_2026())
+
+
+def test_explicit_past_date_raises_in_past() -> None:
+    from bookcraft.components.consultations.service import RequestedTimeInPastError
+
+    # June 2 is before the current date (June 17) — no silent roll to next year.
+    with pytest.raises(RequestedTimeInPastError):
+        _parse("june 2 at 11am", _wed_jun_17_2026())
+
+
+def test_explicit_past_date_with_year_raises_in_past() -> None:
+    from bookcraft.components.consultations.service import RequestedTimeInPastError
+
+    with pytest.raises(RequestedTimeInPastError):
+        _parse("january 5, 2026 at 2pm", _wed_jun_17_2026())
+
+
+def test_time_earlier_today_rolls_forward_not_past() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # 3pm "now"; a bare "11am" (no date) should roll to the next day, not error.
+    now = datetime(2026, 6, 22, 15, 0, tzinfo=ZoneInfo(_TZ_NAME))
+    parsed = _parse("11am", now)
+    assert parsed > now
+    assert parsed.hour == 11
+
+
+def test_weekday_only_resolves_to_next_occurrence() -> None:
+    parsed = _parse("monday at 11am", _wed_jun_17_2026())
+    assert (parsed.year, parsed.month, parsed.day) == (2026, 6, 22)
+
+
+@pytest.mark.asyncio
+async def test_schedule_rejects_past_date_via_exception() -> None:
+    # End-to-end through schedule(): an explicit past date raises, so the dispatcher
+    # can surface a "please pick a future time" message instead of booking.
+    from bookcraft.components.consultations.service import RequestedTimeInPastError
+
+    # Use a far-past explicit year so it is past regardless of wall clock.
+    service = ConsultationActionService(repository=InMemoryConsultationRepository())
+    with pytest.raises(RequestedTimeInPastError):
+        await service.schedule(_req(requested_time_text="January 5, 2020 at 2pm"))

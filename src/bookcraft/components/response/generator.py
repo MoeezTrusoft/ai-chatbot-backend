@@ -1,7 +1,9 @@
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import structlog
 from prometheus_client import Histogram
@@ -618,24 +620,13 @@ def _humanized_template_response(
     context_pack: ContextPack | None = None,
     response_plan: ResponsePlan | None = None,
 ) -> str:
-    del message, route_name
+    del message, route_name, rag_chunks
 
-    # Gap 5 (mission audit): include top RAG chunk so fallback is grounding-aware.
-    # Strip markdown/doc artifacts so they never appear in customer-facing output.
-    _rag_context = ""
-    if rag_chunks:
-        raw_snippet = (rag_chunks[0].content or "")[:300].strip()
-        # Strip markdown/table/source lines; remove inline table characters.
-        clean_lines = [
-            ln
-            for ln in raw_snippet.splitlines()
-            if not any(ln.lstrip().startswith(ch) for ch in ("#", "|", "Source:"))
-            and "|" not in ln  # skip any line with table syntax
-        ]
-        snippet = " ".join(clean_lines).strip()
-        # Final guard: reject if doc artifacts remain.
-        if snippet and not _contains_doc_artifacts(snippet) and "Source:" not in snippet:
-            _rag_context = f" {snippet}."
+    # A deterministic fallback template CANNOT paraphrase, so it must never splice
+    # verbatim retrieved-document text into a customer reply (that produced the
+    # "Welcome to BookCraft! <raw FAQ prose> ..." leak seen in chat 6211). RAG
+    # grounding belongs solely in the LLM prompt, which is instructed to paraphrase
+    # and is screened by the quality gate. The fallback stays generic-but-safe.
 
     services = _ordered_human_services(intent, runtime_atoms)
     service_phrase = _service_phrase(services)
@@ -659,7 +650,7 @@ def _humanized_template_response(
     # Greeting: welcome warmly without a scoping question.
     if response_plan is not None and response_plan.primary_goal == "greeting_welcome":
         welcome = (
-            f"Welcome to BookCraft!{_rag_context} "
+            "Welcome to BookCraft! "
             "What are you working on — is it a manuscript you're looking to publish, "
             "or are you still in the writing stage?"
         )
@@ -730,7 +721,7 @@ def _humanized_template_response(
 
     if intent.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE:
         _body = (
-            f"That’s great progress.{_rag_context} "
+            "That’s great progress. "
             f"For {service_phrase}, the next step depends on whether you need "
             "creation, restructuring, or polishing."
         )
@@ -745,7 +736,7 @@ def _humanized_template_response(
         return _single_q(_body, cta)
 
     _body = (
-        f"Thanks — {service_phrase} is the main direction here.{_rag_context} "
+        f"Thanks — {service_phrase} is the main direction here. "
         "I’d confirm the manuscript stage first, then map the right services around that."
     )
     return _single_q(_body, cta)
@@ -853,6 +844,16 @@ def _cta_for_intent(
     context_pack: ContextPack | None = None,
     response_plan: ResponsePlan | None = None,
 ) -> str:
+    # Phone is the primary contact: if the plan's outstanding ask is the phone number
+    # (e.g. an email-only contact), always surface it — even for goals that otherwise
+    # suppress the CTA, like lead_created_confirmation. "Always ask, never block."
+    if response_plan is not None and response_plan.next_question == "missing_phone":
+        if context_pack is not None:
+            mapped = _question_for_missing_fact("missing_phone", context_pack=context_pack)
+            if mapped is not None:
+                return mapped
+        return "missing_phone"
+
     # Goals that must NOT produce a scoping or discovery CTA.
     if response_plan is not None and response_plan.primary_goal in {
         "lead_created_confirmation",
@@ -947,6 +948,27 @@ def _question_for_missing_fact(
     *,
     context_pack: ContextPack,
 ) -> str | None:
+    # Indefinite call time → offer concrete half-hour openings to pick from.
+    if missing_fact == "preferred_call_time_slots":
+        slots = list(getattr(context_pack, "suggested_call_slots", None) or [])
+        if slots:
+            if len(slots) == 1:
+                options = slots[0]
+            elif len(slots) == 2:
+                options = f"{slots[0]} or {slots[1]}"
+            else:
+                options = f"{', '.join(slots[:-1])}, or {slots[-1]}"
+            return (
+                "To lock in your call, which of these works best — "
+                f"{options}? If none fit, just tell me a day and time "
+                "(Monday–Friday, 10 AM to 7 PM Central) and I'll set it up."
+            )
+        # No precomputed slots — fall back to the open call-time ask.
+        return (
+            "What specific day and time works best for a call? "
+            "Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time."
+        )
+
     questions = {
         "cover_style": "What cover style or visual direction should I use for the design scope?",
         "word_or_page_count": "What rough word count or page count should I use?",
@@ -1134,9 +1156,35 @@ def _recent_turns_prompt_section(
     return "\n".join(lines)
 
 
+_BUSINESS_TZ_NAME = "America/Chicago"
+
+
+def _current_datetime_line(now: datetime | None = None) -> str:
+    """A human-readable 'now' the model uses to ground all date/time reasoning."""
+    if now is None:
+        now = datetime.now(ZoneInfo(_BUSINESS_TZ_NAME))
+    # e.g. "Monday, June 22, 2026, 3:14 PM Central Time (CDT)"
+    pretty = now.strftime("%A, %B %d, %Y, %-I:%M %p")
+    tz_abbr = now.strftime("%Z")
+    return (
+        "Current date and time (authoritative — use this as 'now' for ALL "
+        f"scheduling and date reasoning): {pretty} Central Time ({tz_abbr}). "
+        f"Today is {now.strftime('%Y-%m-%d')}.\n"
+        "- Resolve every relative day the customer mentions ('Monday', 'tomorrow', "
+        "'the 22nd', 'next week') against this current date.\n"
+        "- NEVER confirm, repeat, or propose a date or time that is in the past "
+        "relative to now. If the customer names a day/time that has already passed, "
+        "say so plainly and ask for an upcoming day and time instead.\n"
+        "- Do NOT invent or guess a specific calendar date. Only state a date once "
+        "it has been confirmed by the scheduling engine; otherwise reflect back the "
+        "customer's own words for the day/time.\n\n"
+    )
+
+
 def _response_system_prompt(
     active_service: str | None = None,
     persona_decision: Any | None = None,
+    now: datetime | None = None,
 ) -> str:
     style = _STYLE_POLICY.style_instructions(active_service=active_service)
 
@@ -1178,6 +1226,7 @@ def _response_system_prompt(
         f"{identity_instruction}\n"
         "Your job is to help them get clarity and move one concrete step closer "
         "to a quote, sample request, NDA, or consultation.\n\n"
+        f"{_current_datetime_line(now)}"
         f"{style}\n\n"
         "Source of truth: the BookCraft context provided in this prompt is your source "
         "of facts. State BookCraft facts from it in your own words. When something is "
@@ -1250,7 +1299,10 @@ def _response_system_prompt(
         "(5) Preferred date and time — REQUIRED before confirming. When asking, always include: "
         "'Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time.' "
         "Do NOT say 'you're all set', 'a specialist will be in touch', 'confirmed', or any "
-        "closing phrase until the preferred date AND time is captured.\n"
+        "closing phrase until the preferred date AND time is captured. "
+        "The date and time MUST be in the future relative to the current date above — if the "
+        "customer names a day or time that has already passed, point it out and ask for an "
+        "upcoming slot before booking.\n"
         "Ask for one missing piece at a time. "
         "Never redirect them to contact BookCraft manually.\n\n"
         "After a lead is created:\n"
@@ -1370,6 +1422,11 @@ def _response_user_prompt(
         known.append(f"author phone: {state.personal.phone.value}")
     known_str = "; ".join(known) if known else "nothing confirmed yet"
 
+    # C1: authoritative confirmed-consultation facts. Once an appointment exists,
+    # the model may restate ONLY these exact values and must never invent or drift
+    # the date, time, specialist, or timezone (audit chat 6070).
+    confirmed_consultation_str = _confirmed_consultation_clause(state)
+
     _cp_forbidden: set[str] = set(context_pack.forbidden_reasks) if context_pack else set()
     missing: list[str] = []
     if state.project.word_count.value is None and state.project.page_count.value is None:
@@ -1488,6 +1545,7 @@ def _response_user_prompt(
         f"- Services in scope: {service_phrase}\n"
         f"- What we already know about the project: {known_str}\n"
         f"- What we still need: {missing_str}"
+        f"{confirmed_consultation_str}"
         f"{secondary_str}"
         f"{_persona_note}"
         f"{negated_str}"
@@ -1499,6 +1557,37 @@ def _response_user_prompt(
         f"{history_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
+    )
+
+
+def _confirmed_consultation_clause(state: ThreadState) -> str:
+    """Authoritative confirmed-appointment facts for the prompt (audit C1).
+
+    Returns an empty string until a consultation is actually booked. Once booked,
+    it pins the specialist, date/time, and timezone so the model restates only
+    these exact values and never fabricates or drifts them on later turns.
+    """
+    consult = getattr(getattr(state, "sales_actions", None), "consultation", None)
+    if consult is None:
+        return ""
+    if not (consult.confirmed_appointment_id and consult.confirmed_display_time):
+        return ""
+
+    csr = consult.csr_name or "your specialist"
+    when = consult.confirmed_display_time
+    tz_note = ""
+    if consult.confirmed_customer_display_time and (
+        consult.confirmed_customer_display_time != when
+    ):
+        tz_note = f" (the customer's local time: {consult.confirmed_customer_display_time})"
+
+    return (
+        "\n- CONFIRMED CONSULTATION — AUTHORITATIVE, do not alter: booked with "
+        f"{csr} for {when}{tz_note}. "
+        "When the appointment comes up, restate EXACTLY this specialist and this "
+        "date/time — never invent, guess, or change the day, time, specialist, or "
+        "timezone. If the customer asks to change it, say you'll get it updated "
+        "rather than stating a different time yourself."
     )
 
 

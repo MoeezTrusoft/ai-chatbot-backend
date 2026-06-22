@@ -120,6 +120,11 @@ class ConsultationActionState(BaseModel):
     preferred_date: str | None = None
     preferred_time_window: str | None = None
     duration_minutes: int = 30
+    # Authoritative confirmation facts captured at booking time. Once set, the
+    # response layer grounds every later mention of the appointment on these exact
+    # values so the LLM cannot drift the date/time/CSR (audit C1: chat 6070).
+    confirmed_display_time: str | None = None
+    confirmed_customer_display_time: str | None = None
 
 
 class PricingActionState(BaseModel):
@@ -239,6 +244,11 @@ class ThreadState(BaseModel):
     # Stored as normalized/redacted text — not raw PII-bearing user input.
     last_user_message: str = ""
     last_assistant_text: str = ""
+    # Highest realtime turn token persisted for this thread. Shared across workers
+    # via the thread store so a superseded (lower-token) turn — aborted by the
+    # realtime layer when a concatenated burst is re-sent — never overwrites a newer
+    # turn's state. Mediated by optimistic-locking on save.
+    latest_turn_token: int = 0
     # Step 3 (tone fix): track whether the bot asked for contact in the last turn,
     # so LeadObjectiveEngine can back off when the user deflects.
     last_turn_asked_contact: bool = False

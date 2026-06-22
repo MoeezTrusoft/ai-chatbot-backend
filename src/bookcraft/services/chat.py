@@ -269,6 +269,18 @@ class ChatService:
     trg_background_persist_enabled: bool = False
     llm_extraction_overlap_enabled: bool = False
     trimatch_event_evidence_summary: bool = False
+    @staticmethod
+    def _token_superseded(token: int | None, persisted_latest: int | None) -> bool:
+        """True if `token` is below the thread's persisted latest turn token — i.e.
+        a newer turn has already claimed the thread. None token = never superseded.
+
+        Worker-safe: the comparison is against the SHARED persisted state
+        (state.latest_turn_token), not per-process memory.
+        """
+        if token is None:
+            return False
+        return token < (persisted_latest or 0)
+
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
@@ -292,6 +304,13 @@ class ChatService:
             state = thread.state
             event_sequence = thread.event_count
             previous_event_hash = thread.last_event_hash
+
+            # Realtime turn token (monotonic per thread). The supersession decision
+            # is made at save time against the SHARED persisted state.latest_turn_token
+            # so it is correct across multiple uvicorn workers. Capture the loaded
+            # latest now (before we stamp it) as the baseline for the pre-save check.
+            _turn_token = getattr(payload, "turn_token", None)
+            _loaded_latest_token = getattr(state, "latest_turn_token", 0) or 0
 
             # Anchor the active service from landing context when the thread has none yet.
             # The proactive /greet flow normally seeds this, but the widget may skip /greet
@@ -622,12 +641,14 @@ class ChatService:
             # section structure, page dimensions, etc.) that regex cannot capture.
             _llm_extraction_delta_count = 0
             _llm_extraction_task: asyncio.Task | None = None
+            _llm_active_svc = getattr(_active_service_from_state(state), "value", None)
             if self.llm_metadata_extractor is not None and self.llm_extraction_overlap_enabled:
                 _llm_extraction_task = asyncio.create_task(
                     self.llm_metadata_extractor.extract(
                         user_text=payload.message,
                         assistant_text=state.last_assistant_text or "",
                         state=state.model_copy(deep=True),
+                        active_service=_llm_active_svc,
                     )
                 )
             if self.llm_metadata_extractor is not None and not self.llm_extraction_overlap_enabled:
@@ -636,6 +657,7 @@ class ChatService:
                         user_text=payload.message,
                         assistant_text=state.last_assistant_text or "",
                         state=state,
+                        active_service=_llm_active_svc,
                     )
                     if _llm_result.state_deltas:
                         _llm_extraction_delta_count = len(_llm_result.state_deltas)
@@ -653,6 +675,9 @@ class ChatService:
                         for _k, _v in _llm_result.rich_metadata.items():
                             if _k not in state.service_metadata["book_specs"]:
                                 state.service_metadata["book_specs"][_k] = _v
+                    # Service-specific metadata (cover visual_style, editing_level, …) →
+                    # state.service_metadata[service]; pack_builder then surfaces/locks it.
+                    self._apply_llm_service_metadata(state, _llm_result)
                     # Upsert extracted facts into ES entity memory index.
                     if self.entity_index is not None:
                         for _delta in _llm_result.state_deltas:
@@ -844,6 +869,7 @@ class ChatService:
                 lead_objective_decision=lead_objective_decision,
                 contact_capture=contact_capture,
                 current_question_priority=current_question_priority,
+                require_phone=self.consultation_require_phone,
             )
             # Apply extracted preferred_call_time to state if found this turn.
             if consultation_objective_decision.extracted_preferred_call_time:
@@ -1101,6 +1127,7 @@ class ChatService:
                         for _k, _v in _llm_result.rich_metadata.items():
                             if _k not in state.service_metadata["book_specs"]:
                                 state.service_metadata["book_specs"][_k] = _v
+                    self._apply_llm_service_metadata(state, _llm_result)
                     if self.entity_index is not None:
                         for _delta in _llm_result.state_deltas:
                             try:
@@ -1407,6 +1434,7 @@ class ChatService:
                 context_pack=context_pack,
                 response_plan=response_plan,
                 tool_governance=governance_decision,
+                rag_chunks=rag_chunks,
             )
             contract = CustomerResponseContract()
             production_like = self.environment not in {"test", "dev", "development", "local"}
@@ -1638,7 +1666,23 @@ class ChatService:
             # Store normalized message (not raw) to avoid PII in state.
             state.last_user_message = (processed.normalized or "")[:300]
             state.last_assistant_text = final_text[:300]
-            if self.thread_repository is not None:
+            if self.thread_repository is not None and self._token_superseded(
+                _turn_token, _loaded_latest_token
+            ):
+                # A newer turn already owned the thread when we loaded it (the realtime
+                # layer aborted this turn and re-sent a concatenated burst) — do NOT
+                # persist this superseded turn's state.
+                structlog.get_logger(__name__).info(
+                    "turn_superseded_state_save_skipped",
+                    thread_id=str(thread_id),
+                    turn_token=_turn_token,
+                    latest_token=_loaded_latest_token,
+                )
+            elif self.thread_repository is not None:
+                # Stamp this turn's token onto the state we're about to persist; a
+                # superseded (lower-token) turn must not overwrite a newer turn.
+                if _turn_token is not None:
+                    state.latest_turn_token = max(_loaded_latest_token, _turn_token)
                 _save_attempts = 0
                 while True:
                     try:
@@ -1659,11 +1703,29 @@ class ChatService:
                                 attempts=_save_attempts,
                             )
                             break
-                        # Reload thread to get latest version, then retry save.
+                        # Reload to get the latest committed version + token.
                         _fresh = await self.thread_repository.load_or_create(
                             thread_id=thread_id, customer_id=None
                         )
+                        # Hard superseded-turn guard: a newer turn already persisted a
+                        # higher token while we were generating — abandon this save so
+                        # the newer (concatenated-burst) turn owns the thread.
+                        if self._token_superseded(
+                            _turn_token, getattr(_fresh.state, "latest_turn_token", 0)
+                        ):
+                            structlog.get_logger(__name__).info(
+                                "turn_superseded_state_save_skipped",
+                                thread_id=str(thread_id),
+                                turn_token=_turn_token,
+                                latest_token=getattr(_fresh.state, "latest_turn_token", 0),
+                            )
+                            break
                         thread = _fresh
+                        if _turn_token is not None:
+                            state.latest_turn_token = max(
+                                getattr(_fresh.state, "latest_turn_token", 0) or 0,
+                                _turn_token,
+                            )
             else:
                 self.threads[thread_id].state = state
 
@@ -2033,11 +2095,13 @@ class ChatService:
                     user_text=payload.user_message,
                     assistant_text=payload.csr_message,
                     state=state,
+                    active_service=getattr(_active_service_from_state(state), "value", None),
                 )
                 if _llm_result.state_deltas:
                     from bookcraft.components.extraction.schemas import CombinedExtraction as _CE
 
                     state = self.state_applier.apply(state, _CE(state_deltas=_llm_result.state_deltas))
+                self._apply_llm_service_metadata(state, _llm_result)
             except Exception as _exc:  # noqa: BLE001
                 structlog.get_logger(__name__).warning(
                     "csr_turn_llm_extraction_failed",
@@ -2097,9 +2161,20 @@ class ChatService:
                 "source": str(getattr(field_obj, "source", "")),
             }
 
+        # Complete, raw ThreadState dump for deep diagnosis in the CSR "AI STATE"
+        # panel — includes everything the curated view below omits (full
+        # sales_actions tree: consultation confirmed_appointment_id / csr_name /
+        # confirmed_display_time / customer_timezone, pricing, documents, portfolio,
+        # lead; greeting/handoff flags; known facts; service metadata; etc.).
+        try:
+            raw_state = state.model_dump(mode="json")
+        except Exception as exc:  # never let serialization break the debug view
+            raw_state = {"error": f"raw_state_serialization_failed: {exc}"}
+
         return {
             "thread_id": str(tid),
             "turn_count": turn_count,
+            "raw": raw_state,
             "personal": {
                 "name": _fv(state.personal.name),
                 "email": _fv(state.personal.email),
@@ -2619,6 +2694,13 @@ class ChatService:
             state.sales_actions.consultation.customer_timezone = _optional_string(
                 action_result.payload.get("customer_timezone")
             )
+            # C1: persist the authoritative booked time so later turns ground on it.
+            state.sales_actions.consultation.confirmed_display_time = _optional_string(
+                action_result.payload.get("houston_display_time")
+            )
+            state.sales_actions.consultation.confirmed_customer_display_time = _optional_string(
+                action_result.payload.get("customer_display_time")
+            )
             state.sales_actions.pending_confirmation.type = None
             state.sales_actions.pending_confirmation.payload = None
             state.sales_actions.pending_confirmation.created_at = None
@@ -2771,6 +2853,23 @@ class ChatService:
 
         for service in services_to_store:
             _append_service_focus(state, service)
+
+    @staticmethod
+    def _apply_llm_service_metadata(state: ThreadState, llm_result: object) -> None:
+        """Merge LLM-extracted, registry-validated service metadata into state.
+
+        Safe merge: fills only keys not already confirmed for that service (deterministic
+        extraction and earlier turns win). Once stored, pack_builder surfaces these as
+        known facts and forbidden re-asks automatically.
+        """
+        svc_meta = getattr(llm_result, "service_metadata", None) or {}
+        for svc_key, kv in svc_meta.items():
+            if not isinstance(kv, dict) or not kv:
+                continue
+            bucket = state.service_metadata.setdefault(svc_key, {})
+            for meta_key, meta_value in kv.items():
+                if meta_key not in bucket:
+                    bucket[meta_key] = meta_value
 
     async def _bg_trg_update_and_persist(
         self,

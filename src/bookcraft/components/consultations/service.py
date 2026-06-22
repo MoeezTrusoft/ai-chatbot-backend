@@ -17,6 +17,19 @@ from bookcraft.components.consultations.schemas import (
 
 logger = structlog.get_logger(__name__)
 
+
+class RequestedTimeError(ValueError):
+    """Base class for requested-time problems that are surfaced to the customer."""
+
+
+class RequestedTimeInPastError(RequestedTimeError):
+    """The customer asked to book a date/time that has already passed."""
+
+
+class AmbiguousDateError(RequestedTimeError):
+    """The customer's date is internally contradictory (e.g. weekday vs day-of-month)."""
+
+
 DEFAULT_CSR_ROSTER = [
     CSRProfile(csr_id="jerry-miller", name="Jerry Miller", priority_rank=1),
     CSRProfile(csr_id="robert-williams", name="Robert Williams", priority_rank=2),
@@ -59,38 +72,73 @@ class ConsultationActionService:
         )
         slot_end = slot_start + timedelta(minutes=request.duration_minutes)
 
-        csr = await self._select_csr(
-            starts_at_utc=slot_start.astimezone(UTC),
-            ends_at_utc=slot_end.astimezone(UTC),
-        )
-
-        record = await self.repository.create_appointment(
+        # Customer-level dedup: if this person already has an active (scheduled,
+        # not cancelled) consultation, reschedule it in place instead of creating a
+        # second appointment. This keeps a re-booking, a retried dispatch, or a later
+        # "actually make it Thursday" from producing duplicate rows for one customer.
+        existing = await self.repository.find_active_appointment(
             customer_id=request.customer_id,
             lead_id=request.lead_id,
             thread_id=request.thread_id,
-            customer_name=request.name,
-            customer_email=request.email,
-            customer_phone=request.phone,
-            services=request.services,
-            csr_id=csr.csr_id,
-            csr_name=csr.name,
-            priority_rank=csr.priority_rank,
-            requested_time_text=request.requested_time_text,
-            customer_timezone=request.customer_timezone,
-            business_timezone=request.business_timezone,
-            starts_at_utc=slot_start.astimezone(UTC),
-            ends_at_utc=slot_end.astimezone(UTC),
-            houston_display_time=_display_time(slot_start),
-            customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
-            duration_minutes=request.duration_minutes,
-            status="scheduled",
-            metadata={
-                **request.metadata,
-                "csr_priority_order": [profile.name for profile in self._active_roster()],
-                "requested_time_interpreted": _display_time(requested_start),
-            },
         )
 
+        if existing is not None:
+            # Keep the CSR the customer was already promised; only move the time.
+            record = await self.repository.reschedule_appointment(
+                appointment_id=existing.id,
+                requested_time_text=request.requested_time_text,
+                customer_timezone=request.customer_timezone,
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+                houston_display_time=_display_time(slot_start),
+                customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
+                metadata={
+                    **existing.metadata_,
+                    **request.metadata,
+                    "rescheduled": True,
+                    "previous_starts_at_utc": existing.starts_at_utc.isoformat(),
+                    "requested_time_interpreted": _display_time(requested_start),
+                },
+            )
+            rescheduled = True
+        else:
+            csr = await self._select_csr(
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+            )
+            record = await self.repository.create_appointment(
+                customer_id=request.customer_id,
+                lead_id=request.lead_id,
+                thread_id=request.thread_id,
+                customer_name=request.name,
+                customer_email=request.email,
+                customer_phone=request.phone,
+                services=request.services,
+                csr_id=csr.csr_id,
+                csr_name=csr.name,
+                priority_rank=csr.priority_rank,
+                requested_time_text=request.requested_time_text,
+                customer_timezone=request.customer_timezone,
+                business_timezone=request.business_timezone,
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+                houston_display_time=_display_time(slot_start),
+                customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
+                duration_minutes=request.duration_minutes,
+                status="scheduled",
+                metadata={
+                    **request.metadata,
+                    "csr_priority_order": [profile.name for profile in self._active_roster()],
+                    "requested_time_interpreted": _display_time(requested_start),
+                },
+            )
+            rescheduled = False
+
+        summary_lead = (
+            f"Your consultation with {record.csr_name} is updated to"
+            if rescheduled
+            else f"You're booked with {record.csr_name} for a 30-minute consultation at"
+        )
         result = ConsultationActionResult(
             appointment_id=record.id,
             lead_id=record.lead_id,
@@ -103,8 +151,7 @@ class ConsultationActionService:
             customer_display_time=record.customer_display_time,
             status=record.status,
             customer_safe_summary=(
-                f"You're booked with {record.csr_name} for a 30-minute consultation "
-                f"at {record.houston_display_time} Houston time."
+                f"{summary_lead} {record.houston_display_time} Houston time."
             ),
             metadata=record.metadata_,
         )
@@ -272,27 +319,43 @@ def _parse_requested_start(
     business_tz: ZoneInfo,
     business_start_hour: int,
     business_end_hour: int,
+    now: datetime | None = None,
 ) -> datetime:
-    now = datetime.now(customer_tz)
+    now = now or datetime.now(customer_tz)
     lowered = text.casefold()
 
-    target_date = _date_from_text(text, now=now)
+    target_date, kind = _resolve_target_date(text, now=now)
+
+    requested_time = _time_from_text(lowered)
+    has_explicit_time = requested_time is not None
 
     if target_date is None:
+        # No date token at all — infer forward from "now".
         target_date = now.date()
         if "tomorrow" in lowered:
             target_date = target_date + timedelta(days=1)
-        else:
-            weekday = _weekday_from_text(lowered)
-            if weekday is not None:
-                days_ahead = (weekday - target_date.weekday()) % 7
-                if days_ahead == 0:
-                    days_ahead = 7
-                target_date = target_date + timedelta(days=days_ahead)
+        kind = "inferred"
 
-    requested_time = _time_from_text(lowered) or time(hour=business_start_hour)
-    candidate = datetime.combine(target_date, requested_time, tzinfo=customer_tz)
+    effective_time = requested_time or time(hour=business_start_hour)
+    candidate = datetime.combine(target_date, effective_time, tzinfo=customer_tz)
 
+    # Time/date awareness: never book in the past.
+    if candidate <= now:
+        if kind == "explicit":
+            # The customer literally named a date (and/or time) that has passed.
+            raise RequestedTimeInPastError(
+                f"requested datetime {candidate.isoformat()} is in the past "
+                f"(now={now.isoformat()})"
+            )
+        # Inferred (e.g. a bare clock time earlier today): roll forward one day.
+        target_date = target_date + timedelta(days=1)
+        candidate = datetime.combine(target_date, effective_time, tzinfo=customer_tz)
+        if candidate <= now:  # pragma: no cover - defensive
+            raise RequestedTimeInPastError(
+                f"requested datetime {candidate.isoformat()} is still in the past"
+            )
+
+    del has_explicit_time  # captured for clarity; not needed beyond past-check
     # If the user gave a time without timezone, interpret it in the customer timezone.
     # If no customer timezone is known, customer_tz is already Houston/Chicago.
     business_candidate = candidate.astimezone(business_tz)
@@ -301,6 +364,95 @@ def _parse_requested_start(
         business_start_hour=business_start_hour,
         business_end_hour=business_end_hour,
     )
+
+
+def _resolve_target_date(text: str, *, now: datetime) -> tuple[date | None, str | None]:
+    """Resolve a requested calendar date from free text.
+
+    Returns ``(date, kind)`` where ``kind`` is:
+      * ``"explicit"`` — the customer named a specific calendar date (ISO,
+        ``Month DD``, or ``M/D``). A past explicit date is an error, not rolled.
+      * ``"inferred"`` — derived from a weekday name, a bare ordinal day
+        ("the 22nd"), or "tomorrow"/"today"; always resolved forward.
+      * ``None`` — no date token present.
+
+    Raises :class:`AmbiguousDateError` when a weekday name and a day-of-month
+    disagree (e.g. "Tuesday the 22nd" when the next 22nd is a Monday).
+    """
+    lowered = text.casefold()
+    explicit = _date_from_text(text, now=now)
+    weekday = _weekday_from_text(lowered)
+    ordinal_day = _ordinal_day_from_text(lowered)
+
+    if explicit is not None:
+        # Cross-check a stated weekday against the explicit calendar date.
+        if weekday is not None and explicit.weekday() != weekday:
+            raise AmbiguousDateError(
+                f"weekday name does not match explicit date {explicit.isoformat()}"
+            )
+        return explicit, "explicit"
+
+    if weekday is not None and ordinal_day is not None:
+        wd_date = _next_weekday_date(weekday, now=now)
+        ord_date = _next_ordinal_date(ordinal_day, now=now)
+        if ord_date is None or wd_date != ord_date:
+            raise AmbiguousDateError(
+                "weekday and day-of-month do not agree on a single nearby date"
+            )
+        return wd_date, "inferred"
+
+    if weekday is not None:
+        return _next_weekday_date(weekday, now=now), "inferred"
+
+    if ordinal_day is not None:
+        ord_date = _next_ordinal_date(ordinal_day, now=now)
+        if ord_date is None:
+            return None, None
+        return ord_date, "inferred"
+
+    if "tomorrow" in lowered:
+        return now.date() + timedelta(days=1), "inferred"
+    if "today" in lowered:
+        return now.date(), "inferred"
+
+    return None, None
+
+
+def _next_weekday_date(weekday: int, *, now: datetime) -> date:
+    today = now.date()
+    days_ahead = (weekday - today.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7
+    return today + timedelta(days=days_ahead)
+
+
+def _next_ordinal_date(day: int, *, now: datetime) -> date | None:
+    """Nearest date on or after today whose day-of-month is ``day``."""
+    if not 1 <= day <= 31:
+        return None
+    year, month = now.year, now.month
+    for _ in range(13):
+        candidate = _safe_date(year, month, day)
+        if candidate is not None and candidate >= now.date():
+            return candidate
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return None
+
+
+def _ordinal_day_from_text(text: str) -> int | None:
+    """Extract a bare ordinal day-of-month like "the 22nd" / "22nd".
+
+    Only matches when an ordinal suffix is present, so plain numbers in a time
+    ("11 am") or year are not misread as a day.
+    """
+    match = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\b", text)
+    if not match:
+        return None
+    day = int(match.group(1))
+    return day if 1 <= day <= 31 else None
 
 
 def _date_from_text(text: str, *, now: datetime) -> date | None:
@@ -349,12 +501,10 @@ def _date_from_text(text: str, *, now: datetime) -> date | None:
         month = month_names[month_match.group(1).rstrip(".")]
         day = int(month_match.group(2))
         year = int(month_match.group(3) or now.year)
-        parsed = _safe_date(year, month, day)
-
-        if parsed is not None and month_match.group(3) is None and parsed < now.date():
-            parsed = _safe_date(year + 1, month, day)
-
-        return parsed
+        # A bare "Month DD" (no year) is treated as the current year and left as-is.
+        # If that lands in the past, the caller raises RequestedTimeInPastError so the
+        # bot can ask for a future date — we no longer silently roll to next year.
+        return _safe_date(year, month, day)
 
     numeric_match = re.search(
         r"\b(\d{1,2})/(\d{1,2})(?:/(20\d{2}|\d{2}))?\b",
@@ -372,12 +522,9 @@ def _date_from_text(text: str, *, now: datetime) -> date | None:
         else:
             year = int(raw_year)
 
-        parsed = _safe_date(year, month, day)
-
-        if parsed is not None and raw_year is None and parsed < now.date():
-            parsed = _safe_date(year + 1, month, day)
-
-        return parsed
+        # As with "Month DD", a yearless numeric date stays in the current year;
+        # a past result is surfaced to the customer rather than rolled forward.
+        return _safe_date(year, month, day)
 
     return None
 

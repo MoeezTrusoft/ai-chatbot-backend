@@ -253,12 +253,19 @@ class LeadObjectiveEngine:
                 _EXPLICIT_LEAD_INTENT_RE.search(message)
             )
             if has_explicit_intent:
+                # Phone is the primary contact method. When the customer offered only
+                # an email (even if they prefer email), still solicit a phone on the
+                # very turn we create the lead — never block the lead, just ask.
+                _needs_phone = contact_capture is not None and not contact_capture.has_phone
+                if _needs_phone:
+                    audit.append("signal:create_lead_phone_missing_will_ask")
                 return LeadObjectiveDecision(
                     stage="lead_ready",
                     objective_move="create_lead",
                     reason="Contact info present and explicit lead/buying intent confirmed.",
                     stop_discovery=True,
                     recommended_primary_goal="lead_contact_capture",
+                    next_question="missing_phone" if _needs_phone else None,
                     audit=audit,
                 )
             # Contact ready but no explicit intent → ask what they need.

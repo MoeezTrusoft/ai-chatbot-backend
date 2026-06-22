@@ -513,3 +513,48 @@ def test_plan_internal_terms_are_never_allowed() -> None:
         assert term in plan.must_not_mention, (
             f"Internal term '{term}' missing from must_not_mention"
         )
+
+
+# ── Chat 6211: greeting must not re-fire on an established thread ──────────────
+from bookcraft.components.response.planner import _primary_goal, _thread_is_established
+
+
+def _greeting_intent() -> IntentVote:
+    return _intent(query=QueryIntentType.GREETING)
+
+
+def test_fresh_thread_bare_greeting_welcomes() -> None:
+    """A brand-new thread (no known facts) opening with a greeting → greeting_welcome."""
+    pack = _pack()
+    pack.is_greeting_turn = True
+    goal = _primary_goal(_greeting_intent(), pack, None)
+    assert goal == "greeting_welcome"
+
+
+def test_established_thread_bare_greeting_does_not_rewelcome() -> None:
+    """Returning customer (has known facts) saying 'hi' on turn N must NOT be re-greeted."""
+    pack = _pack(known_facts=[_known_fact("personal.name", "name", "Savannah")])
+    pack.is_greeting_turn = True
+    goal = _primary_goal(_greeting_intent(), pack, None)
+    assert goal != "greeting_welcome"
+
+
+def test_established_thread_greeting_fallthrough_also_guarded() -> None:
+    """Even if is_greeting_turn is False, the GREETING-intent fallthrough must not
+    map to greeting_welcome on an established thread."""
+    pack = _pack(active_service="ghostwriting")
+    pack.is_greeting_turn = False
+    goal = _primary_goal(_greeting_intent(), pack, None)
+    assert goal != "greeting_welcome"
+
+
+def test_thread_is_established_signals() -> None:
+    assert _thread_is_established(_pack(known_facts=[_known_fact("p", "l", "v")])) is True
+    assert _thread_is_established(_pack(active_service="editing")) is True
+    assert _thread_is_established(_pack(active_genre="fantasy")) is True
+    assert _thread_is_established(_pack(manuscript_status="complete")) is True
+    fresh = _pack()
+    assert _thread_is_established(fresh) is False
+    created = _pack()
+    created.lead_created = True
+    assert _thread_is_established(created) is True

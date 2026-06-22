@@ -33,6 +33,11 @@ class ChatTurnRequest(BaseModel):
     # service instead of being mis-inferred (e.g. as ghostwriting).
     landing_page: str | None = Field(default=None, max_length=200)
     landing_keyword: str | None = Field(default=None, max_length=200)
+    # Monotonic per-thread token from the realtime layer. When the client aborts an
+    # in-flight turn and re-sends a concatenated burst, the newer turn carries a higher
+    # token; an older (superseded) turn must not persist its state. None = not supplied
+    # (treated as never superseded).
+    turn_token: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _require_message_or_attachment(self) -> "ChatTurnRequest":

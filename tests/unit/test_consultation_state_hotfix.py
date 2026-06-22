@@ -201,7 +201,9 @@ def test_contact_ready_no_time_needs_time() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_relative_time_window_needs_timezone() -> None:
+def test_relative_time_window_offers_slots() -> None:
+    # "Friday afternoon" is an indefinite window (no specific clock time): rather
+    # than silently coercing or asking for timezone, offer concrete half-hour slots.
     s = _state(preferred_call_time="Friday afternoon")
     decision = reduce_consultation_state(
         state=s,
@@ -209,13 +211,12 @@ def test_relative_time_window_needs_timezone() -> None:
         intent=_consultation_intent(),
         contact_ready=True,
     )
-    assert decision.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
-    assert decision.timezone_needed is True
+    assert decision.stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED
     assert decision.can_schedule is False
-    assert decision.next_question == "preferred_call_timezone"
+    assert decision.next_question == "preferred_call_time_slots"
 
 
-def test_morning_window_needs_timezone() -> None:
+def test_morning_window_offers_slots() -> None:
     s = _state(preferred_call_time="tomorrow morning")
     decision = reduce_consultation_state(
         state=s,
@@ -223,8 +224,9 @@ def test_morning_window_needs_timezone() -> None:
         intent=_consultation_intent(),
         contact_ready=True,
     )
-    assert decision.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
-    assert decision.timezone_needed is True
+    assert decision.stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED
+    assert decision.can_schedule is False
+    assert decision.next_question == "preferred_call_time_slots"
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +235,12 @@ def test_morning_window_needs_timezone() -> None:
 
 
 def test_specific_time_with_digits_ready_to_schedule() -> None:
-    s = _state(preferred_call_time="Friday at 3pm")
+    # A definite clock time IS bookable — but only once the timezone is known, so
+    # we never silently assume Central (audit chat 6070).
+    s = _state(preferred_call_time="Friday at 3pm", preferred_timezone="EST")
     decision = reduce_consultation_state(
         state=s,
-        message="I'd like to book for Friday at 3pm.",
+        message="I'd like to book for Friday at 3pm Eastern.",
         intent=_consultation_intent(),
         contact_ready=True,
     )
@@ -245,7 +249,25 @@ def test_specific_time_with_digits_ready_to_schedule() -> None:
     assert decision.timezone_needed is False
 
 
-def test_relative_window_with_timezone_ready_to_schedule() -> None:
+def test_specific_time_without_timezone_asks_for_timezone() -> None:
+    # Same definite time but NO timezone stated — must confirm the zone before booking,
+    # rather than defaulting to Central.
+    s = _state(preferred_call_time="Friday at 3pm")
+    decision = reduce_consultation_state(
+        state=s,
+        message="I'd like to book for Friday at 3pm.",
+        intent=_consultation_intent(),
+        contact_ready=True,
+    )
+    assert decision.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
+    assert decision.can_schedule is False
+    assert decision.timezone_needed is True
+    assert decision.next_question == "preferred_call_timezone"
+
+
+def test_relative_window_even_with_timezone_offers_slots() -> None:
+    # Even with a known timezone, a vague window ("Friday afternoon") has no specific
+    # clock time — booking it would silently coerce to 10 AM. Offer slots instead.
     s = _state(preferred_call_time="Friday afternoon", preferred_timezone="EST")
     decision = reduce_consultation_state(
         state=s,
@@ -253,8 +275,9 @@ def test_relative_window_with_timezone_ready_to_schedule() -> None:
         intent=_consultation_intent(),
         contact_ready=True,
     )
-    assert decision.stage == ConsultationStage.READY_TO_SCHEDULE
-    assert decision.can_schedule is True
+    assert decision.stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED
+    assert decision.can_schedule is False
+    assert decision.next_question == "preferred_call_time_slots"
 
 
 # ---------------------------------------------------------------------------

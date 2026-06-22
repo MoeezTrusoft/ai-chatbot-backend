@@ -65,6 +65,8 @@ class ContextPack(BaseModel):
     audience: str | None = None
     pending_slots: list[str] = Field(default_factory=list)
     preferred_call_time: str | None = None
+    # Concrete half-hour openings to offer when the customer's time is indefinite.
+    suggested_call_slots: list[str] = Field(default_factory=list)
     language_ignored_segments: list[dict[str, str]] = Field(default_factory=list)
     assumption_warnings: list[str] = Field(default_factory=list)
     # Greeting intent guard.

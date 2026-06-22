@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
+from bookcraft.components.sales.consultation_state import is_definite_call_time
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType
@@ -412,6 +413,24 @@ def _must_not_mention(
     return _ordered_unique(items)
 
 
+def _thread_is_established(context_pack: ContextPack) -> bool:
+    """True once the customer has shared anything about themselves or their project.
+
+    A bare greeting ("hi", "hello again") on such a thread must NOT be treated as a
+    brand-new visitor welcome (chat 6211: a turn-3 greeting re-triggered
+    "Welcome to BookCraft! What are you working on..." on an established thread).
+    ``is_greeting_turn`` is computed purely from the current message string and has no
+    notion of history, so this is the history-aware guard the greeting path lacked.
+    """
+    return bool(
+        context_pack.known_facts
+        or context_pack.lead_created
+        or context_pack.active_service
+        or context_pack.active_genre
+        or context_pack.manuscript_status
+    )
+
+
 def _primary_goal(
     intent: IntentVote,
     context_pack: ContextPack,
@@ -443,8 +462,12 @@ def _primary_goal(
     if lead_objective_decision is not None and getattr(lead_objective_decision, "objective_move", None) == "create_lead":
         return "lead_created_confirmation"
 
-    # Greeting-only turns always map to greeting_welcome regardless of classifier output.
-    if getattr(context_pack, "is_greeting_turn", False):
+    # Greeting-only turns map to greeting_welcome ONLY on a fresh thread. On an
+    # established thread a bare greeting falls through to normal goal selection so a
+    # returning customer is not re-welcomed as a brand-new visitor (chat 6211).
+    if getattr(context_pack, "is_greeting_turn", False) and not _thread_is_established(
+        context_pack
+    ):
         return "greeting_welcome"
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
@@ -520,7 +543,12 @@ def _primary_goal(
     if context_pack.active_service == "cover_design_illustration" and not _has_manuscript_update:
         return "cover_design_scoping"
 
-    return _GOAL_BY_QUERY.get(intent.query_primary.value, "continue_discovery")
+    goal = _GOAL_BY_QUERY.get(intent.query_primary.value, "continue_discovery")
+    # A bare greeting classified as GREETING must not re-welcome an established thread
+    # via the fallthrough either; continue the conversation instead (chat 6211).
+    if goal == "greeting_welcome" and _thread_is_established(context_pack):
+        return "continue_discovery"
+    return goal
 
 
 def _next_question(
@@ -542,11 +570,31 @@ def _next_question(
 
     # PR 2 — Consultation-first next questions.
     if primary_goal == "consultation_handoff_confirmation":
-        # Never confirm without a scheduled time — collect it first.
+        # Never confirm without a *definite* scheduled time — collect it first.
         if not context_pack.preferred_call_time:
             return "preferred_call_time"
+        # A vague time on file ("anytime", "Friday") can't be confirmed — pin it
+        # down with concrete slots rather than booking on a guess.
+        if not is_definite_call_time(context_pack.preferred_call_time):
+            return "preferred_call_time_slots"
         return None
     if primary_goal == "consultation_time_capture":
+        # Honour an explicit ask from the consultation objective engine — the phone gate
+        # (email-only contact) or a slot-offer request — before defaulting to call time.
+        nq = (
+            getattr(consultation_objective_decision, "next_question", None)
+            if consultation_objective_decision is not None
+            else None
+        )
+        if nq == "missing_phone":
+            return "missing_phone"
+        if nq == "preferred_call_time_slots":
+            return "preferred_call_time_slots"
+        # Already holding a vague time? Narrow it with concrete slots.
+        if context_pack.preferred_call_time and not is_definite_call_time(
+            context_pack.preferred_call_time
+        ):
+            return "preferred_call_time_slots"
         return "preferred_call_time"
     # consultation_scoping: customer just said YES to a consultation offer.
     # Never ask a scoping question here — go straight to contact collection.
@@ -562,6 +610,11 @@ def _next_question(
         return nq or "consultation_interest"
 
     if primary_goal == "lead_created_confirmation":
+        # Even while confirming the lead, secure the primary contact method: if the
+        # customer gave only an email (or prefers email) and we still have no phone,
+        # ask for the phone in the same breath. Never blocks lead creation.
+        if getattr(lead_objective_decision, "next_question", None) == "missing_phone":
+            return "missing_phone"
         return None
 
     # Greeting-only turns: ask how we can help, never scoping.
@@ -586,6 +639,13 @@ def _next_question(
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:
+            # Phone is the primary contact method: secure it before moving on to
+            # scheduling, even when the customer offered only an email or prefers
+            # email. Honour an explicit phone request from the lead objective engine
+            # (loop-safe — it asks once via contact_second_method_requested). The lead
+            # itself is never blocked; it was already created above.
+            if getattr(lead_objective_decision, "next_question", None) == "missing_phone":
+                return "missing_phone"
             # PR 2: contact ready — ask for call time instead of no-op.
             if not context_pack.preferred_call_time:
                 return "preferred_call_time"

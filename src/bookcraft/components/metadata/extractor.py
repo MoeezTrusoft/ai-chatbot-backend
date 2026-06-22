@@ -130,7 +130,12 @@ _COVER_SPINE_RE = re.compile(
 _COVER_STYLE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bminimalist(?:\s+(?:cover|design|style))?\b", re.I), "minimalist"),
     (re.compile(r"\billustrated?\s+(?:cover|style)?\b", re.I), "illustrated"),
-    (re.compile(r"\bphotograph(?:ic)?\s+(?:cover|style)?\b", re.I), "photographic"),
+    (
+        re.compile(
+            r"\bphoto(?:graph(?:ic|y)?|[-\s]?composite|[-\s]?real(?:istic)?)?\b", re.I
+        ),
+        "photographic",
+    ),
     (re.compile(r"\bluxury\s+(?:cover|design|style)?\b", re.I), "luxury"),
     (re.compile(r"\b(?:bold\s+)?typograph(?:ic|y)\s+(?:cover|style)?\b", re.I), "bold_typographic"),
     (re.compile(r"\bcinematic\s+(?:cover|style)?\b", re.I), "cinematic"),

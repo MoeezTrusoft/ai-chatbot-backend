@@ -68,11 +68,11 @@ def test_contact_ready_asks_preferred_call_time(engine: ConsultationObjectiveEng
     assert decision.stage == "consultation_time_requested"
 
 
-def test_contact_and_time_create_handoff(engine: ConsultationObjectiveEngine) -> None:
-    """Contact ready + call time present → create handoff."""
+def test_contact_and_definite_time_create_handoff(engine: ConsultationObjectiveEngine) -> None:
+    """Contact ready + DEFINITE call time (day + clock) → create handoff."""
     decision = engine.decide(
-        message="Let's do Friday afternoon",
-        state=_state(lead_created=True, preferred_call_time="Friday afternoon"),
+        message="Let's do Friday at 3pm",
+        state=_state(lead_created=True, preferred_call_time="Friday at 3pm"),
         lead_objective_decision=_lod("no_change"),
         contact_capture=_contact_ready(True),
     )
@@ -81,10 +81,24 @@ def test_contact_and_time_create_handoff(engine: ConsultationObjectiveEngine) ->
     assert decision.recommended_primary_goal == "consultation_handoff_confirmation"
 
 
-def test_call_time_extracted_in_same_turn(engine: ConsultationObjectiveEngine) -> None:
-    """Call time provided after lead confirmation → extract and proceed to handoff."""
+def test_contact_and_indefinite_time_offers_slots(engine: ConsultationObjectiveEngine) -> None:
+    """Contact ready + INDEFINITE call time → offer concrete slots, not a handoff."""
     decision = engine.decide(
-        message="Available tomorrow afternoon",
+        message="Let's do Friday afternoon",
+        state=_state(lead_created=True, preferred_call_time="Friday afternoon"),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact_ready(True),
+    )
+    assert decision.create_handoff is False
+    assert decision.objective_move == "ask_preferred_call_time"
+    assert decision.next_question == "preferred_call_time_slots"
+    assert decision.recommended_primary_goal == "consultation_time_capture"
+
+
+def test_definite_call_time_extracted_in_same_turn(engine: ConsultationObjectiveEngine) -> None:
+    """Definite call time provided after lead confirmation → extract and proceed to handoff."""
+    decision = engine.decide(
+        message="Available tomorrow at 2pm",
         # lead_created=True AND lod_move="no_change" → lead confirmed prior turn
         state=_state(lead_created=True),
         lead_objective_decision=_lod("no_change"),
@@ -93,6 +107,93 @@ def test_call_time_extracted_in_same_turn(engine: ConsultationObjectiveEngine) -
     assert decision.create_handoff is True
     assert decision.extracted_preferred_call_time is not None
     assert "tomorrow" in (decision.extracted_preferred_call_time or "").lower()
+
+
+def test_indefinite_call_time_extracted_offers_slots(engine: ConsultationObjectiveEngine) -> None:
+    """Vague call time provided this turn → store it but offer concrete slots."""
+    decision = engine.decide(
+        message="Available tomorrow afternoon",
+        state=_state(lead_created=True),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact_ready(True),
+    )
+    assert decision.create_handoff is False
+    assert decision.next_question == "preferred_call_time_slots"
+    assert decision.extracted_preferred_call_time is not None
+    assert "tomorrow" in (decision.extracted_preferred_call_time or "").lower()
+
+
+def _contact(*, ready=True, has_email=True, has_phone=False) -> MagicMock:
+    m = MagicMock()
+    m.lead_contact_ready = ready
+    m.has_email = has_email
+    m.has_phone = has_phone
+    return m
+
+
+def test_email_only_contact_requires_phone_before_scheduling(
+    engine: ConsultationObjectiveEngine,
+) -> None:
+    """require_phone + email-only → ask phone before pivoting to call time."""
+    decision = engine.decide(
+        message="ok",
+        state=_state(lead_created=True),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=False),
+        require_phone=True,
+    )
+    assert decision.next_question == "missing_phone"
+    assert decision.recommended_primary_goal == "consultation_time_capture"
+    assert decision.stage == "consultation_phone_requested"
+
+
+def test_phone_is_a_hard_gate_keeps_requiring(engine: ConsultationObjectiveEngine) -> None:
+    """Consultation HARD-requires a phone: keep asking until one is provided (no bypass)."""
+    decision = engine.decide(
+        message="Tuesday at 3pm works",  # even with a definite time on the table
+        state=_state(lead_created=True, preferred_call_time="Tuesday at 3pm"),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=False),
+        require_phone=True,
+    )
+    assert decision.next_question == "missing_phone"
+    assert decision.create_handoff is False
+
+
+def test_phone_gate_yields_to_priority_question(engine: ConsultationObjectiveEngine) -> None:
+    """A direct question/refusal is answered first — phone gate doesn't steamroll it."""
+    decision = engine.decide(
+        message="actually how much does this cost?",
+        state=_state(),  # lead not yet confirmed → Priority 3 (answer) is reachable
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=False),
+        current_question_priority=_priority(True, "pricing"),
+        require_phone=True,
+    )
+    assert decision.next_question != "missing_phone"
+    assert decision.objective_move == "answer_then_consultation"
+
+
+def test_phone_gate_skipped_when_phone_present(engine: ConsultationObjectiveEngine) -> None:
+    decision = engine.decide(
+        message="ok",
+        state=_state(lead_created=True),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=True),
+        require_phone=True,
+    )
+    assert decision.next_question != "missing_phone"
+
+
+def test_phone_gate_off_when_require_phone_false(engine: ConsultationObjectiveEngine) -> None:
+    decision = engine.decide(
+        message="ok",
+        state=_state(lead_created=True),
+        lead_objective_decision=_lod("no_change"),
+        contact_capture=_contact(has_email=True, has_phone=False),
+        require_phone=False,
+    )
+    assert decision.next_question != "missing_phone"
 
 
 def test_current_question_priority_answers_first(engine: ConsultationObjectiveEngine) -> None:

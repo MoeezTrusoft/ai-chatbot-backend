@@ -21,6 +21,9 @@ class ConsultationStage(StrEnum):
     REQUESTED_CONTACT_NEEDED = "requested_contact_needed"
     REQUESTED_PHONE_NEEDED = "requested_phone_needed"
     REQUESTED_TIME_NEEDED = "requested_time_needed"
+    # Customer gave an *indefinite* time (e.g. "anytime", "next week", "Friday");
+    # we offer concrete half-hour slots to pin it to a definite one.
+    REQUESTED_TIME_SLOTS_OFFERED = "requested_time_slots_offered"
     TIME_CAPTURED_NEEDS_TIMEZONE = "time_captured_needs_timezone"
     READY_TO_SCHEDULE = "ready_to_schedule"
     PENDING_CONFIRMATION = "pending_confirmation"
@@ -36,6 +39,7 @@ _ACTIVE_REQUEST_STAGES = frozenset(
         ConsultationStage.REQUESTED_CONTACT_NEEDED,
         ConsultationStage.REQUESTED_PHONE_NEEDED,
         ConsultationStage.REQUESTED_TIME_NEEDED,
+        ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED,
         ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
         ConsultationStage.READY_TO_SCHEDULE,
         ConsultationStage.PENDING_CONFIRMATION,
@@ -123,6 +127,39 @@ _CALL_TIME_FULL_RE = re.compile(
 def _extract_call_time(text: str) -> str | None:
     m = _CALL_TIME_FULL_RE.search(text)
     return m.group(0).strip() if m else None
+
+
+# A call time is bookable-*definite* only when it pins down BOTH a specific day and
+# a specific clock time — e.g. "Tuesday at 3pm", "June 24 at 10:30am". Anything
+# vaguer ("anytime", "next week", "Friday", "afternoon", "3pm" with no day) is
+# indefinite: we should offer concrete slots rather than silently coerce it.
+_CLOCK_TIME_RE = re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE)
+_SPECIFIC_DAY_RE = re.compile(
+    r"\b(?:"
+    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"tomorrow|today|"
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+    r"aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
+    r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}"
+    r")\b",
+    re.IGNORECASE,
+)
+# "next Friday" / "this Monday" still name a specific weekday — fine. But "next week"
+# / "next weekend" name no day, so exclude those bare phrases from the day check.
+_VAGUE_DAY_RE = re.compile(r"\bnext\s+(?:week|weekend)\b", re.IGNORECASE)
+
+
+def is_definite_call_time(text: str | None) -> bool:
+    """True when the call-time text names BOTH a specific day and a clock time."""
+    if not text:
+        return False
+    has_clock = bool(_CLOCK_TIME_RE.search(text))
+    if not has_clock:
+        return False
+    # A bare "next week"/"next weekend" with no weekday is not a specific day.
+    day_text = _VAGUE_DAY_RE.sub(" ", text)
+    has_day = bool(_SPECIFIC_DAY_RE.search(day_text))
+    return has_day
 
 
 def reduce_consultation_state(
@@ -281,22 +318,19 @@ def reduce_consultation_state(
             audit=audit,
         )
 
-    # Contact ready, but ask for a phone number ONCE before moving on — even when the
-    # customer offered only an email or prefers email. Loop-safe via the persisted
-    # requested_phone_needed stage; skipped once a phone is captured or the user has
-    # explicitly declined (already in REQUESTED_PHONE_NEEDED last turn → proceed).
-    # Use the PRIOR turn's stage for the loop-safe check — within a single turn the
-    # reducer runs twice and would otherwise see its own first-pass mutation.
-    _ref_stage = prior_stage if prior_stage is not None else getattr(state, "consultation_stage", None)
-    _already_asked_phone = _ref_stage == ConsultationStage.REQUESTED_PHONE_NEEDED
-    if require_phone and has_email and not has_phone and not _already_asked_phone:
-        audit.append("signal:phone_needed_before_booking")
+    # A consultation HARD-requires a phone number (unlike a lead, which may be
+    # email-only). Block scheduling — keep asking for the phone — until one is present.
+    # This is a hard gate: can_schedule stays False and we never reach READY_TO_SCHEDULE
+    # without a phone, so no booking is created without it.
+    if require_phone and not has_phone:
+        audit.append("signal:phone_required_for_consultation")
         return ConsultationStateDecision(
             stage=ConsultationStage.REQUESTED_PHONE_NEEDED,
             contact_ready=True,
             consultation_requested=True,
             preferred_call_time=preferred_call_time,
             next_question="missing_phone",
+            can_schedule=False,
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,
@@ -310,6 +344,24 @@ def reduce_consultation_state(
             contact_ready=True,
             consultation_requested=True,
             next_question="preferred_call_time",
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
+
+    # Contact + a time window that is INDEFINITE ("anytime", "next week", "Friday",
+    # "afternoon") — don't silently coerce it into a booking. Offer concrete
+    # half-hour slots so the customer narrows it to a definite day+time. Loop-safe:
+    # once they pick a slot the time becomes definite and we fall through to booking.
+    if not is_definite_call_time(preferred_call_time):
+        audit.append(f"signal:indefinite_time_offer_slots(time={preferred_call_time!r})")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            can_schedule=False,
+            next_question="preferred_call_time_slots",
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,
@@ -330,12 +382,17 @@ def reduce_consultation_state(
     # whose timezone only lives in personal.timezone stalls forever at
     # time_captured_needs_timezone even though the timezone IS known (BUG-6040).
     _tz_from_personal = getattr(getattr(getattr(state, "personal", None), "timezone", None), "value", None)
-    timezone_unknown = is_relative_window and not (
+    # Require a known timezone before booking ANY clock time — not just relative
+    # windows. A definite "Monday 11am" with no stated zone must NOT be silently
+    # booked as Central; confirm the customer's timezone first (audit chat 6070).
+    timezone_unknown = not (
         getattr(state, "preferred_timezone", None) or _tz_from_consultation or _tz_from_personal
     )
 
     if timezone_unknown:
-        audit.append(f"signal:timezone_needed(relative_window={is_relative_window})")
+        audit.append(
+            f"signal:timezone_needed(relative_window={is_relative_window})"
+        )
         return ConsultationStateDecision(
             stage=ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
             contact_ready=True,

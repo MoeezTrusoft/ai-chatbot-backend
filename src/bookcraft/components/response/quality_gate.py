@@ -19,6 +19,12 @@ _ASSUMPTION_GUARD = AssumptionGuard()
 # Module-level style-policy instance used to drive slippy-word detection.
 _STYLE_POLICY = ResponseStylePolicy.default()
 
+# Canonical specialist roster names, used by the CSR-drift check (audit C1).
+# Sourced from the same roster the scheduler assigns from, so the two never diverge.
+from bookcraft.components.consultations.service import DEFAULT_CSR_ROSTER  # noqa: E402
+
+_ROSTER_CSR_NAMES: tuple[str, ...] = tuple(profile.name for profile in DEFAULT_CSR_ROSTER)
+
 # ---------------------------------------------------------------------------
 # Compiled patterns — module-level for reuse
 # ---------------------------------------------------------------------------
@@ -255,6 +261,7 @@ class ResponseQualityGate:
         context_pack: ContextPack | None = None,
         response_plan: ResponsePlan | None = None,
         tool_governance: ToolGovernanceDecision | None = None,
+        rag_chunks: list[Any] | None = None,
     ) -> ResponseQualityReport:
         failures: list[str] = []
         audit: list[str] = []
@@ -457,6 +464,28 @@ class ResponseQualityGate:
         else:
             audit.append("quality:consultation_requires_contact:ok")
 
+        # Check 24 — Verbatim RAG/document bleed (general, document-agnostic).
+        # The hardcoded patterns above (rag_document_body / rag_inline_header) only
+        # catch previously-seen phrases. This compares the reply against the ACTUAL
+        # retrieved chunks for a long verbatim span, so ANY document's prose copied
+        # word-for-word is caught (chat 6211). Replies are expected to paraphrase.
+        verbatim_span = _verbatim_rag_overlap(text, rag_chunks)
+        if verbatim_span is not None:
+            failures.append("verbatim_rag_document_bleed")
+            audit.append(f"quality:verbatim_rag_bleed:FAIL:{verbatim_span[:40]}")
+        else:
+            audit.append("quality:verbatim_rag_bleed:clean")
+
+        # Check 25 — Consultation CSR drift (audit C1, chat 6070). Once an
+        # appointment is booked, the reply must not name a DIFFERENT roster
+        # specialist than the one actually assigned.
+        drifted_csr = _consultation_csr_drift(text, state)
+        if drifted_csr is not None:
+            failures.append("consultation_csr_name_drift")
+            audit.append(f"quality:consultation_csr_drift:FAIL:{drifted_csr}")
+        else:
+            audit.append("quality:consultation_csr_drift:ok")
+
         sales_tone_report = self.style_policy.evaluate(
             text=text,
             response_plan=response_plan,
@@ -518,6 +547,46 @@ class ResponseQualityGate:
             sales_tone=sales_tone_report,
             audit=audit,
         )
+
+
+# A reply that shares this many CONSECUTIVE words verbatim with a retrieved chunk is
+# almost certainly copying document prose rather than paraphrasing. 8 is the standard
+# near-duplicate/plagiarism n-gram size: long enough that genuine paraphrases never hit
+# it by chance, short enough to catch a single copied sentence.
+_VERBATIM_NGRAM_SIZE = 8
+
+
+def _normalize_words(text: str) -> list[str]:
+    """Lowercase alphanumeric word tokens (punctuation/whitespace-insensitive)."""
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _word_ngrams(words: list[str], n: int) -> set[tuple[str, ...]]:
+    if len(words) < n:
+        return set()
+    return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
+def _verbatim_rag_overlap(
+    text: str,
+    rag_chunks: list[Any] | None,
+    n: int = _VERBATIM_NGRAM_SIZE,
+) -> str | None:
+    """Return a copied span if ``text`` reproduces ``n``+ consecutive words from any
+    retrieved chunk verbatim, else None. Document-agnostic — no phrase allow-list."""
+    if not rag_chunks:
+        return None
+    reply_ngrams = _word_ngrams(_normalize_words(text), n)
+    if not reply_ngrams:
+        return None
+    for chunk in rag_chunks:
+        content = getattr(chunk, "content", "") or ""
+        if not content:
+            continue
+        overlap = reply_ngrams & _word_ngrams(_normalize_words(content), n)
+        if overlap:
+            return " ".join(next(iter(overlap)))
+    return None
 
 
 def _consultation_confirmed_without_contact(text: str, context_pack: ContextPack | None) -> bool:
@@ -778,6 +847,7 @@ def _missing_next_step(text: str, response_plan: ResponsePlan | None) -> bool:
         "deadline",
         "cover_style",
         "preferred_call_time",
+        "preferred_call_time_slots",
         "name_and_email_or_phone",
         "preferred_call_timezone",
         "manuscript_upload_pitch",
@@ -1030,6 +1100,30 @@ def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
     return not (confirmed_id or handoff_created)
 
 
+def _consultation_csr_drift(text: str, state: ThreadState) -> str | None:
+    """Return a roster specialist name the reply wrongly states (audit C1).
+
+    Once an appointment is booked with a specific specialist, the reply must not
+    name a DIFFERENT specialist from the roster. Returns the drifted name, or None.
+    Premature naming (before any booking) is not flagged here — the pre-booking
+    prompt legitimately lists the roster priority order.
+    """
+    consultation = getattr(getattr(state, "sales_actions", None), "consultation", None)
+    if consultation is None:
+        return None
+    if not getattr(consultation, "confirmed_appointment_id", None):
+        return None
+
+    confirmed = (getattr(consultation, "csr_name", None) or "").strip().casefold()
+    lowered = text.casefold()
+    for name in _ROSTER_CSR_NAMES:
+        if name.casefold() == confirmed:
+            continue
+        if re.search(rf"\b{re.escape(name.casefold())}\b", lowered):
+            return name
+    return None
+
+
 def _raw_url_in_text(text: str, context_pack: ContextPack | None) -> bool:
     """Fail when the response text contains raw portfolio/sample URLs."""
     if not _RAW_URL_RE.search(text):
@@ -1245,6 +1339,16 @@ def _build_repair_instructions(failures: list[str], tone_suggestions: list[str])
                 "- Do not repeat questions or refer to context the user has already overridden. "
                 "Follow the user's most recent correction."
             )
+        elif "verbatim_rag_document_bleed" in f:
+            parts.append(
+                "- Do not copy reference material word-for-word. State only the relevant "
+                "fact in your own words; never paste sentences from the knowledge base."
+            )
+        elif "consultation_csr_name_drift" in f:
+            parts.append(
+                "- Use only the specialist named in the CONFIRMED CONSULTATION facts. "
+                "Do not name a different specialist."
+            )
         elif "sales_tone" in f:
             parts.append(
                 "- Rewrite in warm, specific, consultative tone with one clear next question."
@@ -1268,15 +1372,13 @@ def _build_safe_fallback(
 
     # Prefer governance blocked_message when that is the trigger.
     if tool_governance is not None and not tool_governance.allowed:
-        if tool_governance.blocked_message:
-            msg = tool_governance.blocked_message
-            if not _contains_internal(msg):
-                return msg
+        if tool_governance.blocked_message and _engine_text_is_safe(tool_governance.blocked_message):
+            return tool_governance.blocked_message
 
     # Use plan's customer_safe_tool_summary when available.
     if response_plan is not None and response_plan.customer_safe_tool_summary:
         base = response_plan.customer_safe_tool_summary
-        if not _contains_internal(base):
+        if _engine_text_is_safe(base):
             if response_plan.next_question:
                 return f"{base} {_fact_key_to_question(response_plan.next_question)}"
             return base
@@ -1303,6 +1405,22 @@ def _build_safe_fallback(
 def _contains_internal(text: str) -> bool:
     lowered = text.casefold()
     return any(term.casefold() in lowered for term in _INTERNAL_WORDS)
+
+
+def _engine_text_is_safe(msg: str) -> bool:
+    """True only when an engine-authored status string is safe to emit verbatim.
+
+    The safe-fallback previously screened these strings with ``_contains_internal``
+    alone (a ~9-word substring list). This also rejects internal artifacts and any
+    markdown / RAG-header / document-body formatting (``_formatting_artifacts`` covers
+    the rag_inline_header and rag_document_body patterns), so engine text can never
+    smuggle copied document prose into the customer reply as the safety fallback.
+    """
+    return bool(msg) and not (
+        _contains_internal(msg)
+        or _internal_artifacts(msg)
+        or _formatting_artifacts(msg)
+    )
 
 
 def _build_style_safe_fallback(
@@ -1373,6 +1491,10 @@ def _fact_key_to_question(key: str) -> str:
         # Consultation-first questions (PR 2).
         "preferred_call_time": (
             "What's the best time to reach you — morning, afternoon, or evening?"
+        ),
+        "preferred_call_time_slots": (
+            "Which specific day and time works best for your call? "
+            "We're available Monday–Friday, 10 AM to 7 PM Central."
         ),
         # Step 17 (Batch 2): timezone slot name must not appear raw.
         "preferred_call_timezone": (

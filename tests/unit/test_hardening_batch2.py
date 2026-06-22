@@ -612,3 +612,110 @@ def test_ready_to_buy_no_stage_no_genre_does_not_claim_them():
     assert "you've shared the manuscript stage and category" not in response
     assert "you've shared the manuscript stage" not in response
     assert "you've shared the category" not in response
+
+
+# ── Chat 6211: raw RAG/FAQ document text leaked into the customer reply ────────
+def _faq_chunk():
+    """The verbatim knowledge-base prose that bled into chat 6211's reply."""
+    from bookcraft.components.rag.schemas import RetrievedChunk
+
+    return RetrievedChunk(
+        chunk_id="c1",
+        content=(
+            "embedded Arabic quotations, for example). Will you advise on the best "
+            "trim size for my book? Yes. Trim size matters for genre conventions "
+            "(mass-market paperbacks are 4.25×6.87; trade paperbacks are typically "
+            "5.5×8.5 or 6×9; literary fiction often uses 5.25×8) and for cost "
+            "efficiency at print-on-demand."
+        ),
+        score=0.9,
+        section="formatting",
+        source_id="formatting_faq",
+        title="Formatting FAQ",
+        checksum="x",
+        citation="Formatting FAQ",
+    )
+
+
+def _processed(raw: str):
+    from bookcraft.components.preprocessor.schemas import ProcessedMessage
+
+    return ProcessedMessage(
+        raw=raw, normalized=raw.lower(), tokens=[], negation_spans=[], hedge_spans=[],
+        counterfactual_spans=[], deterministic_atoms={}, embedding=[0.0],
+        language="en", char_count=len(raw),
+    )
+
+
+def test_greeting_template_never_splices_raw_rag_text():
+    """BUG chat 6211: the greeting fallback spliced a raw FAQ chunk into the reply.
+    The deterministic template must never contain verbatim retrieved-document text."""
+    from bookcraft.components.intent.schemas import IntentVote
+    from bookcraft.components.response.generator import _humanized_template_response
+    from bookcraft.components.response.planner import ResponsePlan
+    from bookcraft.domain.enums import QueryIntentType, SalesStage
+    from bookcraft.domain.state import ThreadState
+
+    intent = IntentVote(
+        query_primary=QueryIntentType.GREETING, funnel_stage=SalesStage.NEW,
+        needs_clarification=False, confidence=0.9, rationale="t", evidence=[],
+    )
+    plan = ResponsePlan(primary_goal="greeting_welcome")
+    response = _humanized_template_response(
+        intent=intent, state=ThreadState(), message=_processed("hi"),
+        runtime_atoms={}, rag_chunks=[_faq_chunk()], route_name="default",
+        response_plan=plan,
+    )
+    assert "trim size" not in response.lower()
+    assert "4.25×6.87" not in response
+    assert "Will you advise" not in response
+    assert response.startswith("Welcome to BookCraft!")
+
+
+def test_manuscript_update_template_never_splices_raw_rag_text():
+    """The 'That's great progress' branch also previously spliced the raw chunk."""
+    from bookcraft.components.intent.schemas import IntentVote
+    from bookcraft.components.response.generator import _humanized_template_response
+    from bookcraft.domain.enums import QueryIntentType, SalesStage
+    from bookcraft.domain.state import ThreadState
+
+    intent = IntentVote(
+        query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE, funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False, confidence=0.9, rationale="t", evidence=[],
+    )
+    response = _humanized_template_response(
+        intent=intent, state=ThreadState(), message=_processed("finished my draft"),
+        runtime_atoms={}, rag_chunks=[_faq_chunk()], route_name="default",
+    )
+    assert "trim size" not in response.lower()
+    assert "4.25" not in response
+
+
+def test_verbatim_bleed_caught_by_ngram_not_brittle_regex():
+    """Verbatim document bleed is caught by the document-agnostic n-gram overlap
+    detector (quality gate Check 24), NOT by brittle phrase regexes. Crucially, a
+    PARAPHRASED reply that conversationally mentions trim sizes must NOT be rejected
+    (a real live reply: "6x9 is the most common ... 5.5x8.5 is a solid alternative")."""
+    from types import SimpleNamespace
+
+    from bookcraft.components.response.generator import _contains_doc_artifacts
+    from bookcraft.components.response.quality_gate import _verbatim_rag_overlap
+
+    chunk = SimpleNamespace(
+        content=(
+            "Will you advise on the best trim size for my book? Yes. Trim size matters "
+            "for genre conventions (mass-market paperbacks are 4.25x6.87)."
+        )
+    )
+    # Verbatim copy → n-gram detector flags it.
+    leaked = "Sure. Will you advise on the best trim size for my book? Yes. Trim size matters."
+    assert _verbatim_rag_overlap(leaked, [chunk]) is not None
+
+    # Good paraphrased advice → NOT flagged by the n-gram detector...
+    good = (
+        "For dark fantasy, 6x9 is the most common trade paperback trim. "
+        "5.5x8.5 is a solid alternative for a more mass-market feel. What's your page count?"
+    )
+    assert _verbatim_rag_overlap(good, [chunk]) is None
+    # ...and NOT over-rejected by the coarse doc-artifact guard either.
+    assert not _contains_doc_artifacts(good)
