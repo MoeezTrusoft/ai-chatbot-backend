@@ -255,7 +255,12 @@ class SalesActionDispatcher:
                     if isinstance(slots.get("services"), list)
                     else [],
                     requested_time_text=_string_or_none(slots.get("requested_time_text")) or "",
-                    customer_timezone=_string_or_none(slots.get("customer_timezone")) or _string_or_none(slots.get("timezone")) or "UTC",
+                    customer_timezone=_string_or_none(slots.get("customer_timezone"))
+                    or _string_or_none(slots.get("timezone"))
+                    # Unify the assumed customer timezone with the chat layer default
+                    # (chat.py uses America/Chicago) so the booked time no longer depends
+                    # on which code path built the request.
+                    or "America/Chicago",
                     business_timezone=_string_or_none(slots.get("business_timezone"))
                     or "America/Chicago",
                     duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,

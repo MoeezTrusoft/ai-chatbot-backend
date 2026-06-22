@@ -55,6 +55,98 @@ async def test_consultation_conflict_uses_next_priority_csr() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Customer-level dedup / reschedule (no double-booking)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_same_customer_rebooking_reschedules_not_duplicates() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    first = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 4pm")
+    )
+    second = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 5pm")
+    )
+
+    # One row, not two — the second booking rescheduled the first.
+    assert len(repo.records) == 1
+    assert second.appointment_id == first.appointment_id
+    assert second.metadata.get("rescheduled") is True
+    assert "updated to" in second.customer_safe_summary
+    # The new time is reflected on the single record.
+    assert repo.records[0].starts_at_utc == second.starts_at_utc.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_reschedule_keeps_original_csr() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    first = await service.schedule(_req(customer_id=customer_id))
+    second = await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 6pm")
+    )
+
+    assert first.csr_name == "Jerry Miller"
+    assert second.csr_name == "Jerry Miller"  # not reassigned on reschedule
+
+
+@pytest.mark.asyncio
+async def test_different_customers_are_not_deduped() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+
+    await service.schedule(_req(customer_id=uuid4()))
+    await service.schedule(_req(customer_id=uuid4()))
+
+    assert len(repo.records) == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_appointment_is_not_a_reschedule_target() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    customer_id = uuid4()
+
+    await service.schedule(_req(customer_id=customer_id))
+    # Simulate the existing booking having been cancelled.
+    from datetime import UTC, datetime
+
+    repo.records[0].cancelled_at = datetime.now(UTC).replace(tzinfo=None)
+    repo.records[0].status = "cancelled"
+
+    await service.schedule(
+        _req(customer_id=customer_id, requested_time_text="tomorrow at 7pm")
+    )
+
+    # A fresh appointment is created rather than reviving the cancelled one.
+    assert len(repo.records) == 2
+
+
+@pytest.mark.asyncio
+async def test_dedup_falls_back_to_thread_when_no_customer_id() -> None:
+    repo = InMemoryConsultationRepository()
+    service = ConsultationActionService(repository=repo)
+    thread_id = uuid4()
+
+    await service.schedule(_req(customer_id=None, thread_id=thread_id))
+    await service.schedule(
+        _req(
+            customer_id=None,
+            thread_id=thread_id,
+            requested_time_text="tomorrow at 5pm",
+        )
+    )
+
+    assert len(repo.records) == 1
+
+
+# ---------------------------------------------------------------------------
 # Validation — new required fields: phone + customer_timezone
 # ---------------------------------------------------------------------------
 

@@ -72,38 +72,73 @@ class ConsultationActionService:
         )
         slot_end = slot_start + timedelta(minutes=request.duration_minutes)
 
-        csr = await self._select_csr(
-            starts_at_utc=slot_start.astimezone(UTC),
-            ends_at_utc=slot_end.astimezone(UTC),
-        )
-
-        record = await self.repository.create_appointment(
+        # Customer-level dedup: if this person already has an active (scheduled,
+        # not cancelled) consultation, reschedule it in place instead of creating a
+        # second appointment. This keeps a re-booking, a retried dispatch, or a later
+        # "actually make it Thursday" from producing duplicate rows for one customer.
+        existing = await self.repository.find_active_appointment(
             customer_id=request.customer_id,
             lead_id=request.lead_id,
             thread_id=request.thread_id,
-            customer_name=request.name,
-            customer_email=request.email,
-            customer_phone=request.phone,
-            services=request.services,
-            csr_id=csr.csr_id,
-            csr_name=csr.name,
-            priority_rank=csr.priority_rank,
-            requested_time_text=request.requested_time_text,
-            customer_timezone=request.customer_timezone,
-            business_timezone=request.business_timezone,
-            starts_at_utc=slot_start.astimezone(UTC),
-            ends_at_utc=slot_end.astimezone(UTC),
-            houston_display_time=_display_time(slot_start),
-            customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
-            duration_minutes=request.duration_minutes,
-            status="scheduled",
-            metadata={
-                **request.metadata,
-                "csr_priority_order": [profile.name for profile in self._active_roster()],
-                "requested_time_interpreted": _display_time(requested_start),
-            },
         )
 
+        if existing is not None:
+            # Keep the CSR the customer was already promised; only move the time.
+            record = await self.repository.reschedule_appointment(
+                appointment_id=existing.id,
+                requested_time_text=request.requested_time_text,
+                customer_timezone=request.customer_timezone,
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+                houston_display_time=_display_time(slot_start),
+                customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
+                metadata={
+                    **existing.metadata_,
+                    **request.metadata,
+                    "rescheduled": True,
+                    "previous_starts_at_utc": existing.starts_at_utc.isoformat(),
+                    "requested_time_interpreted": _display_time(requested_start),
+                },
+            )
+            rescheduled = True
+        else:
+            csr = await self._select_csr(
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+            )
+            record = await self.repository.create_appointment(
+                customer_id=request.customer_id,
+                lead_id=request.lead_id,
+                thread_id=request.thread_id,
+                customer_name=request.name,
+                customer_email=request.email,
+                customer_phone=request.phone,
+                services=request.services,
+                csr_id=csr.csr_id,
+                csr_name=csr.name,
+                priority_rank=csr.priority_rank,
+                requested_time_text=request.requested_time_text,
+                customer_timezone=request.customer_timezone,
+                business_timezone=request.business_timezone,
+                starts_at_utc=slot_start.astimezone(UTC),
+                ends_at_utc=slot_end.astimezone(UTC),
+                houston_display_time=_display_time(slot_start),
+                customer_display_time=_display_time(slot_start.astimezone(customer_tz)),
+                duration_minutes=request.duration_minutes,
+                status="scheduled",
+                metadata={
+                    **request.metadata,
+                    "csr_priority_order": [profile.name for profile in self._active_roster()],
+                    "requested_time_interpreted": _display_time(requested_start),
+                },
+            )
+            rescheduled = False
+
+        summary_lead = (
+            f"Your consultation with {record.csr_name} is updated to"
+            if rescheduled
+            else f"You're booked with {record.csr_name} for a 30-minute consultation at"
+        )
         result = ConsultationActionResult(
             appointment_id=record.id,
             lead_id=record.lead_id,
@@ -116,8 +151,7 @@ class ConsultationActionService:
             customer_display_time=record.customer_display_time,
             status=record.status,
             customer_safe_summary=(
-                f"You're booked with {record.csr_name} for a 30-minute consultation "
-                f"at {record.houston_display_time} Houston time."
+                f"{summary_lead} {record.houston_display_time} Houston time."
             ),
             metadata=record.metadata_,
         )
