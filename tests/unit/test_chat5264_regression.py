@@ -366,30 +366,43 @@ class TestPreferredContactExtraction:
 
 
 # ---------------------------------------------------------------------------
-# Issue 5/7 — Sequential queue inter-turn delay is 2 000 ms
+# Customer-message burst model (replaces the old idle-debounce + sequential queue)
 # ---------------------------------------------------------------------------
 
-class TestSequentialQueueDelay:
-    def test_sequential_queue_delay_is_2000ms(self):
-        """Verify socket.js uses 2000 ms not 50 ms between sequential AI turns."""
-        socket_path = (
-            "/Users/mac/Desktop/Abdullah/bookcraft-node-chatbot/"
-            "csr-trusoft-node/src/config/socket.js"
-        )
-        with open(socket_path) as f:
-            src = f.read()
-        # Must contain 2000 in the sequential queue context, not 50
-        assert "runAiTurnSequential" in src
-        # The 50ms delay should no longer be present next to runAiTurnSequential
-        # Find the setTimeout call for runAiTurnSequential
-        pattern = re.compile(
-            r'setTimeout\s*\(\s*\(\)\s*=>\s*runAiTurnSequential[^)]+\),\s*(\d+)',
-            re.DOTALL,
-        )
-        match = pattern.search(src)
-        assert match, "Could not find setTimeout for runAiTurnSequential"
-        delay_value = int(match.group(1))
-        assert delay_value == 2000, f"Expected 2000ms delay, got {delay_value}ms"
+class TestBurstModel:
+    """The realtime layer now consolidates a burst of rapid customer messages into
+    ONE reply anchored to the first message, aborting+regenerating on each new
+    message. Verifies socket.js carries the burst orchestration (not the old queue).
+    """
+
+    def _socket_src(self):
+        import os
+        import pytest
+        for path in (
+            "/var/www/server.trusoft.pk/src/config/socket.js",
+            os.path.expanduser("~/server.trusoft.pk/src/config/socket.js"),
+        ):
+            if os.path.exists(path):
+                with open(path) as f:
+                    return f.read()
+        pytest.skip("Node socket.js not present in this environment")
+
+    def test_burst_orchestration_present(self):
+        src = self._socket_src()
+        # New burst model symbols.
+        assert "enqueueBurstMessage" in src
+        assert "runBurstGeneration" in src
+        assert "BURST_COLLECT_MS" in src
+        # Old idle-debounce + sequential queue are gone.
+        assert "runAiTurnSequential" not in src
+        assert "roomAiQueue" not in src
+
+    def test_preempt_uses_abortcontroller_and_turn_token(self):
+        src = self._socket_src()
+        # In-flight bot calls are cancelled (not just discarded) and superseded turns
+        # are tagged with a monotonic token for the backend guard.
+        assert "AbortController" in src
+        assert "nextTurnToken" in src
 
 
 # ---------------------------------------------------------------------------

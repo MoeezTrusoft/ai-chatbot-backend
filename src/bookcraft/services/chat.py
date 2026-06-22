@@ -269,6 +269,18 @@ class ChatService:
     trg_background_persist_enabled: bool = False
     llm_extraction_overlap_enabled: bool = False
     trimatch_event_evidence_summary: bool = False
+    @staticmethod
+    def _token_superseded(token: int | None, persisted_latest: int | None) -> bool:
+        """True if `token` is below the thread's persisted latest turn token — i.e.
+        a newer turn has already claimed the thread. None token = never superseded.
+
+        Worker-safe: the comparison is against the SHARED persisted state
+        (state.latest_turn_token), not per-process memory.
+        """
+        if token is None:
+            return False
+        return token < (persisted_latest or 0)
+
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
@@ -292,6 +304,13 @@ class ChatService:
             state = thread.state
             event_sequence = thread.event_count
             previous_event_hash = thread.last_event_hash
+
+            # Realtime turn token (monotonic per thread). The supersession decision
+            # is made at save time against the SHARED persisted state.latest_turn_token
+            # so it is correct across multiple uvicorn workers. Capture the loaded
+            # latest now (before we stamp it) as the baseline for the pre-save check.
+            _turn_token = getattr(payload, "turn_token", None)
+            _loaded_latest_token = getattr(state, "latest_turn_token", 0) or 0
 
             # Anchor the active service from landing context when the thread has none yet.
             # The proactive /greet flow normally seeds this, but the widget may skip /greet
@@ -1647,7 +1666,23 @@ class ChatService:
             # Store normalized message (not raw) to avoid PII in state.
             state.last_user_message = (processed.normalized or "")[:300]
             state.last_assistant_text = final_text[:300]
-            if self.thread_repository is not None:
+            if self.thread_repository is not None and self._token_superseded(
+                _turn_token, _loaded_latest_token
+            ):
+                # A newer turn already owned the thread when we loaded it (the realtime
+                # layer aborted this turn and re-sent a concatenated burst) — do NOT
+                # persist this superseded turn's state.
+                structlog.get_logger(__name__).info(
+                    "turn_superseded_state_save_skipped",
+                    thread_id=str(thread_id),
+                    turn_token=_turn_token,
+                    latest_token=_loaded_latest_token,
+                )
+            elif self.thread_repository is not None:
+                # Stamp this turn's token onto the state we're about to persist; a
+                # superseded (lower-token) turn must not overwrite a newer turn.
+                if _turn_token is not None:
+                    state.latest_turn_token = max(_loaded_latest_token, _turn_token)
                 _save_attempts = 0
                 while True:
                     try:
@@ -1668,11 +1703,29 @@ class ChatService:
                                 attempts=_save_attempts,
                             )
                             break
-                        # Reload thread to get latest version, then retry save.
+                        # Reload to get the latest committed version + token.
                         _fresh = await self.thread_repository.load_or_create(
                             thread_id=thread_id, customer_id=None
                         )
+                        # Hard superseded-turn guard: a newer turn already persisted a
+                        # higher token while we were generating — abandon this save so
+                        # the newer (concatenated-burst) turn owns the thread.
+                        if self._token_superseded(
+                            _turn_token, getattr(_fresh.state, "latest_turn_token", 0)
+                        ):
+                            structlog.get_logger(__name__).info(
+                                "turn_superseded_state_save_skipped",
+                                thread_id=str(thread_id),
+                                turn_token=_turn_token,
+                                latest_token=getattr(_fresh.state, "latest_turn_token", 0),
+                            )
+                            break
                         thread = _fresh
+                        if _turn_token is not None:
+                            state.latest_turn_token = max(
+                                getattr(_fresh.state, "latest_turn_token", 0) or 0,
+                                _turn_token,
+                            )
             else:
                 self.threads[thread_id].state = state
 
