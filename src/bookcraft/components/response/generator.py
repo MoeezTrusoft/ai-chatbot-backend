@@ -649,6 +649,16 @@ def _humanized_template_response(
 
     # Greeting: welcome warmly without a scoping question.
     if response_plan is not None and response_plan.primary_goal == "greeting_welcome":
+        # When the visitor already has an active service (named it, or landed on a
+        # service page that was anchored), acknowledge THAT service instead of the
+        # generic "manuscript / publishing" welcome (chat 6573).
+        active_service = getattr(context_pack, "active_service", None) if context_pack else None
+        if active_service:
+            svc_label = _human_service_name(str(active_service))
+            return (
+                f"Welcome to BookCraft! I'd be glad to help with {svc_label}. "
+                "Tell me a little about your book and what you have in mind."
+            )
         welcome = (
             "Welcome to BookCraft! "
             "What are you working on — is it a manuscript you're looking to publish, "

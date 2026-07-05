@@ -507,7 +507,18 @@ def _primary_goal(
         and lead_objective_decision.recommended_primary_goal
         in {"greeting_welcome", "answer_current_question"}
     ):
-        return lead_objective_decision.recommended_primary_goal
+        # A turn-1 "welcome-first" recommendation must NOT bury a service the customer
+        # has already named on their opening message (chat 6573: "I need to edit my
+        # book cover" got the generic "manuscript / publishing" welcome even though
+        # cover_design_illustration was already the active service). When an active
+        # service is known, fall through to service-specific scoping (e.g.
+        # cover_design_scoping) below, which still welcomes warmly without a contact
+        # ask. answer_current_question is unaffected — only the blank greeting is gated.
+        if not (
+            lead_objective_decision.recommended_primary_goal == "greeting_welcome"
+            and context_pack.active_service
+        ):
+            return lead_objective_decision.recommended_primary_goal
 
     # Portfolio fallback goal overrides.
     if portfolio_fallback_decision is not None:

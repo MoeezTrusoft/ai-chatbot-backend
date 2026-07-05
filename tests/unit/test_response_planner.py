@@ -88,6 +88,54 @@ def test_plan_includes_active_service_in_acknowledge_facts() -> None:
     assert any("cover_design_illustration" in f for f in plan.acknowledge_facts)
 
 
+def test_turn1_named_service_routes_to_service_scoping_not_generic_welcome() -> None:
+    """chat 6573 regression: on the opening turn a customer who names a service
+    ("I need to edit my book cover") must be scoped for THAT service, not routed to
+    the generic manuscript/publishing welcome by the turn-1 welcome-first rule."""
+    from bookcraft.components.leads.objective import LeadObjectiveDecision
+
+    pack = _pack(active_service="cover_design_illustration")
+    lod = LeadObjectiveDecision(
+        stage="engaging",
+        objective_move="continue_light_discovery",
+        reason="First turn: welcome and engage before any contact ask.",
+        stop_discovery=False,
+        recommended_primary_goal="greeting_welcome",
+    )
+    plan = _planner.plan(
+        intent=_intent(
+            query=QueryIntentType.SERVICE_QUESTION,
+            service=ServiceCategory.COVER_DESIGN_ILLUSTRATION,
+        ),
+        state=ThreadState(),
+        context_pack=pack,
+        lead_objective_decision=lod,
+    )
+    assert plan.primary_goal == "cover_design_scoping"
+
+
+def test_turn1_welcome_first_still_applies_without_active_service() -> None:
+    """The welcome-first gate only defers when a service is known; a bare opener with
+    no active service must still get the generic warm welcome."""
+    from bookcraft.components.leads.objective import LeadObjectiveDecision
+
+    pack = _pack()  # no active_service
+    lod = LeadObjectiveDecision(
+        stage="engaging",
+        objective_move="continue_light_discovery",
+        reason="First turn: welcome and engage before any contact ask.",
+        stop_discovery=False,
+        recommended_primary_goal="greeting_welcome",
+    )
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.GREETING),
+        state=ThreadState(),
+        context_pack=pack,
+        lead_objective_decision=lod,
+    )
+    assert plan.primary_goal == "greeting_welcome"
+
+
 def test_plan_includes_known_genre_in_acknowledge_facts() -> None:
     pack = _pack(
         active_genre="children's fiction",

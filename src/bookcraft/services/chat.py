@@ -2012,7 +2012,7 @@ class ChatService:
                 landing_keyword=payload.landing_keyword,
             )
         else:
-            greeting_text = _GREET_FALLBACK
+            greeting_text = _greet_fallback(_landing_service)
 
         bubbles = self.formatter.format(greeting_text)
         self._record_live_trace(
@@ -4825,11 +4825,39 @@ def _build_delegations(
 # Proactive greeting helpers (used by ChatService.handle_greet)
 # ---------------------------------------------------------------------------
 
-# Single fallback used ONLY when the LLM call fails entirely.
+# Generic fallback used ONLY when the LLM call fails entirely AND no landing
+# service could be inferred. When we DO know the service the visitor came for,
+# prefer the service-aware variant below (chat 6573: a cover-design visitor was
+# greeted with a generic "publishing / manuscript" line).
 _GREET_FALLBACK = (
     "Hello there! Are you exploring professional publishing services? "
     "I'd be happy to help you find the right publishing plan for your manuscript."
 )
+
+# Friendly, first-message phrasing per service for the deterministic greeting fallback.
+_GREET_SERVICE_PHRASES: dict[ServiceCategory, str] = {
+    ServiceCategory.GHOSTWRITING: "ghostwriting or book writing",
+    ServiceCategory.COVER_DESIGN_ILLUSTRATION: "book cover design or illustration",
+    ServiceCategory.EDITING_PROOFREADING: "editing or proofreading",
+    ServiceCategory.INTERIOR_FORMATTING: "interior formatting or layout",
+    ServiceCategory.AUDIOBOOK_PRODUCTION: "audiobook production",
+    ServiceCategory.TRANSLATION_FOREIGN_RIGHTS: "translation or foreign-rights work",
+    ServiceCategory.VIDEO_TRAILER: "a book trailer",
+    ServiceCategory.AUTHOR_WEBSITE: "an author website",
+    ServiceCategory.MARKETING_PROMOTION: "book marketing or promotion",
+    ServiceCategory.PUBLISHING_DISTRIBUTION: "publishing or distribution",
+}
+
+
+def _greet_fallback(service: ServiceCategory | None = None) -> str:
+    """Deterministic opening line, tailored to the landing service when known."""
+    phrase = _GREET_SERVICE_PHRASES.get(service) if service is not None else None
+    if phrase:
+        return (
+            f"Hello there! Are you looking for help with {phrase}? "
+            "I'd be glad to hear what you have in mind."
+        )
+    return _GREET_FALLBACK
 
 
 def _normalise_page_slug(page: str | None) -> str | None:
@@ -4893,6 +4921,7 @@ async def _llm_proactive_greeting(
     the call raises or returns an unusable response.
     """
     page_label = _normalise_page_slug(landing_page) or "homepage"
+    _landing_service = _service_from_landing(landing_page, landing_keyword)
     keyword_line = (
         f"\nSearch keyword that brought them here: {landing_keyword}"
         if landing_keyword
@@ -4931,4 +4960,4 @@ async def _llm_proactive_greeting(
     except Exception:
         pass
 
-    return _GREET_FALLBACK
+    return _greet_fallback(_landing_service)
