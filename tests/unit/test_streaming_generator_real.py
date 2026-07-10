@@ -89,13 +89,14 @@ class _FakeStreamingAdapter:
         messages: list[dict[str, object]],
         max_tokens: int = 1024,
         purpose: str = "response_stream",
+        system_cache_suffix: str | None = None,
     ) -> AsyncIterator[str]:
-        del system, messages, max_tokens, purpose
+        del system, messages, max_tokens, purpose, system_cache_suffix
         for delta in self._deltas:
             yield delta
 
-    async def structured(self, *, system, user, output_model, purpose):  # pragma: no cover
-        del system, user, purpose
+    async def structured(self, *, system, user, output_model, purpose, system_cache_suffix=None):  # pragma: no cover
+        del system, user, purpose, system_cache_suffix
         return output_model.model_validate({})
 
 
@@ -112,13 +113,14 @@ class _FakeRaisingAdapter:
         messages: list[dict[str, object]],
         max_tokens: int = 1024,
         purpose: str = "response_stream",
+        system_cache_suffix: str | None = None,
     ) -> AsyncIterator[str]:
-        del system, messages, max_tokens, purpose
+        del system, messages, max_tokens, purpose, system_cache_suffix
         yield "partial "
         raise RuntimeError("stream blew up mid-flight")
 
-    async def structured(self, *, system, user, output_model, purpose):  # pragma: no cover
-        del system, user, purpose
+    async def structured(self, *, system, user, output_model, purpose, system_cache_suffix=None):  # pragma: no cover
+        del system, user, purpose, system_cache_suffix
         return output_model.model_validate({})
 
 

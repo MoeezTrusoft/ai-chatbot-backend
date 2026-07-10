@@ -40,6 +40,13 @@ class SonnetResponseGenerator:
     provider_name: str = "mock_sonnet"
     adapter: LLMProvider | None = None
     router: ResponseRouter = field(default_factory=ResponseRouter)
+    # Number of no-RAG re-initiations tried after the full (with-RAG) attempt
+    # before conceding to the safe template. The model is stochastic, so re-issuing
+    # the request usually clears a transient transport error or a one-off validation
+    # rejection — far better than emitting a canned fallback that may read as
+    # off-context (chat 6688's "bestseller" template). The first re-initiation keeps
+    # the historical "reduced" label; the rest are "retry" attempts.
+    response_retry_attempts: int = 3
 
     async def generate(
         self,
@@ -210,29 +217,43 @@ class SonnetResponseGenerator:
                     approved_urls=_engine_approved_urls,
                 )
 
-            text = await self._try_llm(
-                message=message,
-                state=state,
-                intent=intent,
-                extraction=extraction,
-                rag_chunks=[],
-                route_name=route.name,
-                runtime_atoms=runtime_atoms,
-                response_hint=response_hint,
-                context_pack=context_pack,
-                response_plan=response_plan,
-                recent_turns=recent_turns,
-                engine_facts=_engine_facts,
-                persona_decision=persona_decision,
-                attempt="reduced",
-            )
-            if text is not None:
-                return ResponseDraft(
-                    text=text,
-                    source=f"{self.provider_name}_reduced",
-                    approved_urls=_engine_approved_urls,
+            # Re-initiate the request instead of immediately conceding to a canned
+            # template. Each retry drops RAG (verbatim-RAG bleed is a common cause of
+            # validation rejection) and re-issues the call; the LLM is stochastic, so a
+            # fresh attempt usually succeeds where the previous one was rejected.
+            for retry_index in range(max(1, self.response_retry_attempts)):
+                attempt_label = "reduced" if retry_index == 0 else f"retry_{retry_index}"
+                text = await self._try_llm(
+                    message=message,
+                    state=state,
+                    intent=intent,
+                    extraction=extraction,
+                    rag_chunks=[],
+                    route_name=route.name,
+                    runtime_atoms=runtime_atoms,
+                    response_hint=response_hint,
+                    context_pack=context_pack,
+                    response_plan=response_plan,
+                    recent_turns=recent_turns,
+                    engine_facts=_engine_facts,
+                    persona_decision=persona_decision,
+                    attempt=attempt_label,
                 )
+                if text is not None:
+                    source = (
+                        f"{self.provider_name}_reduced"
+                        if retry_index == 0
+                        else f"{self.provider_name}_retry"
+                    )
+                    return ResponseDraft(
+                        text=text,
+                        source=source,
+                        approved_urls=_engine_approved_urls,
+                    )
 
+            # Absolute last resort: every re-initiation failed (provider persistently
+            # down or rejecting). Emit the safe template so the customer still gets a
+            # coherent reply rather than silence.
             return ResponseDraft(
                 text=template_fallback,
                 source=route.name if route.name != "direct_answer" else self.provider_name,
@@ -411,6 +432,7 @@ class SonnetResponseGenerator:
             messages=[{"role": "user", "content": user}],
             max_tokens=1024,
             purpose="response_stream",
+            system_cache_suffix=_current_datetime_line(),
         ):
             if chunk:
                 yield chunk
@@ -522,6 +544,7 @@ class SonnetResponseGenerator:
                     ),
                     output_model=GeneratedResponseText,
                     purpose=f"response_{attempt}",
+                    system_cache_suffix=_current_datetime_line(),
                 ),
             )
         except Exception as exc:
@@ -666,13 +689,26 @@ def _humanized_template_response(
         )
         return welcome
 
-    if has_guarantee_pressure or intent.query_primary.value == "complaint_or_objection":
+    # Guarantee/bestseller wording ONLY when the author actually pressed for a
+    # guarantee. A generic complaint or objection is NOT a guarantee question — the
+    # two were previously coupled, so a confused "I just told you" got answered with
+    # an unprompted speech about bestseller ranks (chat 6688).
+    if has_guarantee_pressure:
         return (
             "I wouldn’t want to promise a bestseller rank or a fixed sales number, "
             "because that would not be honest. What BookCraft can do is build a "
             f"realistic plan around {service_phrase}: positioning, publishing setup, "
             "launch assets, and promotion steps that give the book a stronger chance. "
             "Would you like me to scope a practical launch plan instead of a guarantee?"
+        )
+
+    if intent.query_primary.value == "complaint_or_objection":
+        # Complaints get acknowledged plainly — no scoping, no pitch, no invented
+        # "concern you mentioned earlier".
+        return (
+            "You’re right to flag that, and I’m sorry it landed wrong. "
+            f"I’m still here to help with {service_phrase} whenever you’re ready — "
+            "or I can bring in a specialist to pick things up directly."
         )
 
     if response_hint == "repeat_message":
@@ -1194,8 +1230,11 @@ def _current_datetime_line(now: datetime | None = None) -> str:
 def _response_system_prompt(
     active_service: str | None = None,
     persona_decision: Any | None = None,
-    now: datetime | None = None,
 ) -> str:
+    # NOTE: the current date/time is intentionally NOT included here. It is
+    # delivered as a separate uncached system block (see `_current_datetime_line`
+    # passed as `system_cache_suffix` in `_try_llm` / `_stream_via_adapter`) so
+    # this stable prompt can be prompt-cached across turns and threads.
     style = _STYLE_POLICY.style_instructions(active_service=active_service)
 
     # Persona: build identity instruction based on assigned representative name.
@@ -1236,12 +1275,18 @@ def _response_system_prompt(
         f"{identity_instruction}\n"
         "Your job is to help them get clarity and move one concrete step closer "
         "to a quote, sample request, NDA, or consultation.\n\n"
-        f"{_current_datetime_line(now)}"
         f"{style}\n\n"
         "Source of truth: the BookCraft context provided in this prompt is your source "
         "of facts. State BookCraft facts from it in your own words. When something is "
         "not covered in the provided context, say you can confirm that detail for them "
         "rather than inventing it.\n\n"
+        "Sharing their story:\n"
+        "When the author is telling you their story or the story behind their book — "
+        "personal history, life events, or emotional context — stay with them. React to "
+        "the specific human detail they just shared, show genuine interest, and let them "
+        "keep going. Do NOT redirect to pricing, scoping, or scheduling while they are "
+        "opening up. There is a natural moment for next steps once the story has room to "
+        "breathe; forcing a consultation or contact ask mid-story reads as not listening.\n\n"
         "Gap 7 — Topic switches and contradictions:\n"
         "- When the author pivots to a different service (e.g. 'forget editing, I want a cover'), "
         "acknowledge the switch explicitly, drop scoping from the prior service, and move "

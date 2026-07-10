@@ -15,6 +15,10 @@ from bookcraft.components.sales.current_question_priority import (
     CurrentQuestionPriorityDetector,
     CurrentQuestionPriorityResult,
 )
+from bookcraft.components.sales.narrative_sharing import (
+    NarrativeSharingDetector,
+    NarrativeSharingResult,
+)
 
 __all__ = [
     "AnswerBeforeCaptureDecision",
@@ -26,4 +30,6 @@ __all__ = [
     "ConsultationObjectiveEngine",
     "CurrentQuestionPriorityDetector",
     "CurrentQuestionPriorityResult",
+    "NarrativeSharingDetector",
+    "NarrativeSharingResult",
 ]

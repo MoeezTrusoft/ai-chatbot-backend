@@ -152,6 +152,8 @@ class ResponsePlanner:
         consultation_objective_decision: Any | None = None,
         current_question_priority: Any | None = None,
         answer_before_capture_decision: Any | None = None,
+        # Narrative-sharing: author is telling their story, not asking to transact.
+        narrative_sharing_decision: Any | None = None,
         # PR 3: attachment assessment priority.
         attachment_priority_decision: Any | None = None,
         # Context enforcement (PR: context-enforcement).
@@ -178,6 +180,7 @@ class ResponsePlanner:
             lead_objective_decision,
             consultation_objective_decision=consultation_objective_decision,
             current_question_priority=current_question_priority,
+            narrative_sharing_decision=narrative_sharing_decision,
         )
         nq = _next_question(
             intent,
@@ -431,6 +434,48 @@ def _thread_is_established(context_pack: ContextPack) -> bool:
     )
 
 
+# Intent buckets the classifier drops uncategorizable content into. Memoir/story
+# content routinely lands here (chat 6688 live run: "he was in prison for 35 years"
+# → off_topic; "Never to be released and here he is" → spam_or_abuse; "he is free
+# and thriving…" → unclear). A confident, cue-based narrative signal overrides these
+# so the bot listens instead of redirecting/minimally-acknowledging. Real
+# buying/action intents (pricing, consultation, portfolio, contact, ready_to_buy,
+# service_question, …) are NOT in this set, so they are never hijacked.
+_NARRATIVE_OVERRIDABLE_INTENTS: frozenset[str] = frozenset(
+    {"unclear", "off_topic", "spam_or_abuse"}
+)
+
+
+def _is_confident_narrative_turn(
+    intent: IntentVote,
+    context_pack: ContextPack,
+    narrative_sharing_decision: Any | None,
+    current_question_priority: Any | None,
+) -> bool:
+    """True when a cue-based narrative signal should beat a low-signal intent label.
+
+    Deliberately stricter than the soft-goal gate at the tail of ``_primary_goal``:
+    it requires an explicit narrative cue (confidence >= 0.75, not a bare
+    long-declarative), an established thread, no live priority question, and one of
+    the "junk" intent buckets above. This is the robustness path — the intent
+    classifier is unreliable for memoir content, so a confident story signal wins
+    over its mislabel rather than depending on which junk goal it happened to pick.
+    """
+    if narrative_sharing_decision is None:
+        return False
+    if not getattr(narrative_sharing_decision, "is_narrative", False):
+        return False
+    if getattr(narrative_sharing_decision, "confidence", 0.0) < 0.75:
+        return False
+    if intent.query_primary.value not in _NARRATIVE_OVERRIDABLE_INTENTS:
+        return False
+    if not _thread_is_established(context_pack):
+        return False
+    if getattr(current_question_priority, "has_priority", False):
+        return False
+    return True
+
+
 def _primary_goal(
     intent: IntentVote,
     context_pack: ContextPack,
@@ -441,8 +486,17 @@ def _primary_goal(
     *,
     consultation_objective_decision: Any | None = None,
     current_question_priority: Any | None = None,
+    narrative_sharing_decision: Any | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
+    # Robustness path: a confident, cue-based narrative signal (chat 6688) beats a
+    # low-signal intent label. Computed once; applied only after the hard overrides
+    # below (active consultation scheduling, lead-created, safety/governance,
+    # attachment) so a genuine booking/action/safety turn always wins.
+    narrative_override = _is_confident_narrative_turn(
+        intent, context_pack, narrative_sharing_decision, current_question_priority
+    )
+
     # PR 2 — Consultation-first overrides (highest priority).
     if consultation_objective_decision is not None:
         cod_move = getattr(consultation_objective_decision, "objective_move", None)
@@ -451,6 +505,10 @@ def _primary_goal(
             return "consultation_handoff_confirmation"
         if cod_move == "ask_preferred_call_time":
             return "consultation_time_capture"
+        # A misclassified story turn beats the softer "answer then pivot to
+        # consultation" nudge, but NOT the active-scheduling moves handled above.
+        if narrative_override:
+            return "narrative_sharing"
         if cod_move == "answer_then_consultation":
             return "answer_current_question"
         if cod_goal:
@@ -497,6 +555,13 @@ def _primary_goal(
         if context_pack.assessment_type:
             return "assessment_handoff"
         return "attachment_received_assessment"
+
+    # Robustness path (no active consultation move above): a confident narrative
+    # signal beats the classifier's junk-bucket label (off_topic/spam_or_abuse/
+    # unclear) before it reaches the intent→goal map (e.g. spam_or_abuse →
+    # minimal_acknowledge) or lead_objective's soft answer/greeting recommendation.
+    if narrative_override:
+        return "narrative_sharing"
 
     # Step 3 (tone fix): honour recommended_primary_goal from lead_objective even
     # when stop_discovery=False (welcome-first and answer-before-ask rules).
@@ -558,7 +623,27 @@ def _primary_goal(
     # A bare greeting classified as GREETING must not re-welcome an established thread
     # via the fallthrough either; continue the conversation instead (chat 6211).
     if goal == "greeting_welcome" and _thread_is_established(context_pack):
-        return "continue_discovery"
+        goal = "continue_discovery"
+
+    # Narrative-sharing: the author is telling their story rather than asking for
+    # anything concrete. Replaces only the low-value "listening-adjacent" fallbacks —
+    # continue_discovery, gentle_clarify, and friendly_redirect — never a real buying
+    # intent (pricing/consultation/portfolio/contact map to their own goals above) nor
+    # answer_current_question (a genuine question still gets answered). The chat 6688
+    # live run showed the intent classifier mislabels memoir content as off_topic
+    # (→ friendly_redirect) and unclear (→ gentle_clarify), so those are exactly the
+    # goals real story turns land on. Gated to an established thread with no live
+    # priority question, keeping the bot listening instead of pushing scoping while the
+    # customer opens up.
+    if (
+        goal in {"continue_discovery", "gentle_clarify", "friendly_redirect"}
+        and narrative_sharing_decision is not None
+        and getattr(narrative_sharing_decision, "is_narrative", False)
+        and _thread_is_established(context_pack)
+        and not getattr(current_question_priority, "has_priority", False)
+    ):
+        return "narrative_sharing"
+
     return goal
 
 
@@ -647,6 +732,8 @@ def _next_question(
         return None  # Spam/abuse: short acknowledgment, no engagement
     if primary_goal == "friendly_redirect":
         return None  # Off-topic: warm redirect to BookCraft services
+    if primary_goal == "narrative_sharing":
+        return None  # Author is telling their story: listen, don't append a scoping ask
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if contact_capture_result is not None and contact_capture_result.lead_contact_ready:

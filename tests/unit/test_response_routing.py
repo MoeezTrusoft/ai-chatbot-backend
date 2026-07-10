@@ -31,7 +31,9 @@ class FakeResponseAdapter:
         user: str,
         output_model: type[BaseModel],
         purpose: str,
+        system_cache_suffix: str | None = None,
     ) -> BaseModel:
+        del system_cache_suffix
         self.calls.append({"system": system, "user": user, "purpose": purpose})
         return output_model.model_validate({"text": self.text})
 

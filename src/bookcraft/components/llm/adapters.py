@@ -71,11 +71,35 @@ class MockLLMAdapter:
         user: str,
         output_model: type[BaseModel],
         purpose: str,
+        system_cache_suffix: str | None = None,
     ) -> BaseModel:
-        del system, user
+        del system, user, system_cache_suffix
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
             return output_model.model_validate({})
+
+
+def _anthropic_system_payload(
+    system: str, suffix: str | None, cache_enabled: bool
+) -> object:
+    """Build the Anthropic ``system`` field.
+
+    When prompt caching is on, the stable ``system`` text is emitted as a single
+    ``cache_control`` block (the cached prefix), and any volatile ``suffix``
+    (e.g. the current date/time) is appended as a SEPARATE, uncached block so it
+    never invalidates the cached prefix.  When caching is off, the two are simply
+    concatenated so the model still sees identical content.
+    """
+    if cache_enabled:
+        blocks: list[dict[str, object]] = [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ]
+        if suffix:
+            blocks.append({"type": "text", "text": suffix})
+        return blocks
+    if suffix:
+        return f"{system}\n{suffix}"
+    return system
 
 
 @dataclass(slots=True)
@@ -96,6 +120,7 @@ class AnthropicAdapter:
         user: str,
         output_model: type[BaseModel],
         purpose: str,
+        system_cache_suffix: str | None = None,
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
@@ -108,18 +133,11 @@ class AnthropicAdapter:
             if self.prompt_cache_enabled:
                 headers["anthropic-beta"] = "prompt-caching-2024-07-31"
 
-            # System prompt: plain string, or cache-control block when caching
-            # is enabled so Anthropic stores it across requests.
-            if self.prompt_cache_enabled:
-                system_payload: object = [
-                    {
-                        "type": "text",
-                        "text": system,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ]
-            else:
-                system_payload = system
+            # Stable system text is cached; the volatile suffix (date/time) is a
+            # separate, uncached block so it never breaks the cached prefix.
+            system_payload = _anthropic_system_payload(
+                system, system_cache_suffix, self.prompt_cache_enabled
+            )
 
             # Build a per-call timeout that respects the instance read_timeout.
             # The shared client has its own default timeout; we pass an explicit
@@ -153,6 +171,7 @@ class AnthropicAdapter:
         messages: list[dict[str, object]],
         max_tokens: int = 1024,
         purpose: str = "response_stream",
+        system_cache_suffix: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream plain text deltas from the Anthropic Messages streaming API.
 
@@ -177,19 +196,11 @@ class AnthropicAdapter:
         if self.prompt_cache_enabled:
             headers["anthropic-beta"] = "prompt-caching-2024-07-31"
 
-        # System prompt: plain string, or cache-control block when caching is
-        # enabled — mirrors structured() so a streaming call shares the same
-        # cached prefix as the non-streaming one.
-        if self.prompt_cache_enabled:
-            system_payload: object = [
-                {
-                    "type": "text",
-                    "text": system,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-        else:
-            system_payload = system
+        # Mirrors structured() so a streaming call shares the same cached prefix:
+        # stable system text cached, volatile suffix (date/time) uncached.
+        system_payload = _anthropic_system_payload(
+            system, system_cache_suffix, self.prompt_cache_enabled
+        )
 
         call_timeout = httpx.Timeout(
             connect=10.0,
@@ -235,7 +246,12 @@ class OpenAIAdapter:
         user: str,
         output_model: type[BaseModel],
         purpose: str,
+        system_cache_suffix: str | None = None,
     ) -> BaseModel:
+        # OpenAI-style APIs have no prompt-cache block; fold any suffix into the
+        # system message so the model still sees identical content.
+        if system_cache_suffix:
+            system = f"{system}\n{system_cache_suffix}"
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
             client = await get_shared_client(read_timeout=self.read_timeout)
@@ -324,9 +340,21 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
     if isinstance(payload, dict) and "content" in payload:
         content = payload["content"]
         if isinstance(content, list) and content:
-            first = content[0]
-            if isinstance(first, dict) and isinstance(first.get("text"), str):
-                payload = _loads_json_object(first["text"])
+            # Select the first block that actually carries text. With extended
+            # thinking, content[0] is a {"type": "thinking", ...} block (no "text"
+            # key), so assuming index 0 fails to parse and the raw envelope leaks
+            # into model_validate. Scan for the text block instead (chat 6688 run:
+            # claude-sonnet-5 emitted thinking blocks and every turn fell to retry).
+            text_block = next(
+                (
+                    block
+                    for block in content
+                    if isinstance(block, dict) and isinstance(block.get("text"), str)
+                ),
+                None,
+            )
+            if text_block is not None:
+                payload = _loads_json_object(text_block["text"])
     if isinstance(payload, dict) and "choices" in payload:
         content = payload["choices"][0]["message"]["content"]
         payload = _loads_json_object(content)

@@ -113,6 +113,13 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
         "Acknowledge the concern directly and empathetically. Do not dismiss or redirect. "
         "Offer a human or specialist consultation. Never ask a scoping question on this turn."
     ),
+    "narrative_sharing": (
+        "The author is telling you their story or personal history. Listen. "
+        "Reflect back ONE specific, human detail they just shared, with genuine warmth. "
+        "Do NOT ask a scoping question, pitch a consultation, quote pricing, or ask for "
+        "contact details this turn. At most, ask ONE gentle, curious question about the "
+        "story itself, or simply acknowledge and invite them to keep going."
+    ),
     "gentle_clarify": (
         "Ask exactly one warm, open clarifying question. "
         "Do not attempt to scope the project or sell. Keep it brief and human."

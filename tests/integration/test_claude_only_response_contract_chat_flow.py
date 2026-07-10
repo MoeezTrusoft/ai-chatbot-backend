@@ -34,8 +34,10 @@ class FakeClaudeAdapter(LLMProvider):
         self.calls: list[dict[str, Any]] = []
 
     async def structured(
-        self, *, system: str, user: str, output_model: type[GeneratedResponseText], purpose: str
+        self, *, system: str, user: str, output_model: type[GeneratedResponseText], purpose: str,
+        system_cache_suffix: str | None = None,
     ) -> GeneratedResponseText:
+        del system_cache_suffix
         self.calls.append({"system": system, "user": user, "purpose": purpose})
         return output_model(text=self.text)
 

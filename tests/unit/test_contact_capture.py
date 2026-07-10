@@ -42,3 +42,19 @@ def test_name_and_email_is_ready() -> None:
     assert r.lead_contact_ready is True   # name + email = ready
     assert "phone" in r.missing_contact_fields   # phone still asked as supplementary
     assert "email_or_phone" not in r.missing_contact_fields
+
+
+def test_burst_merged_name_does_not_bleed_into_next_line() -> None:
+    # chat 6688: rapid messages are newline-joined before extraction, and the name
+    # pattern's `\s+` separator matched across the newline, capturing the next
+    # line's first word ("Deborah Houston\nHe"). The name must stay clean.
+    r = ContactCaptureDetector().extract(
+        "My name is Deborah Houston\nHe was in prison for 35 years"
+    )
+    assert r.contact.name == "Deborah Houston"
+    assert "\n" not in (r.contact.name or "")
+
+
+def test_multi_word_name_across_newline_is_truncated_to_first_line() -> None:
+    r = ContactCaptureDetector().extract("this is Sarah Khan\nAnd she wrote a memoir")
+    assert r.contact.name == "Sarah Khan"

@@ -65,10 +65,12 @@ def test_system_prompt_includes_current_date_and_past_rule() -> None:
     assert "2026-06-22" in line
     assert "past" in line.lower()
 
-    prompt = _response_system_prompt(now=now)
-    assert "June 22, 2026" in prompt
-    # The date block is wired in ahead of the consultation flow.
-    assert "Current date and time" in prompt
+    # The date/time is delivered as a SEPARATE, uncached system block (passed as
+    # `system_cache_suffix`) so the cached system prefix stays byte-stable for
+    # prompt caching — it must NOT be embedded in `_response_system_prompt`.
+    prompt = _response_system_prompt()
+    assert "Current date and time" not in prompt
+    assert "June 22, 2026" not in prompt
 
 
 def test_current_datetime_line_defaults_to_now() -> None:

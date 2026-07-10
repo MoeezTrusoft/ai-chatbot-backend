@@ -106,6 +106,23 @@ def _is_fake_name(name: str) -> bool:
     return is_non_name_token(name)
 
 
+def _normalize_captured_name(raw: str) -> str:
+    """Collapse a captured name to a single clean line.
+
+    Rapid customer messages are burst-merged newline-joined before extraction
+    ("My name is Deborah Houston\nHe was in prison..."), and the name patterns'
+    ``\\s+`` word separator matches across that newline — over-capturing the next
+    line's first word ("Deborah Houston\nHe"). ``str.strip()`` only trims the
+    ends, so the interior newline survives and rides into ``contact_info`` and the
+    CSR lead payload (chat 6688). Keep only the first line and collapse interior
+    whitespace so the persisted name never carries a trailing sentence fragment.
+    """
+    if not raw:
+        return raw
+    first_line = raw.splitlines()[0]
+    return re.sub(r"\s+", " ", first_line).strip()
+
+
 # ---------------------------------------------------------------------------
 # Bare-block contact name extractor
 # ---------------------------------------------------------------------------
@@ -139,6 +156,14 @@ def _extract_bare_contact_name(
     prefix = text[:first_marker_index].strip(" ,:-|\t")
     if not prefix:
         return None
+
+    # A bare contact block puts the name on the SAME line as the email/phone. When
+    # rapid messages are burst-merged (newline-joined), earlier lines precede the
+    # marker too — keep only the line adjacent to the marker so an unrelated prior
+    # sentence never bleeds into the name.
+    prefix_lines = [ln for ln in prefix.splitlines() if ln.strip()]
+    if prefix_lines:
+        prefix = prefix_lines[-1].strip(" ,:-|\t")
 
     # Extract word-like tokens (letters, hyphens, apostrophes, dots for initials).
     words = re.findall(r"[A-Za-z][A-Za-z.'\-]*", prefix)
@@ -210,7 +235,7 @@ class ContactCaptureDetector:
         for pattern in _NAME_PATTERNS:
             m = pattern.search(text)
             if m:
-                candidate = m.group(1).strip()
+                candidate = _normalize_captured_name(m.group(1))
                 if not _is_fake_name(candidate):
                     name = candidate
                     audit.append(f"name_found:{name}")

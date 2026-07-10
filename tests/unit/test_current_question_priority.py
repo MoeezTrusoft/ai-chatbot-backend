@@ -92,3 +92,20 @@ def test_priority_result_has_audit(detector: CurrentQuestionPriorityDetector) ->
     result = detector.detect("How much does editing cost?")
     assert result.has_priority is True
     assert any("matched:" in a for a in result.audit)
+
+
+def test_optout_and_story_turns_carry_no_priority() -> None:
+    """chat 6688: after an early pricing question, later opt-out/story turns must
+    report has_priority=False. ChatService relies on this to CLEAR the latched
+    current_question_type so the bot stops re-pushing pricing every turn."""
+    detector = CurrentQuestionPriorityDetector()
+    for message in (
+        "I will get back to you. I am checking all options",
+        "Thank you your company is 1st option as of now",
+        "He was in prison for 35 years",
+        "My husband has a very great story to tell",
+        "Thank you again",
+    ):
+        result = detector.detect(message)
+        assert result.has_priority is False, message
+        assert result.question_type is None

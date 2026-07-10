@@ -606,3 +606,166 @@ def test_thread_is_established_signals() -> None:
     created = _pack()
     created.lead_created = True
     assert _thread_is_established(created) is True
+
+
+# ---------------------------------------------------------------------------
+# Narrative-sharing goal (chat 6688): stay in listening mode while the author
+# tells their story instead of pushing scoping/consultation.
+# ---------------------------------------------------------------------------
+
+
+def _narrative(is_narrative: bool = True):
+    from bookcraft.components.sales.narrative_sharing import NarrativeSharingResult
+
+    return NarrativeSharingResult(is_narrative=is_narrative, confidence=0.9)
+
+
+def _priority(has_priority: bool, question_type: str | None = None):
+    from bookcraft.components.sales.current_question_priority import (
+        CurrentQuestionPriorityResult,
+    )
+
+    return CurrentQuestionPriorityResult(
+        has_priority=has_priority, question_type=question_type
+    )
+
+
+def test_narrative_sharing_overrides_friendly_redirect_on_established_thread() -> None:
+    # chat 6688: the intent classifier mislabels memoir content ("he was in prison for
+    # 35 years") as off_topic → friendly_redirect. Narrative-sharing must win there so
+    # the bot listens instead of redirecting.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.OFF_TOPIC),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "narrative_sharing"
+    # Listening turns never append a scoping/contact question.
+    assert plan.next_question is None
+
+
+def test_narrative_sharing_overrides_gentle_clarify_on_established_thread() -> None:
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.UNCLEAR),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "narrative_sharing"
+
+
+def test_narrative_sharing_suppressed_when_priority_question_live() -> None:
+    # If the same turn also carries a real question, answer it — don't just listen.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.UNCLEAR),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),
+        current_question_priority=_priority(True, "pricing"),
+    )
+    assert plan.primary_goal != "narrative_sharing"
+
+
+def test_narrative_sharing_not_on_fresh_thread() -> None:
+    # A brand-new visitor with no established context is not yet "sharing a story".
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.OFF_TOPIC),
+        state=ThreadState(),
+        context_pack=_pack(),
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal != "narrative_sharing"
+
+
+def test_narrative_sharing_does_not_hijack_answer_current_question() -> None:
+    # A genuine service question still gets answered, even if the narrative flag is set.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.SERVICE_QUESTION),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "answer_current_question"
+
+
+def test_narrative_sharing_does_not_hijack_real_buying_intent() -> None:
+    # A pricing question maps to its own goal even if the narrative flag is set.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.PRICING_QUESTION),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "pricing_scoping"
+
+
+# ---------------------------------------------------------------------------
+# Narrative-sharing robustness path (chat 6688): a confident, cue-based story
+# signal beats the classifier's junk-bucket mislabel (off_topic/spam/unclear),
+# even when a higher-priority override would otherwise pick a scoping/consultation
+# goal — but active consultation scheduling and real action intents still win.
+# ---------------------------------------------------------------------------
+
+
+class _Cod:
+    def __init__(self, objective_move=None, recommended_primary_goal=None):
+        self.objective_move = objective_move
+        self.recommended_primary_goal = recommended_primary_goal
+
+
+def test_confident_narrative_overrides_spam_misclassification() -> None:
+    # "Never to be released and here he is" was classified spam_or_abuse in the run.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.SPAM_OR_ABUSE),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=_narrative(True),  # confidence 0.9
+    )
+    assert plan.primary_goal == "narrative_sharing"
+
+
+def test_confident_narrative_beats_answer_then_consultation() -> None:
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.OFF_TOPIC),
+        state=ThreadState(),
+        context_pack=pack,
+        consultation_objective_decision=_Cod(objective_move="answer_then_consultation"),
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "narrative_sharing"
+
+
+def test_active_consultation_scheduling_beats_narrative() -> None:
+    # A booking in progress must win — listening must not derail scheduling.
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.OFF_TOPIC),
+        state=ThreadState(),
+        context_pack=pack,
+        consultation_objective_decision=_Cod(objective_move="ask_preferred_call_time"),
+        narrative_sharing_decision=_narrative(True),
+    )
+    assert plan.primary_goal == "consultation_time_capture"
+
+
+def test_low_confidence_narrative_does_not_take_override_path() -> None:
+    # A bare long-declarative (confidence 0.6) is not enough to beat the classifier;
+    # spam_or_abuse then stays minimal_acknowledge (no soft-goal gate for it either).
+    from bookcraft.components.sales.narrative_sharing import NarrativeSharingResult
+
+    pack = _pack(active_service="ghostwriting")
+    plan = _planner.plan(
+        intent=_intent(query=QueryIntentType.SPAM_OR_ABUSE),
+        state=ThreadState(),
+        context_pack=pack,
+        narrative_sharing_decision=NarrativeSharingResult(is_narrative=True, confidence=0.6),
+    )
+    assert plan.primary_goal == "minimal_acknowledge"

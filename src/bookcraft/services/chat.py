@@ -87,6 +87,7 @@ from bookcraft.components.sales import (
     AnswerBeforeCapturePolicy,
     ConsultationObjectiveEngine,
     CurrentQuestionPriorityDetector,
+    NarrativeSharingDetector,
 )
 from bookcraft.components.sales.consultation_state import (
     ConsultationStage,
@@ -227,6 +228,10 @@ class ChatService:
     )
     answer_before_capture_policy: AnswerBeforeCapturePolicy = field(
         default_factory=AnswerBeforeCapturePolicy
+    )
+    # Narrative-sharing: keep the bot listening when the author is telling their story.
+    narrative_sharing_detector: NarrativeSharingDetector = field(
+        default_factory=NarrativeSharingDetector
     )
     consultation_require_phone: bool = True
     consultation_objective_engine: ConsultationObjectiveEngine = field(
@@ -859,6 +864,11 @@ class ChatService:
                 priority=current_question_priority,
                 contact_ready=contact_capture.lead_contact_ready,
             )
+            # Narrative-sharing: is the author telling their story rather than asking
+            # to transact? Feeds the planner's listening-mode goal (chat 6688).
+            narrative_sharing_decision = self.narrative_sharing_detector.detect(
+                payload.message
+            )
             # Capture the prior-turn consultation stage BEFORE any engine overwrites it
             # this turn, so the once-only phone ask (reduce_consultation_state) is
             # loop-safe across turns and the two intra-turn reducer passes.
@@ -877,11 +887,20 @@ class ChatService:
                     consultation_objective_decision.extracted_preferred_call_time
                 )
             # Track current question type and answer-before-capture flag in state.
+            # These are PER-TURN steering signals: pack_builder injects "User asked a
+            # priority question (…) — answer it first" every turn they are set. They
+            # must therefore be CLEARED on any turn that carries no fresh priority
+            # question; otherwise a single early "how much?" latches
+            # current_question_type="pricing" for the whole thread and the bot keeps
+            # re-pushing pricing long after the customer opted out (chat 6688).
             if current_question_priority.has_priority:
                 state.current_question_type = current_question_priority.question_type
                 state.answer_before_capture_applied = (
                     answer_before_capture_decision.suppress_contact_until_answered
                 )
+            else:
+                state.current_question_type = None
+                state.answer_before_capture_applied = False
             # Sync consultation_stage from decision.
             if consultation_objective_decision.stage:
                 state.consultation_stage = consultation_objective_decision.stage
@@ -1259,6 +1278,7 @@ class ChatService:
                 consultation_objective_decision=consultation_objective_decision,
                 current_question_priority=current_question_priority,
                 answer_before_capture_decision=answer_before_capture_decision,
+                narrative_sharing_decision=narrative_sharing_decision,
                 attachment_priority_decision=attachment_priority_decision,
                 context_enforcement=context_enforcement_decision,
                 complaint_classification=complaint_classification,
