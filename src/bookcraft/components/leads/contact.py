@@ -16,6 +16,7 @@ from bookcraft.components.leads.contact_utils import (
     is_non_name_token,
     is_real_contact_value,
     is_valid_phone,
+    strip_name_glue_tokens,
 )
 
 # ---------------------------------------------------------------------------
@@ -168,8 +169,15 @@ def _extract_bare_contact_name(
     # Extract word-like tokens (letters, hyphens, apostrophes, dots for initials).
     words = re.findall(r"[A-Za-z][A-Za-z.'\-]*", prefix)
 
-    # Too many words → looks like a sentence, not a name.
+    # Too many words → looks like a sentence, not a name. (Checked on the RAW
+    # tokens so a long sentence can't slip through after glue-word stripping.)
     if not (1 <= len(words) <= 5):
+        return None
+
+    # Drop connective/filler tokens ("Trinity and <email>" → "Trinity") so a
+    # glue word never rides into the saved name (chat 6759).
+    words = strip_name_glue_tokens(words)
+    if not words:
         return None
 
     # Must start with a capital letter (proper name convention).

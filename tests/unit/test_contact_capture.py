@@ -58,3 +58,27 @@ def test_burst_merged_name_does_not_bleed_into_next_line() -> None:
 def test_multi_word_name_across_newline_is_truncated_to_first_line() -> None:
     r = ContactCaptureDetector().extract("this is Sarah Khan\nAnd she wrote a memoir")
     assert r.contact.name == "Sarah Khan"
+
+
+def test_connective_and_does_not_ride_into_bare_block_name() -> None:
+    # chat 6759: "Trinity and <email>" was saved as the name "Trinity and" — the
+    # bare-block extractor joined the connective "and". The glue word must be
+    # stripped so only the real name survives.
+    for msg in (
+        "Trinity and @redqueenrulz2012@gmail.com",
+        "Trinity and redqueenrulz2012@gmail.com",
+        "Trinity, email redqueenrulz2012@gmail.com",
+    ):
+        r = ContactCaptureDetector().extract(msg)
+        assert r.contact.name == "Trinity", msg
+        assert r.contact.email == "redqueenrulz2012@gmail.com", msg
+
+
+def test_bare_block_multi_word_names_still_intact() -> None:
+    # Regression guard: glue-word stripping must not truncate genuine names.
+    for msg, expect in (
+        ("John Smith john@example.com 5551234567", "John Smith"),
+        ("Mary Anne mary@x.com", "Mary Anne"),
+        ("Deborah Houston, my email is deb@x.com", "Deborah Houston"),
+    ):
+        assert ContactCaptureDetector().extract(msg).contact.name == expect, msg

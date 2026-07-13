@@ -50,6 +50,30 @@ _NON_NAME_WORDS: frozenset[str] = frozenset(
     }
 )
 
+# Connective / filler tokens that glue a name to contact info in a bare block —
+# "Trinity and <email>", "John, my email is ...". A real personal name contains
+# none of these, so they are safe to strip anywhere in the token list (chat 6759,
+# where "Trinity and <email>" was saved as the name "Trinity and").
+_NAME_GLUE_WORDS: frozenset[str] = frozenset(
+    {
+        "and", "or", "plus", "also", "then",
+        "email", "e-mail", "mail", "phone", "cell", "mobile", "number", "no",
+        "is", "are", "am", "here", "its", "it", "contact", "reach", "me",
+        "name", "named", "call", "at",
+    }
+)
+
+
+def strip_name_glue_tokens(tokens: list[str]) -> list[str]:
+    """Drop connective/filler tokens so they never ride into a captured name.
+
+    Preserves order; leaves genuine name tokens untouched. Combines the glue
+    words above with the leading-filler ``_NON_NAME_WORDS`` set so a token like
+    "my" or "the" is dropped too.
+    """
+    drop = _NAME_GLUE_WORDS | _NON_NAME_WORDS
+    return [t for t in tokens if t.lower().strip(".") not in drop]
+
 # A year/era range such as "1770-1810" — a historical period, never a phone number.
 _YEAR_RANGE_RE = re.compile(r"\b(1[5-9]\d{2}|20\d{2})\s*(?:[-–—]|to)\s*(1[5-9]\d{2}|20\d{2})\b")
 
