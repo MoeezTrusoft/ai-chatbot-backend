@@ -349,6 +349,17 @@ class ContextPackBuilder:
         # Use sentinel-aware helpers so redacted placeholders never look "ready".
         contact_capture_status = contact_status_from_dict(contact_info)
         contact_complete = contact_is_complete(contact_info)
+        contact_status = dict(getattr(state, "contact_status", {}) or {})
+        # When the customer said a channel is unavailable, forbid re-asking for it
+        # so neither the planner nor the LLM solicits it again (chat 6759).
+        if contact_status.get("phone") == "unavailable":
+            _label = "phone number (customer said their phone is unavailable — do not ask for it)"
+            if _label not in forbidden_reasks:
+                forbidden_reasks.append(_label)
+        if contact_status.get("email") == "unavailable":
+            _label = "email (customer said email is unavailable — do not ask for it)"
+            if _label not in forbidden_reasks:
+                forbidden_reasks.append(_label)
 
         # Suppress manuscript_stage re-ask when status is already known.
         if manuscript_status:
@@ -589,6 +600,7 @@ class ContextPackBuilder:
             manuscript_upload_eligible=manuscript_upload_eligible,
             contact_capture_status=contact_capture_status,
             contact_complete=contact_complete,
+            contact_status=contact_status,
             lead_created=lead_created,
             genre_status=genre_status,
             genre_candidates=genre_candidates,

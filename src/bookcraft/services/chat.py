@@ -50,6 +50,7 @@ from bookcraft.components.leads import (
     LeadIntakePayload,
     LeadObjectiveEngine,
 )
+from bookcraft.components.leads.contact_availability import ContactAvailabilityDetector
 from bookcraft.components.leads.contact_recovery import (
     user_claims_already_shared,
     user_has_complaint_or_privacy_concern,
@@ -120,7 +121,12 @@ from bookcraft.components.trg.schemas import (
 )
 from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.components.trimatch.schemas import TriMatchResult
-from bookcraft.domain.enums import QueryIntentType, ServiceCategory, Source
+from bookcraft.domain.enums import (
+    ContactFieldStatus,
+    QueryIntentType,
+    ServiceCategory,
+    Source,
+)
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
 from bookcraft.infra.observability import STAGE_LATENCY
@@ -221,6 +227,11 @@ class ChatService:
         default_factory=AttachmentIntakeProcessor
     )
     contact_capture_detector: ContactCaptureDetector = field(default_factory=ContactCaptureDetector)
+    # Detects "I can't use my phone / email only" so the bot stops demanding a
+    # channel the customer said is unavailable (chat 6759).
+    contact_availability_detector: ContactAvailabilityDetector = field(
+        default_factory=ContactAvailabilityDetector
+    )
     lead_objective_engine: LeadObjectiveEngine = field(default_factory=LeadObjectiveEngine)
     # PR 2: consultation-first sales planner engines.
     current_question_priority_detector: CurrentQuestionPriorityDetector = field(
@@ -869,6 +880,35 @@ class ChatService:
             narrative_sharing_decision = self.narrative_sharing_detector.detect(
                 payload.message
             )
+            # Contact availability: did the customer say a channel is unavailable
+            # ("my phone is unable to be used, email only" — chat 6759)? Persist a
+            # sticky per-field status so the bot stops re-asking a channel it can't
+            # get. Tri-state per field: given (captured) / not_given (default, keep
+            # asking) / unavailable (customer can't provide — stop asking).
+            _availability = self.contact_availability_detector.detect(payload.message)
+            _contact_status: dict[str, str] = dict(getattr(state, "contact_status", {}) or {})
+            for _field, _has in (
+                ("name", contact_capture.has_name),
+                ("email", contact_capture.has_email),
+                ("phone", contact_capture.has_phone),
+            ):
+                if _has:
+                    _contact_status[_field] = ContactFieldStatus.GIVEN.value
+                elif _contact_status.get(_field) == ContactFieldStatus.GIVEN.value:
+                    # Was captured before but merge lost it this turn — keep GIVEN.
+                    pass
+                else:
+                    _contact_status.setdefault(_field, ContactFieldStatus.NOT_GIVEN.value)
+            # "unavailable" is sticky and never downgraded (unless the field is later
+            # actually captured, handled by the GIVEN branch above).
+            if _availability.phone_unavailable and not contact_capture.has_phone:
+                _contact_status["phone"] = ContactFieldStatus.UNAVAILABLE.value
+            if _availability.email_unavailable and not contact_capture.has_email:
+                _contact_status["email"] = ContactFieldStatus.UNAVAILABLE.value
+            state.contact_status = _contact_status
+            _phone_unavailable = (
+                _contact_status.get("phone") == ContactFieldStatus.UNAVAILABLE.value
+            )
             # Capture the prior-turn consultation stage BEFORE any engine overwrites it
             # this turn, so the once-only phone ask (reduce_consultation_state) is
             # loop-safe across turns and the two intra-turn reducer passes.
@@ -880,6 +920,7 @@ class ChatService:
                 contact_capture=contact_capture,
                 current_question_priority=current_question_priority,
                 require_phone=self.consultation_require_phone,
+                phone_unavailable=_phone_unavailable,
             )
             # Apply extracted preferred_call_time to state if found this turn.
             if consultation_objective_decision.extracted_preferred_call_time:
@@ -986,6 +1027,7 @@ class ChatService:
                 has_email=contact_capture.has_email,
                 has_phone=contact_capture.has_phone,
                 require_phone=self.consultation_require_phone,
+                phone_unavailable=_phone_unavailable,
                 prior_stage=_prior_consultation_stage,
             )
             if consultation_state_decision.can_schedule and not _is_confirmed_pending:
@@ -1025,6 +1067,7 @@ class ChatService:
                 has_email=contact_capture.has_email,
                 has_phone=contact_capture.has_phone,
                 require_phone=self.consultation_require_phone,
+                phone_unavailable=_phone_unavailable,
                 prior_stage=_prior_consultation_stage,
             )
             state.consultation_stage = str(consultation_state_decision.stage)
@@ -1389,7 +1432,9 @@ class ChatService:
                     update={"normalized": rag_query.query_text}
                 )
                 try:
-                    rag_chunks = await self.rag_retriever.retrieve(processed_for_rag, intent)
+                    rag_chunks = await self.rag_retriever.retrieve(
+                        processed_for_rag, intent, top_k=_rag_top_k_for_intent(intent)
+                    )
                     rag_status = "success" if rag_chunks else "empty"
                 except Exception as exc:
                     rag_status = "failed"
@@ -3971,14 +4016,59 @@ def _enum_value(value: object | None) -> str | None:
     return str(enum_value if enum_value is not None else value)
 
 
-def _allow_rag_for_intent(intent: IntentVote) -> bool:
-    return intent.query_primary not in {
+# Intents that must NEVER pull RAG grounding: quote/portfolio/legal flows answer
+# from engines and structured data, and pure conversational/meta/off-topic turns
+# have nothing to ground against. Retrieving broad service docs for these is the
+# main source of context bleed and hallucination (chat 6759: a distribution query
+# and later contact/meta turns pulled unrelated grounding).
+_RAG_SKIP_INTENTS: frozenset[QueryIntentType] = frozenset(
+    {
         QueryIntentType.PRICING_QUESTION,
         QueryIntentType.TIMELINE_QUESTION,
         QueryIntentType.PORTFOLIO_REQUEST,
         QueryIntentType.NDA_REQUEST,
         QueryIntentType.AGREEMENT_REQUEST,
+        QueryIntentType.GREETING,
+        QueryIntentType.OFF_TOPIC,
+        QueryIntentType.SPAM_OR_ABUSE,
+        QueryIntentType.CONTACT_INFO_PROVIDED,
     }
+)
+
+# Service-detail intents that genuinely benefit from broad grounding — keep the
+# full retrieval breadth so the model has the facts to answer accurately.
+_RAG_BROAD_INTENTS: frozenset[QueryIntentType] = frozenset(
+    {
+        QueryIntentType.SERVICE_QUESTION,
+        QueryIntentType.PUBLISHING_PLATFORM_QUESTION,
+        QueryIntentType.REVISION_QUESTION,
+        QueryIntentType.PAYMENT_QUESTION,
+    }
+)
+
+_RAG_TOP_K_BROAD = 8
+_RAG_TOP_K_NARROW = 3
+
+
+def _rag_top_k_for_intent(intent: IntentVote) -> int:
+    """Intent-derived RAG breadth. 0 means skip retrieval entirely.
+
+    Service-detail questions get the full breadth; a turn that named a concrete
+    service (``service_primary``) is also treated as broad since retrieval is
+    already hard-filtered to that category. Everything else that still touches RAG
+    (e.g. ``unclear``, ``ready_to_buy``, ``consultation_request``,
+    ``manuscript_status_update``, ``complaint_or_objection``) gets a narrow pull so
+    a stray doc can't dominate the prompt and drive a hallucination.
+    """
+    if intent.query_primary in _RAG_SKIP_INTENTS:
+        return 0
+    if intent.query_primary in _RAG_BROAD_INTENTS or intent.service_primary is not None:
+        return _RAG_TOP_K_BROAD
+    return _RAG_TOP_K_NARROW
+
+
+def _allow_rag_for_intent(intent: IntentVote) -> bool:
+    return _rag_top_k_for_intent(intent) > 0
 
 
 def _document_status_message(intent: IntentVote) -> str | None:

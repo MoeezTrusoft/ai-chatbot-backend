@@ -108,6 +108,7 @@ class ConsultationObjectiveEngine:
         contact_capture: Any | None = None,  # ContactCaptureResult
         current_question_priority: CurrentQuestionPriorityResult | None = None,
         require_phone: bool = False,
+        phone_unavailable: bool = False,
     ) -> ConsultationObjectiveDecision:
         audit: list[str] = []
 
@@ -156,6 +157,7 @@ class ConsultationObjectiveEngine:
             require_phone
             and contact_ready
             and not _has_phone
+            and not phone_unavailable  # customer said phone can't be used — don't re-ask (chat 6759)
             and not handoff_created
             and lod_move not in {"create_lead"}
             and not _is_manuscript_update
@@ -180,7 +182,7 @@ class ConsultationObjectiveEngine:
             contact_ready
             and preferred_call_time
             and _has_definite_time
-            and (not require_phone or _has_phone)
+            and (not require_phone or _has_phone or phone_unavailable)
             and not handoff_created
             and lod_move not in {"create_lead"}
         ):

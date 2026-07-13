@@ -167,14 +167,21 @@ class LeadObjectiveEngine:
                 contact_capture_arg is not None and contact_capture_arg.contact_complete
             )
             _second_already_requested = getattr(state, "contact_second_method_requested", False)
-            if not _contact_complete and not _second_already_requested:
-                audit.append("signal:contact_enrichment_opportunity")
-                # Determine which method is missing from contact_capture.missing_contact_fields.
-                _missing = (
+            # A field the customer said is unavailable ("no phone", "email only" —
+            # chat 6759) must not be solicited even once: drop unavailable fields
+            # from the "missing second method" ask.
+            _status = getattr(state, "contact_status", {}) or {}
+            _missing = [
+                f
+                for f in (
                     contact_capture_arg.missing_contact_fields
                     if contact_capture_arg is not None
                     else []
                 )
+                if _status.get(f) != "unavailable"
+            ]
+            if not _contact_complete and not _second_already_requested and _missing:
+                audit.append("signal:contact_enrichment_opportunity")
                 _next_q = "missing_phone" if "phone" in _missing else "missing_email"
                 return LeadObjectiveDecision(
                     stage="lead_created",

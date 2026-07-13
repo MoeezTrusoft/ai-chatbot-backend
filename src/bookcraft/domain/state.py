@@ -211,6 +211,10 @@ class ThreadState(BaseModel):
     # Lead objective state (Phase 13 / PR 2).
     lead_objective_stage: str | None = None
     contact_info: dict[str, Any] = Field(default_factory=dict)
+    # Per-field capture status: name/email/phone → given | not_given | unavailable.
+    # Only "not_given" keeps the bot asking; "unavailable" (customer said they can't
+    # provide it) is sticky and lets a consultation proceed on the other channel.
+    contact_status: dict[str, str] = Field(default_factory=dict)
     lead_created: bool = False
     lead_id: str | None = None
     lead_intake_payload: dict[str, Any] = Field(default_factory=dict)

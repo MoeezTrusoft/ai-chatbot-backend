@@ -132,6 +132,22 @@ class ContactMethod(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ContactFieldStatus(StrEnum):
+    """Capture status for a single contact field (name / email / phone).
+
+    Only ``NOT_GIVEN`` should keep the bot soliciting the field. ``GIVEN`` means it
+    was captured; ``UNAVAILABLE`` means the customer explicitly said they can't or
+    won't provide it (e.g. "my phone is unable to be used" — chat 6759). Both
+    ``GIVEN`` and ``UNAVAILABLE`` stop the bot from re-asking; ``UNAVAILABLE`` also
+    lets a consultation proceed on the remaining channel (email) instead of
+    hard-blocking on a phone the customer told us not to expect.
+    """
+
+    NOT_GIVEN = "not_given"
+    GIVEN = "given"
+    UNAVAILABLE = "unavailable"
+
+
 class ToolClass(StrEnum):
     READ = "read"
     WRITE_STATE = "write_state"

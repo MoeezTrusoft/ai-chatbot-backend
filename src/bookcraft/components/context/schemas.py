@@ -57,6 +57,9 @@ class ContextPack(BaseModel):
     manuscript_upload_eligible: bool = False
     contact_capture_status: str | None = None
     contact_complete: bool = False  # name + email + phone all present
+    # Per-field capture status (name/email/phone → given|not_given|unavailable).
+    # A field marked "unavailable" must not be re-solicited (chat 6759).
+    contact_status: dict[str, str] = Field(default_factory=dict)
     lead_created: bool = False
     # Coherence / assumption-guard fields (PR: conversation-coherence).
     genre_status: str | None = None  # "uncertain" | "confirmed" | None

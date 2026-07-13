@@ -851,6 +851,11 @@ def _contact_next_question(context_pack: ContextPack) -> str:
     has_name = "personal.name" in known_paths
     has_phone = "personal.phone" in known_paths
     has_email = "personal.email" in known_paths
+    # A channel the customer said is unavailable ("no phone", "email only" — chat
+    # 6759) must never be re-solicited, not even as a supplementary ask.
+    _status = context_pack.contact_status or {}
+    phone_unavailable = _status.get("phone") == "unavailable"
+    email_unavailable = _status.get("email") == "unavailable"
 
     if not has_name:
         return "name_and_email_or_phone"
@@ -863,12 +868,12 @@ def _contact_next_question(context_pack: ContextPack) -> str:
     # Ask for the supplementary method (phone if only email, email if only phone)
     # but do NOT block progression — if the stop_discovery path reaches here it
     # means the planner already decided to move forward.
-    if has_email and not has_phone:
+    if has_email and not has_phone and not phone_unavailable:
         # Email captured, phone missing — ask for phone as a supplementary.
         # Return missing_phone so the bot asks once, but this path is non-blocking
         # (contact_capture_result.lead_contact_ready is already True).
         return "missing_phone"
-    if has_phone and not has_email:
+    if has_phone and not has_email and not email_unavailable:
         return "missing_email"
 
     # Both captured — move to call time.

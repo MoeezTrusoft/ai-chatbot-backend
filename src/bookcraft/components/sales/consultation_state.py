@@ -173,6 +173,7 @@ def reduce_consultation_state(
     has_email: bool = False,
     has_phone: bool = False,
     require_phone: bool = False,
+    phone_unavailable: bool = False,
     prior_stage: Any | None = None,
 ) -> ConsultationStateDecision:
     """Reduce all consultation signals into a single deterministic decision.
@@ -322,7 +323,12 @@ def reduce_consultation_state(
     # email-only). Block scheduling — keep asking for the phone — until one is present.
     # This is a hard gate: can_schedule stays False and we never reach READY_TO_SCHEDULE
     # without a phone, so no booking is created without it.
-    if require_phone and not has_phone:
+    # EXCEPTION: when the customer has told us their phone is unavailable (chat 6759),
+    # stop demanding it and let the booking proceed on email — re-asking a channel the
+    # customer said they can't use reads as not listening and stalls the flow forever.
+    if require_phone and not has_phone and phone_unavailable:
+        audit.append("signal:phone_unavailable_proceed_email_only")
+    if require_phone and not has_phone and not phone_unavailable:
         audit.append("signal:phone_required_for_consultation")
         return ConsultationStateDecision(
             stage=ConsultationStage.REQUESTED_PHONE_NEEDED,

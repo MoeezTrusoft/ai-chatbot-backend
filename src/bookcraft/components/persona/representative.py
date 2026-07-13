@@ -46,18 +46,31 @@ REPRESENTATIVE_NAMES: list[str] = [
 # Identity-question detection
 # ---------------------------------------------------------------------------
 
+# Adjective + noun vocabularies for "is this a <real> <person>?"-style questions.
+# Kept broad on purpose: the two live chats that regressed asked "is this an
+# artificial intelligence" (spelled out) and "is this a live consultant" — neither
+# matched the old, narrower pattern, so no persona name was ever assigned and the
+# bot fell back to the generic "your BookCraft guide" answer.
+_HUMAN_ADJ = r"(?:real|human|live|actual|genuine)"
+_HUMAN_NOUN = r"(?:person|agent|representative|rep|consultant|advisor|someone|being|human)"
+_AI_NOUN = (
+    r"(?:bot|a\.?\s?i\.?|artificial\s+intelligence|robot|chatbot|chat\s?bot|"
+    r"machine|computer|program|software|virtual\s+assistant|virtual|automated|automation|algorithm)"
+)
+
 _IDENTITY_QUESTION_RE = re.compile(
     r"\b(?:"
-    r"are\s+you\s+(?:a\s+)?(?:bot|ai|robot|chatbot|machine|computer|program|software|virtual|automated)|"
-    r"is\s+this\s+(?:a\s+)?(?:bot|ai|robot|chatbot|automated|machine)|"
-    r"am\s+i\s+(?:talking|chatting|speaking)\s+(?:to|with)\s+(?:a\s+)?(?:bot|ai|robot|machine|computer)|"
+    rf"are\s+you\s+(?:an?\s+)?{_AI_NOUN}|"
+    rf"is\s+(?:this|it|that)\s+(?:an?\s+)?{_AI_NOUN}|"
+    rf"am\s+i\s+(?:talking|chatting|speaking|texting)\s+(?:to|with)\s+(?:an?\s+)?{_AI_NOUN}|"
     r"who\s+am\s+i\s+(?:talking|chatting|speaking)\s+(?:to|with)|"
     r"who\s+are\s+you|what\s+are\s+you|"
-    r"are\s+you\s+(?:a\s+)?(?:real|human|person|actual)|"
+    rf"are\s+you\s+(?:an?\s+)?{_HUMAN_ADJ}|"
     r"are\s+you\s+(?:chat)?gpt|are\s+you\s+claude|are\s+you\s+powered\s+by|"
-    r"is\s+(?:this|there)\s+(?:a\s+)?(?:real|human|live)\s+(?:person|agent|representative)|"
-    r"(?:talk|speak|chat)\s+(?:to|with)\s+(?:a\s+)?(?:real|actual|human)\s+(?:person|agent)|"
-    r"not\s+(?:talking|chatting|speaking)\s+(?:to|with)\s+(?:a\s+)?(?:bot|ai|robot)"
+    rf"is\s+(?:this|there|it)\s+(?:an?\s+)?{_HUMAN_ADJ}\s+{_HUMAN_NOUN}|"
+    rf"is\s+(?:this|there|it)\s+(?:an?\s+)?{_HUMAN_NOUN}|"
+    rf"(?:talk|speak|chat|texting|connect)\s+(?:to|with)\s+(?:an?\s+)?(?:{_HUMAN_ADJ}\s+)?{_HUMAN_NOUN}|"
+    rf"not\s+(?:talking|chatting|speaking)\s+(?:to|with)\s+(?:an?\s+)?{_AI_NOUN}"
     r")\b",
     re.IGNORECASE,
 )
