@@ -289,6 +289,30 @@ class ContextEnforcementGate:
         # Gather contact/time readiness
         contact_ready = _contact_ready(state, context_pack)
         call_time_ready = bool(getattr(state, "preferred_call_time", None))
+        call_opt_out = bool(getattr(state, "call_opt_out", False))
+        consultation_deferred = bool(getattr(state, "consultation_deferred", False))
+
+        def _consultation_fallback(no_contact_goal: str) -> tuple[str | None, str | None]:
+            """Forced consultation goal + next question, honouring opt-out/deferral.
+
+            Several enforcement branches below fall back to "push the consultation
+            along". Each used to hardcode `consultation_time_capture` /
+            `preferred_call_time`, and because a forced goal OVERRIDES the
+            planner's, that quietly re-opened the call-time ask even when the
+            customer had just declined a call or postponed entirely (chat 6816).
+            Returns (None, None) for a deferral so the caller forces nothing and
+            the planner's acknowledgement goal survives.
+            """
+            if consultation_deferred:
+                return None, None
+            if contact_ready and call_opt_out:
+                # They want a text, not a call — there is no hour to ask about.
+                return "consultation_text_followup_confirmation", None
+            if contact_ready and call_time_ready:
+                return "consultation_handoff_confirmation", None
+            if contact_ready:
+                return "consultation_time_capture", "preferred_call_time"
+            return no_contact_goal, "name_and_email_or_phone"
 
         # ── Priority 1: Explicit service correction ───────────────────────
         if _SERVICE_CORRECTION_RE.search(text):
@@ -331,15 +355,9 @@ class ContextEnforcementGate:
         is_consultation_text = bool(_CONSULTATION_RE.search(text))
         if is_consultation_intent or is_consultation_text:
             if not forced_primary_goal:
-                if contact_ready and call_time_ready:
-                    forced_primary_goal = "consultation_handoff_confirmation"
-                    forced_next_question = None
-                elif contact_ready:
-                    forced_primary_goal = "consultation_time_capture"
-                    forced_next_question = "preferred_call_time"
-                else:
-                    forced_primary_goal = "consultation_offer"
-                    forced_next_question = "name_and_email_or_phone"
+                forced_primary_goal, forced_next_question = _consultation_fallback(
+                    "consultation_offer"
+                )
             # Suppress old scoping slots
             for slot in _SCOPING_SLOTS:
                 if slot not in forbidden_reasks:
@@ -356,15 +374,9 @@ class ContextEnforcementGate:
                     delegated_slots.append("cover_style")
                 forbidden_reasks.extend(["cover_style", "visual direction", "cover style"])
                 if not forced_primary_goal:
-                    if contact_ready and call_time_ready:
-                        forced_primary_goal = "consultation_handoff_confirmation"
-                        forced_next_question = None
-                    elif contact_ready:
-                        forced_primary_goal = "consultation_time_capture"
-                        forced_next_question = "preferred_call_time"
-                    else:
-                        forced_primary_goal = "process_explanation"
-                        forced_next_question = "name_and_email_or_phone"
+                    forced_primary_goal, forced_next_question = _consultation_fallback(
+                        "process_explanation"
+                    )
                 audit.append("enforcement:delegated_slot:cover_style")
             else:
                 # Generic delegation — bind to current pending slot
@@ -391,15 +403,9 @@ class ContextEnforcementGate:
                     forbidden_reasks.extend(["word count", "page count"])
                     audit.append("enforcement:repeated_slot_refusal")
                 if not forced_primary_goal:
-                    if contact_ready and call_time_ready:
-                        forced_primary_goal = "consultation_handoff_confirmation"
-                        forced_next_question = None
-                    elif contact_ready:
-                        forced_primary_goal = "consultation_time_capture"
-                        forced_next_question = "preferred_call_time"
-                    else:
-                        forced_primary_goal = "consultation_offer"
-                        forced_next_question = "name_and_email_or_phone"
+                    forced_primary_goal, forced_next_question = _consultation_fallback(
+                        "consultation_offer"
+                    )
                 audit.append("enforcement:unknown_slot:word_or_page_count")
             elif slot_hint:
                 if slot_hint not in unknown_slots:

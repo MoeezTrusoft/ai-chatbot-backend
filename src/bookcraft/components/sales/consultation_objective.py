@@ -16,36 +16,25 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bookcraft.components.sales.consultation_state import is_definite_call_time
+from bookcraft.components.sales.call_time import extract_call_time, is_definite_call_time
+from bookcraft.components.sales.consultation_state import is_time_asking_stage
 from bookcraft.components.sales.current_question_priority import CurrentQuestionPriorityResult
 
 # ---------------------------------------------------------------------------
-# Call-time extraction (simple — used to capture preferred_call_time from
-# the current message when the previous turn asked for it)
+# Call-time extraction
 # ---------------------------------------------------------------------------
-
-_CALL_TIME_RE = re.compile(
-    r"\b(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm))?|"
-    r"\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm))?|"
-    r"(?:this|next)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)))?|"
-    r"(?:eastern|central|mountain|pacific|est|cst|mst|pst)(?:\s+time)?|"
-    r"east|west|"
-    r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
-    r"(?:\s+(?:morning|afternoon|evening|(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)))?|"
-    r"tomorrow(?:\s+(?:morning|afternoon|evening|(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)))?|"
-    r"next\s+(?:week|monday|tuesday|wednesday|thursday|friday)|"
-    r"after\s+\d+(?:\s*(?:am|pm))?|"
-    r"\d+\s*(?:am|pm)|"
-    r"any\s+(?:day|time|morning|afternoon|evening)|"
-    r"(?:this|next)\s+(?:week|weekend)|"
-    r"morning|afternoon|evening|anytime|whenever)\b",
-    re.IGNORECASE,
-)
+# This engine used to carry its OWN call-time regex, separate from the reducer's.
+# The two disagreed constantly: this one matched bare timezone tokens, so the
+# answer "my time zone is central" was stored as the preferred call *time*, and
+# it matched a naked "west"/"east" anywhere in a sentence. Neither understood a
+# bare clock hour, so "9-12 works best" extracted nothing at all. Both engines now
+# share the canonical parser in ``call_time.py`` (chat 6816).
 
 
-def _extract_preferred_call_time(text: str) -> str | None:
-    m = _CALL_TIME_RE.search(text)
-    return m.group(0).strip() if m else None
+def _extract_preferred_call_time(
+    text: str, *, existing: str | None = None, allow_numeric: bool = False
+) -> str | None:
+    return extract_call_time(text, existing=existing, allow_numeric=allow_numeric)
 
 
 # Detects messages where the user is announcing manuscript/project status — these should
@@ -109,6 +98,8 @@ class ConsultationObjectiveEngine:
         current_question_priority: CurrentQuestionPriorityResult | None = None,
         require_phone: bool = False,
         phone_unavailable: bool = False,
+        call_opt_out: bool = False,
+        consultation_deferred: bool = False,
     ) -> ConsultationObjectiveDecision:
         audit: list[str] = []
 
@@ -143,6 +134,23 @@ class ConsultationObjectiveEngine:
         _is_manuscript_update = bool(_MANUSCRIPT_STATUS_RE.search(message))
         audit.append(f"has_definite_time:{_has_definite_time}")
 
+        # ── Priority -1: customer postponed → stop pushing entirely ───────
+        # "we might need to do it next month". Nothing below this line may fire:
+        # every one of those branches pushes the booking forward, which is the
+        # behaviour the customer just asked us to stop (chat 6816).
+        if consultation_deferred:
+            audit.append("move:consultation_deferred")
+            return ConsultationObjectiveDecision(
+                stage="consultation_deferred",
+                objective_move="acknowledge_deferral",
+                consultation_first=False,
+                stop_discovery=False,
+                ask_contact=False,
+                recommended_primary_goal="consultation_deferred_acknowledgement",
+                next_question=None,
+                audit=audit,
+            )
+
         # ── Priority 0: phone is REQUIRED to create a consultation ────────
         # Unlike a lead (which can be email-only), a consultation CANNOT be booked
         # without a phone number. Keep asking until we have one — booking is also blocked
@@ -172,6 +180,25 @@ class ConsultationObjectiveEngine:
                 ask_contact=True,
                 recommended_primary_goal="consultation_time_capture",
                 next_question="missing_phone",
+                audit=audit,
+            )
+
+        # ── Priority 0.5: customer declined a call → text follow-up ───────
+        # Runs after the phone gate (we still need a number to text) but before
+        # the entire call-time ladder below: there is no hour to agree on for a
+        # text, so asking for one is pure noise. Chat 6816 asked "what time works
+        # for your call?" three times AFTER the customer said "can they text, I'm
+        # really bad at calling".
+        if call_opt_out and contact_ready and not handoff_created:
+            audit.append("move:call_opt_out_text_followup")
+            return ConsultationObjectiveDecision(
+                stage="consultation_text_followup",
+                objective_move="create_consultation_handoff",
+                consultation_first=True,
+                stop_discovery=True,
+                create_handoff=True,
+                recommended_primary_goal="consultation_text_followup_confirmation",
+                next_question=None,
                 audit=audit,
             )
 
@@ -231,8 +258,13 @@ class ConsultationObjectiveEngine:
             audit.append("skip_priority2:manuscript_status_update")
         if contact_ready and not preferred_call_time and lead_confirmed_prior_turn and not handoff_created and not _is_manuscript_update:
             # Try to extract call time from the *current* message in case the
-            # user provided it on the same turn as a follow-up.
-            extracted_time = _extract_preferred_call_time(message)
+            # user provided it on the same turn as a follow-up. Bare hours ("12",
+            # "9-12") only count when we actually asked for a time last turn.
+            extracted_time = _extract_preferred_call_time(
+                message,
+                existing=preferred_call_time,
+                allow_numeric=is_time_asking_stage(consultation_stage),
+            )
             if extracted_time and is_definite_call_time(extracted_time):
                 # Definite time, but a consultation still cannot be booked without a
                 # phone — capture the time and ask for the phone instead of handing off.

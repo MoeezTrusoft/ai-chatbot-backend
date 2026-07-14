@@ -73,7 +73,7 @@ def test_reducer_blocks_scheduling_without_phone_by_default() -> None:
     """Baseline: phone required, none given, NOT flagged unavailable → keep asking."""
     decision = reduce_consultation_state(
         state=ThreadState(),
-        message="I'd like to book a call, my name is Trinity, trinity@x.com",
+        message="I'd like to book a call, my name is Marisol, marisol@example.com",
         intent=_intent(),
         contact_ready=True,
         has_email=True,

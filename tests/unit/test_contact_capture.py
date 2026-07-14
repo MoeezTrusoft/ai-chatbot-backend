@@ -61,17 +61,17 @@ def test_multi_word_name_across_newline_is_truncated_to_first_line() -> None:
 
 
 def test_connective_and_does_not_ride_into_bare_block_name() -> None:
-    # chat 6759: "Trinity and <email>" was saved as the name "Trinity and" — the
+    # chat 6759: "Marisol and <email>" was saved as the name "Marisol and" — the
     # bare-block extractor joined the connective "and". The glue word must be
     # stripped so only the real name survives.
     for msg in (
-        "Trinity and @redqueenrulz2012@gmail.com",
-        "Trinity and redqueenrulz2012@gmail.com",
-        "Trinity, email redqueenrulz2012@gmail.com",
+        "Marisol and @rowan.blake@example.com",
+        "Marisol and rowan.blake@example.com",
+        "Marisol, email rowan.blake@example.com",
     ):
         r = ContactCaptureDetector().extract(msg)
-        assert r.contact.name == "Trinity", msg
-        assert r.contact.email == "redqueenrulz2012@gmail.com", msg
+        assert r.contact.name == "Marisol", msg
+        assert r.contact.email == "rowan.blake@example.com", msg
 
 
 def test_bare_block_multi_word_names_still_intact() -> None:

@@ -15,6 +15,20 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bookcraft.components.sales.call_time import (
+    extract_call_time,
+    is_definite_call_time,
+)
+
+__all__ = [
+    "ConsultationStage",
+    "ConsultationStateDecision",
+    "is_definite_call_time",
+    "is_time_asking_stage",
+    "reduce_consultation_state",
+    "user_asks_consultation_status",
+]
+
 
 class ConsultationStage(StrEnum):
     NONE = "none"
@@ -29,6 +43,12 @@ class ConsultationStage(StrEnum):
     PENDING_CONFIRMATION = "pending_confirmation"
     SCHEDULED = "scheduled"
     HANDOFF_CREATED = "handoff_created"
+    # Customer declined a voice call and asked to be texted instead. Terminal for
+    # the CALL flow: we capture the lead and hand off for text follow-up rather
+    # than interrogating them for an hour to ring them at (chat 6816).
+    TEXT_FOLLOWUP_PREFERRED = "text_followup_preferred"
+    # Customer postponed ("not until next month"). Terminal until they re-engage.
+    DEFERRED = "deferred"
 
 
 # Stages that mean a consultation request is genuinely in flight and should persist
@@ -45,8 +65,42 @@ _ACTIVE_REQUEST_STAGES = frozenset(
         ConsultationStage.PENDING_CONFIRMATION,
         ConsultationStage.SCHEDULED,
         ConsultationStage.HANDOFF_CREATED,
+        ConsultationStage.TEXT_FOLLOWUP_PREFERRED,
+        ConsultationStage.DEFERRED,
     }
 )
+
+# Stages in which the bot has actually asked for a call time, so a bare number in
+# the reply ("probably 12", "9-12") is safe to read as a clock hour. Outside these,
+# numeric time parsing stays off and "24 pages" can never become 2pm.
+_TIME_ASKING_STAGES = frozenset(
+    {
+        ConsultationStage.REQUESTED_TIME_NEEDED,
+        ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED,
+        ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
+        ConsultationStage.READY_TO_SCHEDULE,
+        ConsultationStage.PENDING_CONFIRMATION,
+    }
+)
+
+# The ConsultationObjectiveEngine writes its OWN vocabulary into the same
+# `state.consultation_stage` field, so the prior stage may be one of these.
+_FOREIGN_TIME_ASKING_STAGES = frozenset(
+    {"consultation_time_requested", "consultation_pending"}
+)
+
+
+def is_time_asking_stage(prior_stage: Any) -> bool:
+    """True when the previous turn solicited a call time (either vocabulary)."""
+    if not prior_stage:
+        return False
+    raw = str(prior_stage)
+    if raw in _FOREIGN_TIME_ASKING_STAGES:
+        return True
+    try:
+        return ConsultationStage(raw) in _TIME_ASKING_STAGES
+    except ValueError:
+        return False
 
 
 def _prior_stage_is_active_request(prior_stage: Any) -> bool:
@@ -113,53 +167,12 @@ _STATUS_QUESTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Time-window patterns for extraction
-_CALL_TIME_FULL_RE = re.compile(
-    r"\b(?:(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
-    r"(?:\s+(?:morning|afternoon|evening|at\s+\d+\s*(?:am|pm)?|around\s+\d+))?|"
-    r"tomorrow(?:\s+(?:morning|afternoon|evening|at\s+\d+\s*(?:am|pm)?|around\s+\d+))?|"
-    r"\d+\s*(?:am|pm)|"
-    r"(?:morning|afternoon|evening|anytime))\b",
-    re.IGNORECASE,
-)
-
-
-def _extract_call_time(text: str) -> str | None:
-    m = _CALL_TIME_FULL_RE.search(text)
-    return m.group(0).strip() if m else None
-
-
-# A call time is bookable-*definite* only when it pins down BOTH a specific day and
-# a specific clock time — e.g. "Tuesday at 3pm", "June 24 at 10:30am". Anything
-# vaguer ("anytime", "next week", "Friday", "afternoon", "3pm" with no day) is
-# indefinite: we should offer concrete slots rather than silently coerce it.
-_CLOCK_TIME_RE = re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE)
-_SPECIFIC_DAY_RE = re.compile(
-    r"\b(?:"
-    r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
-    r"tomorrow|today|"
-    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
-    r"aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|"
-    r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}"
-    r")\b",
-    re.IGNORECASE,
-)
-# "next Friday" / "this Monday" still name a specific weekday — fine. But "next week"
-# / "next weekend" name no day, so exclude those bare phrases from the day check.
-_VAGUE_DAY_RE = re.compile(r"\bnext\s+(?:week|weekend)\b", re.IGNORECASE)
-
-
-def is_definite_call_time(text: str | None) -> bool:
-    """True when the call-time text names BOTH a specific day and a clock time."""
-    if not text:
-        return False
-    has_clock = bool(_CLOCK_TIME_RE.search(text))
-    if not has_clock:
-        return False
-    # A bare "next week"/"next weekend" with no weekday is not a specific day.
-    day_text = _VAGUE_DAY_RE.sub(" ", text)
-    has_day = bool(_SPECIFIC_DAY_RE.search(day_text))
-    return has_day
+# Call-time extraction and definiteness now live in ``call_time.py`` — a single
+# canonical parser shared with ConsultationObjectiveEngine. Previously each engine
+# carried its own regex; they disagreed on the same message, so one could advance
+# the stage while the other re-asked, and neither understood a bare clock hour
+# ("9-12", "probably 12") — which is exactly how chat 6816 looped forever.
+# ``is_definite_call_time`` is re-exported above for existing importers.
 
 
 def reduce_consultation_state(
@@ -174,6 +187,8 @@ def reduce_consultation_state(
     has_phone: bool = False,
     require_phone: bool = False,
     phone_unavailable: bool = False,
+    call_opt_out: bool = False,
+    consultation_deferred: bool = False,
     prior_stage: Any | None = None,
 ) -> ConsultationStateDecision:
     """Reduce all consultation signals into a single deterministic decision.
@@ -213,17 +228,27 @@ def reduce_consultation_state(
         )
 
     # ── Extract preferred call time ───────────────────────────────────────
-    # Prefer the most specific time phrase available.
-    time_from_message = _extract_call_time(message)
+    # MERGE the new message over what we already knew, rather than picking one or
+    # the other. A customer narrows a time across turns ("Friday works best" →
+    # "probably 12"); the old `message or state` precedence threw away whichever
+    # half wasn't in the latest sentence, so the reducer kept falling back to
+    # "no time yet" and re-asked (chat 6816).
     time_from_state = getattr(state, "preferred_call_time", None)
     time_from_nested = (
         state.sales_actions.consultation.preferred_time_window
         if hasattr(state, "sales_actions") and state.sales_actions.consultation
         else None
     )
-    preferred_call_time = time_from_message or time_from_state or time_from_nested
+    known_time = time_from_state or time_from_nested
+    # Bare numbers only count as clock hours when we actually asked for a time.
+    allow_numeric = is_time_asking_stage(prior_stage)
+    preferred_call_time = extract_call_time(
+        message, existing=known_time, allow_numeric=allow_numeric
+    )
     if preferred_call_time:
-        audit.append(f"signal:preferred_call_time={preferred_call_time!r}")
+        audit.append(
+            f"signal:preferred_call_time={preferred_call_time!r}(numeric={allow_numeric})"
+        )
 
     # ── Check for confirmed appointment ──────────────────────────────────
     confirmed_appointment_id = (
@@ -319,6 +344,27 @@ def reduce_consultation_state(
             audit=audit,
         )
 
+    # ── Customer postponed the engagement ────────────────────────────────
+    # "okay so we might need to do it next month" / "I'm not doing it until next
+    # month". Placed above the phone and time gates: once they've said "not yet",
+    # demanding a number to ring them at — or which hour to ring — is exactly the
+    # steamroll that made chat 6816 unbearable. Contact is still captured above,
+    # so the lead survives; only the booking push stops. Sticky until they
+    # re-engage (ConsultationPreferenceDetector.defer_cancelled).
+    if consultation_deferred:
+        audit.append("signal:consultation_deferred")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.DEFERRED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            can_schedule=False,
+            next_question=None,
+            stop_discovery=False,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
+
     # A consultation HARD-requires a phone number (unlike a lead, which may be
     # email-only). Block scheduling — keep asking for the phone — until one is present.
     # This is a hard gate: can_schedule stays False and we never reach READY_TO_SCHEDULE
@@ -337,6 +383,27 @@ def reduce_consultation_state(
             preferred_call_time=preferred_call_time,
             next_question="missing_phone",
             can_schedule=False,
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
+
+    # ── Customer declined a voice call, asked to be texted ───────────────
+    # They have a reachable number (the phone gate above ran first, so we've
+    # already asked for one if it was missing) — they just don't want it ringing.
+    # There is no hour to negotiate for a text, so the whole call-time ladder is
+    # skipped and we hand off for written follow-up instead. In chat 6816 the
+    # customer asked to be texted FOUR times and the bot answered each one with
+    # another "what time works for your call?".
+    if call_opt_out:
+        audit.append("signal:call_opt_out_text_followup")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.TEXT_FOLLOWUP_PREFERRED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            can_schedule=False,
+            next_question=None,
             stop_discovery=True,
             is_status_question=is_status_question,
             audit=audit,

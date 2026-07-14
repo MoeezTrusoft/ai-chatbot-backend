@@ -1081,6 +1081,26 @@ _SCHEDULING_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A booking asserted WITHOUT naming the appointment noun — "Wednesday, July 15th
+# between 9 and 12 Central is locked in", "Noon Friday it is", "you're all set".
+# _SCHEDULING_CLAIM_RE requires the noun (consultation/appointment/call) adjacent
+# to the verb, so every fabrication in chat 6816 walked straight past it while the
+# bot told a customer a specialist would ring her at a time nothing was booked
+# for. These phrases only assert a booking when paired with a concrete time, so
+# they are checked against _TIME_CONFIRMATION_RE below rather than on their own.
+_LOCKED_IN_CLAIM_RE = re.compile(
+    r"(?:"
+    r"\b(?:is|are)\s+(?:all\s+)?(?:locked\s+in|set|booked|reserved|confirmed|on\s+the\s+books)\b|"
+    r"\block(?:ed|ing)?\s+(?:that\s+|it\s+|you\s+)?in\b|"
+    r"\byou(?:'re|\s+are)\s+all\s+set\b|"
+    r"\bi(?:'ve|\s+have)\s+got\s+(?:you|your\s+\w+)\s+(?:down|set|booked)\b|"
+    r"\b(?:it|that)\s+is\b(?=[^.!?]*\b(?:booked|set|confirmed|locked)\b)|"
+    r"\b(?:we|our\s+specialist|the\s+specialist)\s+will\s+(?:call|ring|phone)\s+you\b|"
+    r"\bexpect\s+(?:a\s+)?(?:call|ring)\s+(?:from|at|on)\b"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
     """Return True when the response claims a consultation was scheduled without evidence.
@@ -1088,8 +1108,20 @@ def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
     Phase 7 hotfix: scheduling claims must be backed by a confirmed appointment ID or
     handoff flag in state. Without this guard the bot can claim it booked a consultation
     before the action actually completes, confusing the customer.
+
+    Two shapes count as a claim:
+      * the explicit noun+verb form ("your consultation is booked"), and
+      * an implicit lock-in tied to a concrete time ("Wednesday between 9 and 12
+        is locked in", "our specialist will call you Friday at noon") — chat 6816,
+        where the bot invented three separate bookings that never existed. The
+        time pairing matters: a bare "you're all set" after answering a question
+        is not a booking claim.
     """
-    if not _SCHEDULING_CLAIM_RE.search(text):
+    explicit = bool(_SCHEDULING_CLAIM_RE.search(text))
+    implicit = bool(_LOCKED_IN_CLAIM_RE.search(text)) and bool(
+        _TIME_CONFIRMATION_RE.search(text)
+    )
+    if not (explicit or implicit):
         return False
 
     # Scheduling claim present — check for backing evidence.

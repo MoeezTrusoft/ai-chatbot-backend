@@ -51,6 +51,9 @@ from bookcraft.components.leads import (
     LeadObjectiveEngine,
 )
 from bookcraft.components.leads.contact_availability import ContactAvailabilityDetector
+from bookcraft.components.sales.consultation_preferences import (
+    ConsultationPreferenceDetector,
+)
 from bookcraft.components.leads.contact_recovery import (
     user_claims_already_shared,
     user_has_complaint_or_privacy_concern,
@@ -229,6 +232,9 @@ class ChatService:
     contact_capture_detector: ContactCaptureDetector = field(default_factory=ContactCaptureDetector)
     # Detects "I can't use my phone / email only" so the bot stops demanding a
     # channel the customer said is unavailable (chat 6759).
+    consultation_preference_detector: ConsultationPreferenceDetector = field(
+        default_factory=ConsultationPreferenceDetector
+    )
     contact_availability_detector: ContactAvailabilityDetector = field(
         default_factory=ContactAvailabilityDetector
     )
@@ -909,6 +915,28 @@ class ChatService:
             _phone_unavailable = (
                 _contact_status.get("phone") == ContactFieldStatus.UNAVAILABLE.value
             )
+            # Consultation preferences: did the customer decline a voice CALL
+            # ("can they text, i'm really bad at calling") or postpone the whole
+            # engagement ("we might need to do it next month")? Both are sticky —
+            # a preference stated once holds until the customer reverses it — and
+            # both suppress the call-booking push that steamrolled chat 6816.
+            # Distinct from _phone_unavailable: here the number is perfectly
+            # usable, it just must not ring.
+            _preference = self.consultation_preference_detector.detect(payload.message)
+            if _preference.call_opt_out:
+                state.call_opt_out = True
+                state.preferred_contact_channel = "sms"
+            elif _preference.call_opt_in:
+                state.call_opt_out = False
+                state.preferred_contact_channel = "phone"
+            if _preference.deferred:
+                state.consultation_deferred = True
+                state.consultation_defer_hint = _preference.defer_hint
+            elif _preference.defer_cancelled:
+                state.consultation_deferred = False
+                state.consultation_defer_hint = None
+            _call_opt_out = bool(getattr(state, "call_opt_out", False))
+            _consultation_deferred = bool(getattr(state, "consultation_deferred", False))
             # Capture the prior-turn consultation stage BEFORE any engine overwrites it
             # this turn, so the once-only phone ask (reduce_consultation_state) is
             # loop-safe across turns and the two intra-turn reducer passes.
@@ -921,6 +949,8 @@ class ChatService:
                 current_question_priority=current_question_priority,
                 require_phone=self.consultation_require_phone,
                 phone_unavailable=_phone_unavailable,
+                call_opt_out=_call_opt_out,
+                consultation_deferred=_consultation_deferred,
             )
             # Apply extracted preferred_call_time to state if found this turn.
             if consultation_objective_decision.extracted_preferred_call_time:
@@ -1028,8 +1058,20 @@ class ChatService:
                 has_phone=contact_capture.has_phone,
                 require_phone=self.consultation_require_phone,
                 phone_unavailable=_phone_unavailable,
+                call_opt_out=_call_opt_out,
+                consultation_deferred=_consultation_deferred,
                 prior_stage=_prior_consultation_stage,
             )
+            # Persist the reducer's merged call time. The reducer is the only
+            # component that merges the new message over the known time ("Friday
+            # works best" + "probably 12" → "Friday at 12pm"), but it used to
+            # compute that into a local and drop it: the ONLY writer was the
+            # objective engine's Priority-2 branch, which is skipped on exactly
+            # the turns where the customer states a time. So the time survived
+            # only as long as the sentence containing it, and the next turn
+            # re-asked for it — the core loop in chat 6816.
+            if consultation_state_decision.preferred_call_time:
+                state.preferred_call_time = consultation_state_decision.preferred_call_time
             if consultation_state_decision.can_schedule and not _is_confirmed_pending:
                 action_plan = _reconcile_consultation_action_plan(
                     current_plan=action_plan,
@@ -1068,8 +1110,12 @@ class ChatService:
                 has_phone=contact_capture.has_phone,
                 require_phone=self.consultation_require_phone,
                 phone_unavailable=_phone_unavailable,
+                call_opt_out=_call_opt_out,
+                consultation_deferred=_consultation_deferred,
                 prior_stage=_prior_consultation_stage,
             )
+            if consultation_state_decision.preferred_call_time:
+                state.preferred_call_time = consultation_state_decision.preferred_call_time
             state.consultation_stage = str(consultation_state_decision.stage)
             action_payload = action_trace_payload(action_plan, action_result)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(

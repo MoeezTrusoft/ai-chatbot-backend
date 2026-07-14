@@ -93,6 +93,9 @@ _CONSULTATION_GOALS: frozenset[str] = frozenset(
         "contact_capture_for_consultation",
         "consultation_time_capture",
         "consultation_handoff_confirmation",
+        # Customer declined a voice call / postponed the engagement (chat 6816).
+        "consultation_text_followup_confirmation",
+        "consultation_deferred_acknowledgement",
     }
 )
 
@@ -223,11 +226,17 @@ class ResponsePlanner:
             # Override next question — None is a valid "ask nothing" signal.
             if _enf_nq is not None or _enf_goal in {
                 "consultation_handoff_confirmation",
+                "consultation_text_followup_confirmation",
                 "correction_recovery",
             }:
                 if _enf_nq is not None:
                     nq = str(_enf_nq)
-                elif _enf_goal == "consultation_handoff_confirmation":
+                elif _enf_goal in {
+                    "consultation_handoff_confirmation",
+                    # A text follow-up asks nothing further — there is no call
+                    # hour to negotiate (chat 6816).
+                    "consultation_text_followup_confirmation",
+                }:
                     nq = None
             for _ef in _enf_forbidden:
                 if _ef not in forbidden:
@@ -501,7 +510,15 @@ def _primary_goal(
     if consultation_objective_decision is not None:
         cod_move = getattr(consultation_objective_decision, "objective_move", None)
         cod_goal = getattr(consultation_objective_decision, "recommended_primary_goal", None)
+        # The customer postponed — acknowledge and stop pushing. Highest priority:
+        # every scheduling move below re-opens the ask they just declined.
+        if cod_move == "acknowledge_deferral":
+            return "consultation_deferred_acknowledgement"
         if cod_move == "create_consultation_handoff":
+            # A call opt-out still creates a handoff, but the reply must confirm a
+            # TEXT follow-up rather than a call time (chat 6816).
+            if cod_goal == "consultation_text_followup_confirmation":
+                return "consultation_text_followup_confirmation"
             return "consultation_handoff_confirmation"
         if cod_move == "ask_preferred_call_time":
             return "consultation_time_capture"

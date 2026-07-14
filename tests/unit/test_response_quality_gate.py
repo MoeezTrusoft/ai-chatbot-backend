@@ -862,3 +862,58 @@ def test_csr_drift_not_flagged_before_booking() -> None:
         state=ThreadState(),
     )
     assert not any("consultation_csr_name_drift" in f for f in result.failures)
+
+
+# ---------------------------------------------------------------------------
+# Fabricated booking claims (chat 6816)
+# ---------------------------------------------------------------------------
+
+
+class TestUnverifiedSchedulingClaim:
+    """The bot told a customer a specialist would ring her at a time nothing was
+    booked for — three separate times. Check 22 only matched the explicit
+    noun+verb form ("your consultation is booked"), so every one of those
+    fabrications walked straight past it.
+    """
+
+    def test_locked_in_with_a_time_needs_evidence(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        text = (
+            "Perfect, Priya - Wednesday, July 15th between 9 and 12 Central is "
+            "locked in. Our specialist will call you at 512-555-0142 then."
+        )
+        assert _unverified_scheduling_claim(text, ThreadState()) is True
+
+    def test_bare_time_restatement_needs_evidence(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        text = "Noon Friday it is. I've got your details set for the consultation."
+        assert _unverified_scheduling_claim(text, ThreadState()) is True
+
+    def test_claim_is_allowed_once_a_handoff_exists(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        state = ThreadState()
+        state.consultation_handoff_created = True
+        text = "Wednesday, July 15th between 9 and 12 Central is locked in."
+        assert _unverified_scheduling_claim(text, state) is False
+
+    def test_asking_for_a_time_is_not_a_claim(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        text = "What day and time this week suits you best, Priya?"
+        assert _unverified_scheduling_claim(text, ThreadState()) is False
+
+    def test_all_set_without_a_time_is_not_a_booking_claim(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        # "You're all set" after answering a question must not be flagged.
+        text = "You're all set - feel free to upload your manuscript via the attach button."
+        assert _unverified_scheduling_claim(text, ThreadState()) is False
+
+    def test_text_followup_promise_is_not_a_call_booking_claim(self) -> None:
+        from bookcraft.components.response.quality_gate import _unverified_scheduling_claim
+
+        text = "Texting works fine - our specialist will text you at your number."
+        assert _unverified_scheduling_claim(text, ThreadState()) is False

@@ -229,7 +229,17 @@ class ThreadState(BaseModel):
     consultation_stage: str | None = None  # engaging → consultation_pending → etc.
     preferred_call_time: str | None = None  # e.g. "tomorrow afternoon", "Friday 3pm"
     preferred_timezone: str | None = None
+    # "sms" when the customer asked to be texted rather than called.
     preferred_contact_channel: str | None = None
+    # Customer has a usable phone but declined a voice CALL ("can they text, I'm
+    # bad at calling"). Distinct from contact_status["phone"] == "unavailable",
+    # which means we can't reach them on that number at all. Sticky until they
+    # ask for a call. Suppresses the call-time booking loop (chat 6816).
+    call_opt_out: bool = False
+    # Customer postponed the engagement ("not doing it until next month"). Sticky
+    # until they re-engage; stops the bot re-opening the day/time ask every turn.
+    consultation_deferred: bool = False
+    consultation_defer_hint: str | None = None  # verbatim cue, e.g. "next month"
     current_question_type: str | None = None  # last detected priority question type
     answer_before_capture_applied: bool = False
     # Service metadata (PR 4) — extracted from conversation.

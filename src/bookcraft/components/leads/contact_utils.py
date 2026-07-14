@@ -51,9 +51,9 @@ _NON_NAME_WORDS: frozenset[str] = frozenset(
 )
 
 # Connective / filler tokens that glue a name to contact info in a bare block —
-# "Trinity and <email>", "John, my email is ...". A real personal name contains
+# "Marisol and <email>", "John, my email is ...". A real personal name contains
 # none of these, so they are safe to strip anywhere in the token list (chat 6759,
-# where "Trinity and <email>" was saved as the name "Trinity and").
+# where "Marisol and <email>" was saved as the name "Marisol and").
 _NAME_GLUE_WORDS: frozenset[str] = frozenset(
     {
         "and", "or", "plus", "also", "then",

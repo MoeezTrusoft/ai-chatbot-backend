@@ -612,6 +612,10 @@ class ContextPackBuilder:
             language_ignored_segments=language_ignored_segments,
             is_greeting_turn=is_greeting_only,
             consultation_stage=consultation_stage,
+            call_opt_out=bool(getattr(state, "call_opt_out", False)),
+            preferred_contact_channel=getattr(state, "preferred_contact_channel", None),
+            consultation_deferred=bool(getattr(state, "consultation_deferred", False)),
+            consultation_defer_hint=getattr(state, "consultation_defer_hint", None),
             current_question_type=current_question_type,
             answer_before_capture_applied=answer_before_capture_applied,
             publishing_platforms=_pub_platforms,
@@ -761,6 +765,27 @@ def _forbidden_reasks(
             forbidden.extend(["timezone", "your timezone", "what timezone", "time zone"])
         if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(state.personal.preferred_contact_method, "value", None):
             forbidden.extend(["preferred contact", "how to reach", "best way to contact"])
+    # The customer declined a voice call — every call-scheduling question below is
+    # now a re-ask of something they already answered (chat 6816: "can they text
+    # i'm really bad at calling", answered with "what time works for your call?").
+    if getattr(state, "call_opt_out", False):
+        forbidden.extend(
+            [
+                "call time (customer asked to be texted instead — do not ask them to schedule a call)",
+                "what time works for your call",
+                "when can we call you",
+                "best time to call",
+            ]
+        )
+    # The customer postponed — do not re-open the booking ask at all.
+    if getattr(state, "consultation_deferred", False):
+        forbidden.extend(
+            [
+                "consultation booking (customer postponed — do not push scheduling until they raise it)",
+                "what day works for you",
+                "what time works for you",
+            ]
+        )
     return _ordered_unique(forbidden)
 
 

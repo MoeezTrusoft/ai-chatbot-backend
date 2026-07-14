@@ -76,6 +76,14 @@ class ContextPack(BaseModel):
     is_greeting_turn: bool = False
     # Consultation-first sales planner (PR 2).
     consultation_stage: str | None = None
+    # Customer declined a voice call and wants text/SMS instead. Their number is
+    # usable — it just must not ring. Never ask for a call time when this is set.
+    call_opt_out: bool = False
+    preferred_contact_channel: str | None = None  # "sms" | "phone" | None
+    # Customer postponed the engagement ("not until next month"). Never re-open
+    # the booking ask while this holds.
+    consultation_deferred: bool = False
+    consultation_defer_hint: str | None = None
     current_question_type: str | None = None
     answer_before_capture_applied: bool = False
     # Service metadata (PR 4).

@@ -174,7 +174,7 @@ def _extract_bare_contact_name(
     if not (1 <= len(words) <= 5):
         return None
 
-    # Drop connective/filler tokens ("Trinity and <email>" → "Trinity") so a
+    # Drop connective/filler tokens ("Marisol and <email>" → "Marisol") so a
     # glue word never rides into the saved name (chat 6759).
     words = strip_name_glue_tokens(words)
     if not words:
