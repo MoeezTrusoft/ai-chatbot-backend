@@ -154,6 +154,15 @@ class Settings(BaseSettings):
     portfolio_samples_docx_path: str = "data/portfolio/portfolio_samples.docx"
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
+    # Output-token ceiling for response generation. Billed on tokens actually
+    # produced, so headroom is free; 1024 truncated multi-question replies.
+    response_max_tokens: int = 2048
+    # "disabled" | "adaptive" | "omit" — sent as the request's `thinking` field.
+    # MUST stay explicit: claude-sonnet-4-6 read an omitted field as no-thinking,
+    # claude-sonnet-5 reads the same omission as adaptive, and thinking shares the
+    # max_tokens budget with the reply (chat 5876). Do not use budget_tokens —
+    # claude-sonnet-5 returns 400 for it; use effort under "adaptive" instead.
+    response_thinking_mode: str = "disabled"
     intent_ensemble_timeout_seconds: float = 30.0  # raised: don't time out intent classification
     deepseek_timeout_seconds: float = 4.0
     shared_processor_cache_size: int = 1000

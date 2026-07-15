@@ -24,5 +24,8 @@ class FieldMeta(BaseModel, Generic[T]):  # noqa: UP046 - Pydantic generic model 
             Source.USER_CONFIRMED,
             Source.USER_CORRECTED,
             Source.CSR_ENTERED,
+            # Verified: the customer typed it into a form themselves. Trusted as a
+            # value; see Source.EXTERNAL_FORM for why its origin still matters.
+            Source.EXTERNAL_FORM,
         }
         return self.value is not None and (trusted_source or self.confidence >= threshold)

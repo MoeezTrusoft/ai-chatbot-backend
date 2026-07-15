@@ -38,7 +38,7 @@ async def test_inject_facts_fills_empty_fields():
 
     result = await svc.handle_inject_facts(
         ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email="jake@example.com",
-                         phone=None, source_label="test")
+                         phone=None, source_label="signup_form")
     )
     assert "name" in result.fields_applied
     assert "email" in result.fields_applied
@@ -59,9 +59,9 @@ async def test_inject_facts_does_not_overwrite_high_confidence():
     mem.state.personal.name = FieldMeta(value="Chris Jordan", confidence=0.99, source=Source.AI_EXTRACTED)
 
     result = await svc.handle_inject_facts(
-        ChatFactsRequest(thread_id=tid, name="Wrong Name", email=None, phone=None, source_label="test")
+        ChatFactsRequest(thread_id=tid, name="Wrong Name", email=None, phone=None, source_label="signup_form")
     )
-    # 0.98 < 0.99 → not applied
+    # EXTERNAL_FORM_CONFIDENCE (0.90) < 0.99 → not applied
     assert "name" not in result.fields_applied
     assert svc.threads[tid].state.personal.name.value == "Chris Jordan"
 
@@ -89,7 +89,7 @@ async def test_inject_facts_succeeds_after_conflict_in_memory():
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.handle_inject_facts(
-            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="test")
+            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="signup_form")
         )
 
     assert call_n["n"] == 2
@@ -109,7 +109,7 @@ async def test_inject_facts_gives_up_after_max_retries():
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.handle_inject_facts(
-            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="test")
+            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="signup_form")
         )
 
     assert result.fields_applied == []
@@ -126,7 +126,7 @@ async def test_inject_facts_empty_payload_returns_immediately():
     tid = uuid4()
 
     result = await svc.handle_inject_facts(
-        ChatFactsRequest(thread_id=tid, name=None, email=None, phone=None, source_label="test")
+        ChatFactsRequest(thread_id=tid, name=None, email=None, phone=None, source_label="signup_form")
     )
     assert result.fields_applied == []
     # Thread never touched

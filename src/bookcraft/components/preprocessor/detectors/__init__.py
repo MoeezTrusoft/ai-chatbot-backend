@@ -23,9 +23,14 @@ from bookcraft.components.preprocessor.detectors.manuscript_status_detector impo
     detect_manuscript_status,
 )
 from bookcraft.components.preprocessor.detectors.pricing_detector import has_pricing_intent
+from bookcraft.components.preprocessor.detectors.question_split import (
+    MAX_QUESTIONS,
+    split_questions,
+)
 
 __all__ = [
     "DATE_HINT_RE",
+    "MAX_QUESTIONS",
     "BookFormatResult",
     "GenreUncertaintyResult",
     "GreetingGuardResult",
@@ -38,4 +43,5 @@ __all__ = [
     "has_date_hint",
     "has_nda_request",
     "has_pricing_intent",
+    "split_questions",
 ]

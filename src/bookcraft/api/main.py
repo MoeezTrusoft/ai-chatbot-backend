@@ -682,6 +682,8 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             name="claude_sonnet",
             read_timeout=_generation_read_timeout,
             prompt_cache_enabled=settings.prompt_cache_enabled,
+            max_tokens=settings.response_max_tokens,
+            thinking_mode=settings.response_thinking_mode,
         )
         contract_mode = "production_strict" if production_like else "test_dev"
         logger.info(
@@ -690,6 +692,8 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             response_generator_provider="claude_sonnet",
             response_generator_contract_mode=contract_mode,
             anthropic_model=settings.anthropic_sonnet_model,
+            thinking_mode=settings.response_thinking_mode,
+            max_tokens=settings.response_max_tokens,
         )
         return SonnetResponseGenerator(
             provider_name="claude_sonnet",

@@ -40,3 +40,15 @@ bookcraft-ai-flow-frontend
 /.env.production.live.local
 bookcraft-ai-flow-frontend/node_modules/
 **/node_modules/
+
+# This repository is PUBLIC. The rules above only cover specific .env filenames,
+# so a new one (e.g. .env.vps.local, which holds the live Anthropic API key and
+# database passwords) was tracked-eligible and one `git add -A` from publishing it.
+.env*
+!.env.example
+!.env.sample
+
+# Database dumps — real customer names, emails, and phone numbers.
+backups/
+*.dump
+*.sql.gz

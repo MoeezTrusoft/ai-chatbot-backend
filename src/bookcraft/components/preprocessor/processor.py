@@ -15,6 +15,7 @@ from bookcraft.components.preprocessor.detectors import (
     has_agreement_request,
     has_nda_request,
     has_pricing_intent,
+    split_questions,
 )
 from bookcraft.components.preprocessor.embedding import EmbeddingClient
 from bookcraft.components.preprocessor.negation_targets import NegationTargetResolver
@@ -521,9 +522,13 @@ class SharedPreprocessor:
         self._put_all(atoms, "service_mentions", service_mentions)
         self._put_all(atoms, "services", services)
         self._put_all(atoms, "negated_services", negated_services)
+        # Every distinct question in the turn. Downstream this drives per-question RAG
+        # retrieval and the "answer all of them" prompt contract, so a checklist paste
+        # is not reduced to whichever question a regex happened to match first.
+        self._put_all(atoms, "questions", split_questions(text))
         self._put_all(atoms, "negated_terms", _negated_terms(text, negation_spans))
         self._put_all(atoms, "context_markers", _context_markers(text, counterfactual_spans))
-        self._put_all(atoms, "forbid_markers", _forbid_markers(text))
+        self._put_all(atoms, "forbid_markers", _forbid_markers(text, negation_spans=negation_spans))
         self._put_all(
             atoms,
             "query_cues",
@@ -742,7 +747,38 @@ def _context_markers(text: str, counterfactual_spans: list[Span]) -> list[str]:
     return markers
 
 
-def _forbid_markers(text: str) -> list[str]:
+# Word-anchored: the previous bare `"promise" in text` test also fired on "compromise"
+# and "compromised", so an author asking whether a clause would COMPROMISE their
+# copyright was answered with an unprompted speech about bestseller ranks (chat 5876).
+_GUARANTEE_DEMAND_RE = re.compile(
+    r"\b(?:guarantee|guarantees|guaranteed|guaranteeing|"
+    r"promise|promises|promised|promising|"
+    r"bestseller|best[\s-]seller|number\s+one\s+(?:spot|rank|ranking)|"
+    r"money[\s-]back|satisfaction\s+guaranteed)\b",
+    re.IGNORECASE,
+)
+
+
+def _demands_guarantee(text: str, *, negation_spans: list[Span] | None = None) -> bool:
+    """True only when the author is actually pressing US for a guarantee.
+
+    A bare keyword hit is not enough: "I'm not asking for a guarantee" mentions one
+    without wanting one, and answering it with the bestseller disclaimer is a non
+    sequitur. Negated mentions are therefore skipped.
+
+    Counterfactual mentions are NOT skipped. "If I signed today, would you promise a
+    bestseller campaign?" is a real guarantee demand wearing a hypothetical — it is
+    exactly the pressure this marker exists to catch.
+    """
+    negated = list(negation_spans or [])
+    for match in _GUARANTEE_DEMAND_RE.finditer(text):
+        if _span_overlaps(match.start(), match.end(), negated):
+            continue
+        return True
+    return False
+
+
+def _forbid_markers(text: str, *, negation_spans: list[Span] | None = None) -> list[str]:
     lowered = text.casefold()
     markers: list[str] = []
 
@@ -753,7 +789,7 @@ def _forbid_markers(text: str) -> list[str]:
     if any(phrase in lowered for phrase in ("40 percent", "cut the price", "price by")):
         add("price_number")
 
-    if any(phrase in lowered for phrase in ("bestseller", "promise", "guarantee")):
+    if _demands_guarantee(text, negation_spans=negation_spans):
         add("guarantee")
 
     if any(phrase in lowered for phrase in ("blank pricing", "filled later", "skip the quote")):

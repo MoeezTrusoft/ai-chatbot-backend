@@ -79,13 +79,22 @@ class HandoverResponse(BaseModel):
 
 
 class ChatFactsRequest(BaseModel):
-    """Inject verified customer facts into thread state from an external source.
+    """Inject customer-submitted facts into thread state from an external source.
 
     Used when the CSR backend already holds name/email/phone (e.g. from a signup
     form or customer profile) so the bot never re-asks for data it can look up.
     Fields are applied only when the bot's current confidence for that field is
     lower than the incoming value — this ensures form-submitted data fills gaps
     without overwriting facts the bot already captured with equal reliability.
+
+    ``source_label`` is a provenance claim, not a free-text note: only labels on
+    ``EXTERNAL_VERIFIED_SOURCE_LABELS`` are accepted, and anything else is refused
+    outright. Facts land in state as ``Source.EXTERNAL_FORM``, which the response
+    prompt renders as "submitted outside this chat" so the bot can never claim the
+    customer said them in conversation (chat 5876).
+
+    Do NOT send passively-captured data here (on-blur field harvesting, partial
+    forms the visitor abandoned). The visitor did not choose to give it to the bot.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -210,15 +219,19 @@ async def chat_debug_state(thread_id: UUID, request: Request) -> dict:
 
 @router.post("/facts", response_model=ChatFactsResponse)
 async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> ChatFactsResponse:
-    """Inject verified customer facts (name/email/phone) from the CRM into thread state.
+    """Inject customer-submitted facts (name/email/phone) from the CRM into thread state.
 
     Called by the Node.js backend when:
-    - A customer fills out a signup form (so the bot never re-asks for known data).
-    - A chat session starts and the customer's profile already has contact details.
+    - A customer SUBMITS a signup or consultation form.
+    - A chat session starts and the customer's profile already has contact details
+      that trace back to such a submission.
 
     Only fills fields that are currently empty or have lower confidence in the
-    bot's thread state — verified CRM data never overwrites a fact the bot
-    collected with equal or higher confidence.
+    bot's thread state — CRM data never overwrites a fact the customer stated in
+    this conversation.
+
+    Requests carrying an unrecognised ``source_label`` — including passive on-blur
+    capture — are refused and return ``fields_applied: []``.
     """
     settings = request.app.state.settings
     require_http_auth(request, settings)

@@ -23,7 +23,7 @@ from bookcraft.components.response.routing import ResponseRouter
 from bookcraft.components.response.schemas import GeneratedResponseText, ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
 from bookcraft.components.tools.governance import ToolGovernanceDecision
-from bookcraft.domain.enums import QueryIntentType
+from bookcraft.domain.enums import QueryIntentType, Source
 from bookcraft.domain.state import ThreadState
 
 RESPONSE_SECONDS = Histogram("response_generation_seconds", "Response generation latency.")
@@ -33,6 +33,12 @@ logger = structlog.get_logger(__name__)
 
 # Module-level style policy used to build the LLM system prompt.
 _STYLE_POLICY = ResponseStylePolicy.default()
+
+# How many retrieved chunks reach the prompt. A normal turn answers one thing and a
+# tight pack keeps it focused; a multi-question turn has to carry grounding for every
+# question asked, so it gets a wider budget (chat 5876).
+_SINGLE_QUESTION_RAG_CHUNKS = 5
+_MULTI_QUESTION_RAG_CHUNKS = 12
 
 
 @dataclass(slots=True)
@@ -194,12 +200,20 @@ class SonnetResponseGenerator:
             if self.adapter is None:
                 return ResponseDraft(text=template_fallback, source="template_no_adapter")
 
+            # A multi-question turn needs grounding for every question, not just the
+            # first few — 5 chunks cannot cover a dozen distinct questions (chat 5876).
+            _rag_budget = (
+                _MULTI_QUESTION_RAG_CHUNKS
+                if len([str(item) for item in (runtime_atoms.get("questions") or [])]) >= 2
+                else _SINGLE_QUESTION_RAG_CHUNKS
+            )
+
             text = await self._try_llm(
                 message=message,
                 state=state,
                 intent=intent,
                 extraction=extraction,
-                rag_chunks=rag_chunks[:5],
+                rag_chunks=rag_chunks[:_rag_budget],
                 route_name=route.name,
                 runtime_atoms=runtime_atoms,
                 response_hint=response_hint,
@@ -669,6 +683,7 @@ def _humanized_template_response(
     has_guarantee_pressure = isinstance(forbid_markers, list) and "guarantee" in {
         str(item) for item in forbid_markers
     }
+    template_questions = [str(item) for item in (runtime_atoms.get("questions") or [])]
 
     # Greeting: welcome warmly without a scoping question.
     if response_plan is not None and response_plan.primary_goal == "greeting_welcome":
@@ -688,6 +703,21 @@ def _humanized_template_response(
             "or are you still in the writing stage?"
         )
         return welcome
+
+    # Multi-question turns must never be answered by a single-topic template. This is
+    # the last-resort path (every LLM attempt was rejected), so there are no grounded
+    # answers to give and inventing rights or fee terms would be far worse than saying
+    # so. Placed above the guarantee branch because one incidental "guaranteed" inside
+    # a 13-question checklist used to hand the whole turn to the bestseller speech,
+    # which answered none of it and then repeated itself (chat 5876).
+    if len(template_questions) >= 2:
+        return _single_q(
+            f"You've asked {len(template_questions)} good questions there, and they "
+            "deserve exact answers rather than a guess from me — ownership, rights, and "
+            "fees are things I want to get precisely right for you. Let me put a "
+            "specialist on with you to go through them one by one.",
+            cta,
+        )
 
     # Guarantee/bestseller wording ONLY when the author actually pressed for a
     # guarantee. A generic complaint or objection is NOT a guarantee question — the
@@ -1487,14 +1517,28 @@ def _response_user_prompt(
         known.append(f"page count: {state.project.page_count.value}")
     if getattr(state.project.manuscript_status, "value", None):
         known.append(f"manuscript status: {state.project.manuscript_status.value}")
-    # Always surface captured contact info so the LLM never re-asks for it.
-    if getattr(state.personal.name, "value", None):
-        known.append(f"author name: {state.personal.name.value}")
-    if getattr(state.personal.email, "value", None):
-        known.append(f"author email: {state.personal.email.value}")
-    if getattr(state.personal.phone, "value", None):
-        known.append(f"author phone: {state.personal.phone.value}")
+    # Always surface captured contact info so the LLM never re-asks for it — but keep
+    # form-submitted details in a SEPARATE bucket. Listing a name pulled from a signup
+    # form next to facts the author actually said leads the model to claim they said it
+    # here, which is exactly how chat 5876 produced "you shared it earlier in our chat".
+    external_contact: list[str] = []
+    for _label, _field in (
+        ("name", state.personal.name),
+        ("email", state.personal.email),
+        ("phone", state.personal.phone),
+    ):
+        _value = getattr(_field, "value", None)
+        if not _value:
+            continue
+        if getattr(_field, "source", None) == Source.EXTERNAL_FORM:
+            external_contact.append(f"author {_label}: {_value}")
+        else:
+            known.append(f"author {_label}: {_value}")
     known_str = "; ".join(known) if known else "nothing confirmed yet"
+    external_contact_str = _external_contact_clause(external_contact)
+    multi_question_str = _multi_question_clause(
+        [str(item) for item in (runtime_atoms.get("questions") or [])]
+    )
 
     # C1: authoritative confirmed-consultation facts. Once an appointment exists,
     # the model may restate ONLY these exact values and must never invent or drift
@@ -1617,8 +1661,13 @@ def _response_user_prompt(
         "What I can tell from this message:\n"
         f"- They seem to be asking about: {intent_label}\n"
         f"- Services in scope: {service_phrase}\n"
-        f"- What we already know about the project: {known_str}\n"
+        # Explicitly scoped to the conversation: these facts accumulate across turns
+        # and are NOT all inferable from the message quoted above.
+        "- What we already know about the project, gathered over this conversation "
+        f"so far: {known_str}\n"
         f"- What we still need: {missing_str}"
+        f"{multi_question_str}"
+        f"{external_contact_str}"
         f"{confirmed_consultation_str}"
         f"{secondary_str}"
         f"{_persona_note}"
@@ -1631,6 +1680,66 @@ def _response_user_prompt(
         f"{history_str}"
         f"{rag_notes}\n\n"
         "Write the next reply now."
+    )
+
+
+def _multi_question_clause(questions: list[str]) -> str:
+    """Prompt clause for a turn that asks several questions at once.
+
+    Without this the model answers whichever question it latches onto and drops the
+    rest — an author's 13-point rights checklist came back with a single sentence
+    about launch plans (chat 5876).
+
+    The "no question marks" rule is load-bearing, not style: both the style policy and
+    the quality gate count raw '?' characters and reject any draft with more than one,
+    so a reply that politely restates each question before answering it gets thrown
+    away and the turn collapses to a canned fallback. Answers must therefore be stated
+    directly, with the single '?' reserved for the closing follow-up.
+    """
+    if len(questions) < 2:
+        return ""
+    listed = "\n".join(f"  {index}. {question}" for index, question in enumerate(questions, 1))
+    return (
+        f"\n\nThe author asked {len(questions)} separate questions in this one message:\n"
+        f"{listed}\n"
+        "How to reply to this turn:\n"
+        "- Answer EVERY question above, in the order asked. Answering only some of them "
+        "is a failure, however awkward the remainder are.\n"
+        "- Do NOT restate or quote the questions back, and do NOT put a question mark on "
+        "any answer. State each answer directly as a fact.\n"
+        "- One short clause or sentence per answer. Run them together as flowing prose. "
+        "The usual 1-2 sentence / 40-word limit does NOT apply to this reply — length "
+        "here comes from covering every question, not from padding.\n"
+        "- If you do not know one, say plainly that you will have the specialist confirm "
+        "that specific point. Never invent rights, fees, royalties, or contract terms.\n"
+        "- You may add at most ONE short follow-up question of your own, at the very end, "
+        "after every question above is answered. That is the only '?' allowed."
+    )
+
+
+def _external_contact_clause(external_contact: list[str]) -> str:
+    """Prompt clause for contact details the author submitted OUTSIDE this chat.
+
+    These are real, customer-supplied values (a signup or consultation form), so the
+    bot may use them and must not re-ask. But the author never typed them here, and
+    the model has no other way to know that — so state the origin explicitly and give
+    it the honest answer to "where did you get my name?" (chat 5876).
+    """
+    if not external_contact:
+        return ""
+    details = "; ".join(external_contact)
+    return (
+        "\n\nContact details we already hold from OUTSIDE this conversation "
+        f"({details}):\n"
+        "- Origin: a signup or consultation form the author submitted to BookCraft "
+        "previously — possibly months ago. They did NOT say this in this chat.\n"
+        "- You may use these (address them by name, don't re-ask for them).\n"
+        "- NEVER say or imply the author gave you these details in this chat, and "
+        "never invent any other origin for them.\n"
+        "- If the author asks where you got their details, tell them the truth "
+        "plainly and directly: it came from the signup form they filled in with "
+        "BookCraft earlier, not from this conversation. Answer that question FIRST, "
+        "before anything else, and offer to correct or remove it."
     )
 
 
@@ -1735,8 +1844,19 @@ def _context_pack_prompt_section(context_pack: ContextPack | None) -> str:
     if context_pack is None:
         return ""
 
+    # Keep each fact's provenance attached. pack_builder already resolves it; dropping
+    # it here is what let form-submitted contact data read as something the author said
+    # in chat (chat 5876).
     known = (
-        "; ".join(f"{fact.path}: {fact.value}" for fact in context_pack.known_facts)
+        "; ".join(
+            f"{fact.path}: {fact.value}"
+            + (
+                " [submitted on a form outside this chat — never claim they said it here]"
+                if fact.source == Source.EXTERNAL_FORM.value
+                else ""
+            )
+            for fact in context_pack.known_facts
+        )
         if context_pack.known_facts
         else "none"
     )

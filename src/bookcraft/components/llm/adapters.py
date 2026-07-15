@@ -8,6 +8,38 @@ from pydantic import BaseModel
 
 from bookcraft.components.llm.metrics import LLM_CALLS, LLM_LATENCY
 
+# Output-token ceiling per structured call. Measured: a reply that answers a
+# 13-question checklist is ~1030 output tokens by itself, so the previous
+# hardcoded 1024 truncated it even with thinking off (chat 5876). A ceiling is
+# billed on tokens actually produced, so the headroom costs nothing.
+DEFAULT_MAX_TOKENS = 2048
+
+# Accepted `thinking` modes. "disabled" and "adaptive" are both valid on
+# claude-sonnet-5, claude-sonnet-4-6 and claude-haiku-4-5 (all verified against
+# the live API). The {"type": "enabled", "budget_tokens": N} form is NOT — the
+# API rejects it on claude-sonnet-5 with:
+#   "thinking.type.enabled" is not supported for this model.
+# Depth under "adaptive" is controlled by output_config.effort, not a token budget.
+_THINKING_MODES = frozenset({"disabled", "adaptive"})
+
+
+def _thinking_payload(mode: str) -> dict[str, str] | None:
+    """Build the request's `thinking` field, or None to send no field at all.
+
+    Sending nothing is NOT the same as disabling: claude-sonnet-5 treats an absent
+    `thinking` as adaptive, which is the trap this function exists to make explicit.
+    """
+    normalized = (mode or "").strip().lower()
+    if normalized == "omit":
+        return None
+    if normalized not in _THINKING_MODES:
+        raise ValueError(
+            f"unsupported thinking mode {mode!r}; expected one of "
+            f"{sorted(_THINKING_MODES)} or 'omit'"
+        )
+    return {"type": normalized}
+
+
 # ---------------------------------------------------------------------------
 # Shared HTTP client — created once, reused across all LLM calls.
 # Using HTTP/2 and a persistent connection pool avoids a TCP+TLS handshake
@@ -112,6 +144,19 @@ class AnthropicAdapter:
     # None = unbounded read (current default; safe for long LLM responses)
     read_timeout: float | None = field(default=None)
     prompt_cache_enabled: bool = field(default=False)
+    # Cap on output tokens per call. This is a ceiling, not a reservation — billing
+    # is on tokens actually generated — so headroom is free. 1024 was not enough:
+    # a reply answering a dozen questions measures ~1030 output tokens on its own.
+    max_tokens: int = field(default=DEFAULT_MAX_TOKENS)
+    # Sent verbatim as the request's `thinking` field. Explicit by necessity: on
+    # claude-sonnet-4-6 an omitted `thinking` meant NO thinking, but on
+    # claude-sonnet-5 the same omission silently runs ADAPTIVE thinking. Since
+    # max_tokens covers thinking + text combined, a complex prompt spent the whole
+    # budget reasoning, returned stop_reason=max_tokens with no text block at all,
+    # and every response failed schema validation and fell back to a canned
+    # template (chat 5876). Never use {"type": "enabled", "budget_tokens": N} —
+    # claude-sonnet-5 rejects it with a 400.
+    thinking_mode: str = field(default="disabled")
 
     async def structured(
         self,
@@ -121,6 +166,7 @@ class AnthropicAdapter:
         output_model: type[BaseModel],
         purpose: str,
         system_cache_suffix: str | None = None,
+        max_tokens: int | None = None,
     ) -> BaseModel:
         LLM_CALLS.labels(provider=self.name, purpose=purpose).inc()
         with LLM_LATENCY.labels(provider=self.name, purpose=purpose).time():
@@ -150,15 +196,20 @@ class AnthropicAdapter:
                 pool=5.0,
             )
 
+            body: dict[str, object] = {
+                "model": self.model,
+                "max_tokens": max_tokens or self.max_tokens,
+                "system": system_payload,
+                "messages": [{"role": "user", "content": user}],
+            }
+            thinking = _thinking_payload(self.thinking_mode)
+            if thinking is not None:
+                body["thinking"] = thinking
+
             response = await client.post(
                 f"{self.base_url.rstrip('/')}/v1/messages",
                 headers=headers,
-                json={
-                    "model": self.model,
-                    "max_tokens": 1024,
-                    "system": system_payload,
-                    "messages": [{"role": "user", "content": user}],
-                },
+                json=body,
                 timeout=call_timeout,
             )
             response.raise_for_status()
@@ -355,6 +406,21 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
             )
             if text_block is not None:
                 payload = _loads_json_object(text_block["text"])
+            elif payload.get("stop_reason") == "max_tokens":
+                # The whole output budget was consumed before any text was emitted
+                # — with thinking on, that means the model reasoned until it ran
+                # out. Say so: this previously surfaced as ~10 pydantic "extra
+                # inputs are not permitted" errors on the raw envelope, which
+                # pointed nowhere near the real cause (chat 5876).
+                kinds = sorted(
+                    {b.get("type") for b in content if isinstance(b, dict) and b.get("type")}
+                )
+                raise ValueError(
+                    "model hit max_tokens before producing any text block "
+                    f"(content blocks: {kinds or 'none'}). The output budget is "
+                    "shared between thinking and the reply — raise max_tokens or "
+                    "set thinking_mode='disabled'."
+                )
     if isinstance(payload, dict) and "choices" in payload:
         content = payload["choices"][0]["message"]["content"]
         payload = _loads_json_object(content)

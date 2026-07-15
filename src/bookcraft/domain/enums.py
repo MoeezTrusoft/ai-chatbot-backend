@@ -7,6 +7,11 @@ class Source(StrEnum):
     USER_CORRECTED = "user_corrected"
     AI_EXTRACTED = "ai_extracted"
     CSR_ENTERED = "csr_entered"
+    # Facts the customer deliberately submitted OUTSIDE this chat (signup form,
+    # consultation form, or a profile built from one). They are true, but the
+    # customer never said them here — the bot must never claim they came up in
+    # conversation, and must attribute them to the signup when asked (chat 5876).
+    EXTERNAL_FORM = "external_form"
     SYSTEM = "system"
 
 

@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -232,29 +234,57 @@ class TestPackBuilderAfterInjection:
 # Bridge URL constant is defined
 # ---------------------------------------------------------------------------
 
+def _bridge_source() -> str:
+    """Source of the Node bridge that calls /chat/facts, or skip if not checked out.
+
+    The bridge lives in a separate repo, so its location is deployment-specific.
+    These tests used to hardcode one developer's laptop path, which meant they
+    errored everywhere else and silently guarded nothing.
+    """
+    candidates = [
+        os.environ.get("AI_CHATBOT_BRIDGE_PATH"),
+        "/var/www/server.trusoft.pk/src/services/aiChatbotBridge.service.js",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate).read_text()
+    pytest.skip(
+        "Node bridge not present on this host; set AI_CHATBOT_BRIDGE_PATH to run "
+        "the bridge contract tests"
+    )
+
+
 class TestBridgeFactsPath:
     """Verify the bridge module defines the facts endpoint path."""
 
     def test_facts_path_constant_exists(self):
-        import importlib
-        import subprocess
-        import sys
-        # Read bridge source to verify constant
-        bridge_path = (
-            "/Users/mac/Desktop/Abdullah/bookcraft-node-chatbot/"
-            "csr-trusoft-node/src/services/aiChatbotBridge.service.js"
-        )
-        with open(bridge_path) as f:
-            src = f.read()
+        src = _bridge_source()
         assert "AI_CHATBOT_FACTS_PATH" in src
         assert "/api/v1/chat/facts" in src
 
     def test_request_inject_facts_exported(self):
-        bridge_path = (
-            "/Users/mac/Desktop/Abdullah/bookcraft-node-chatbot/"
-            "csr-trusoft-node/src/services/aiChatbotBridge.service.js"
-        )
-        with open(bridge_path) as f:
-            src = f.read()
+        src = _bridge_source()
         assert "export const requestInjectFacts" in src
         assert "requestInjectFacts" in src.split("export default")[1]
+
+
+class TestBridgeNeverInjectsOnBlurCapture:
+    """The on-blur endpoint must not push keystrokes to the bot (chat 5876)."""
+
+    def test_onblur_handler_does_not_sync_facts(self):
+        controller = Path("/var/www/server.trusoft.pk/src/controllers/customer.controller.js")
+        if not controller.is_file():
+            pytest.skip("Node CRM not present on this host")
+        src = controller.read_text()
+
+        # updateCustomerSignup is the on-blur handler (every caller sends lead:false).
+        start = src.index("const updateCustomerSignup")
+        body = src[start : start + 2500]
+        # Strip line comments — the handler documents *why* the sync was removed, so a
+        # bare substring search would match the explanation rather than a real call.
+        code = "\n".join(
+            line for line in body.splitlines() if not line.lstrip().startswith("//")
+        )
+        assert "_syncCustomerFactsToBot(" not in code, (
+            "on-blur handler must never push passively-captured contact data to the bot"
+        )

@@ -155,6 +155,34 @@ ENTITY_INDEX_FAILURES = Counter(
 
 _IMMEDIATE_EVENT_TYPES: frozenset[str] = frozenset({"user.message"})
 
+# --- /chat/facts provenance gate (chat 5876) -------------------------------------
+# Contact facts pushed in from the CRM are only usable when the customer DELIBERATELY
+# submitted them (a signup form, a consultation booking, or a profile built from one),
+# or when a CSR keyed them in. Those are the labels below.
+EXTERNAL_VERIFIED_SOURCE_LABELS: frozenset[str] = frozenset({
+    "signup_form",        # visitor submitted the landing-page signup form
+    "consultation_form",  # visitor submitted the consultation booking form
+    "crm_session_sync",   # profile hydrated at session start from a past submission
+    "crm_sync",           # legacy default label — kept so older callers keep working
+    "csr_entered",        # a CSR typed it into the dashboard
+})
+
+# Passive capture: keystrokes harvested by on-blur handlers as the visitor tabs
+# between form fields WITHOUT ever submitting. The visitor never consented to hand
+# this to the bot, so it must never reach thread state. Named explicitly (rather than
+# just relying on the fail-closed default) so the rejection is self-documenting and
+# shows up in logs with an accurate reason.
+EXTERNAL_PASSIVE_SOURCE_LABELS: frozenset[str] = frozenset({
+    "onblur_capture",
+    "partial_form",
+    "keystroke_capture",
+})
+
+# Deliberately below every chat-stated confidence (deterministic email 0.98, phone
+# 0.92, contact_capture_sync name 0.92) so a fact the customer states in THIS
+# conversation always overrides the CRM's copy. Still high enough to fill a gap.
+EXTERNAL_FORM_CONFIDENCE = 0.90
+
 
 @dataclass
 class _EventBuffer:
@@ -1478,9 +1506,23 @@ class ChatService:
                     update={"normalized": rag_query.query_text}
                 )
                 try:
-                    rag_chunks = await self.rag_retriever.retrieve(
-                        processed_for_rag, intent, top_k=_rag_top_k_for_intent(intent)
-                    )
+                    _questions = [
+                        str(item) for item in (processed.deterministic_atoms.get("questions") or [])
+                    ]
+                    if len(_questions) >= 2:
+                        # One 400-char query cannot represent a dozen distinct questions:
+                        # the truncation alone drops most of them, so the model was asked
+                        # to answer questions it had no grounding for (chat 5876).
+                        rag_chunks = await self._retrieve_for_questions(
+                            processed=processed_for_rag,
+                            intent=intent,
+                            questions=_questions,
+                            thread_id=thread_id,
+                        )
+                    else:
+                        rag_chunks = await self.rag_retriever.retrieve(
+                            processed_for_rag, intent, top_k=_rag_top_k_for_intent(intent)
+                        )
                     rag_status = "success" if rag_chunks else "empty"
                 except Exception as exc:
                     rag_status = "failed"
@@ -2322,13 +2364,76 @@ class ChatService:
             "service_metadata": dict(getattr(state, "service_metadata", None) or {}),
         }
 
-    async def handle_inject_facts(self, payload: Any) -> Any:
-        """Inject verified CRM facts (name/email/phone) into a thread's state.
+    async def _retrieve_for_questions(
+        self,
+        *,
+        processed: Any,
+        intent: Any,
+        questions: list[str],
+        thread_id: UUID,
+    ) -> list[RetrievedChunk]:
+        """Retrieve grounding for EVERY question in a multi-question turn.
 
-        ``payload`` is a ``ChatFactsRequest``.  Each non-null field is applied
-        as a StateDelta with confidence 0.98 (form-verified data).  Uses
-        optimistic-locking retry (up to 3 attempts) so concurrent calls from
-        handle_turn never cause a ThreadVersionConflictError to surface as a 500.
+        Runs one retrieval per question concurrently and merges the results, keeping
+        each chunk's best score. A single blended query cannot do this: the questions
+        pull in different directions (ISBN ownership vs royalty schedules vs annual
+        fees), and the 400-char query cap drops the tail of the list outright.
+
+        Retrieval is best-effort per question — one failing query must not lose the
+        grounding for the others, so failures are logged and skipped.
+        """
+        if self.rag_retriever is None:
+            return []
+
+        _log = structlog.get_logger(__name__)
+        fan_out = questions[:_RAG_MULTI_QUESTION_FAN_OUT]
+        if len(questions) > len(fan_out):
+            # Never let a coverage cap look like full coverage.
+            _log.info(
+                "rag_multi_question_fan_out_capped",
+                thread_id=str(thread_id),
+                asked=len(questions),
+                retrieved_for=len(fan_out),
+            )
+
+        async def _retrieve_one(question: str) -> list[RetrievedChunk]:
+            try:
+                return await self.rag_retriever.retrieve(
+                    processed.model_copy(update={"normalized": question}),
+                    intent,
+                    top_k=_RAG_TOP_K_PER_QUESTION,
+                )
+            except Exception as exc:  # noqa: BLE001 - one bad query must not sink the turn
+                _log.warning(
+                    "rag_question_retrieval_failed",
+                    thread_id=str(thread_id),
+                    exception_class=exc.__class__.__name__,
+                )
+                return []
+
+        results = await asyncio.gather(*(_retrieve_one(q) for q in fan_out))
+
+        best_by_chunk: dict[str, RetrievedChunk] = {}
+        for chunk in [chunk for result in results for chunk in result]:
+            existing = best_by_chunk.get(chunk.chunk_id)
+            if existing is None or chunk.score > existing.score:
+                best_by_chunk[chunk.chunk_id] = chunk
+
+        merged = sorted(best_by_chunk.values(), key=lambda c: c.score, reverse=True)
+        return merged[:_RAG_MULTI_QUESTION_MAX_CHUNKS]
+
+    async def handle_inject_facts(self, payload: Any) -> Any:
+        """Inject externally-submitted facts (name/email/phone) into a thread's state.
+
+        ``payload`` is a ``ChatFactsRequest``.  Each non-null field is applied as a
+        StateDelta stamped ``Source.EXTERNAL_FORM`` so every downstream consumer —
+        including the response prompt — can tell these facts apart from anything the
+        customer said in chat.  Uses optimistic-locking retry (up to 3 attempts) so
+        concurrent calls from handle_turn never surface as a 500.
+
+        Only labels on ``EXTERNAL_VERIFIED_SOURCE_LABELS`` are applied.  Anything else
+        (notably passive on-blur keystroke capture) is refused: the customer never chose
+        to give us that data for this conversation, so the bot must not hold it at all.
 
         Returns a ``ChatFactsResponse`` listing which fields were actually updated.
         """
@@ -2339,9 +2444,29 @@ class ChatService:
         if not isinstance(payload, _FR):
             return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
+        _log = structlog.get_logger(__name__)
+
+        # Provenance gate. Unknown labels fail CLOSED: a caller that has not been
+        # reviewed cannot put contact data in front of the bot just by inventing a
+        # label. Passive capture (on-blur) is refused outright (chat 5876).
+        _label = (payload.source_label or "").strip().lower()
+        if _label not in EXTERNAL_VERIFIED_SOURCE_LABELS:
+            _log.warning(
+                "crm_facts_rejected_unverified_source",
+                thread_id=str(payload.thread_id),
+                source_label=payload.source_label,
+                reason=(
+                    "passive_capture"
+                    if _label in EXTERNAL_PASSIVE_SOURCE_LABELS
+                    else "unknown_source_label"
+                ),
+            )
+            return _FResp(thread_id=payload.thread_id, fields_applied=[])
+
         # Build deltas FIRST (before any thread loading).
-        # Confidence 0.98: fills gaps and corrects low-confidence guesses without
-        # overwriting already-verified facts (StateApplier enforces this).
+        # Confidence EXTERNAL_FORM_CONFIDENCE sits BELOW every chat-stated confidence,
+        # so anything the customer tells us here outranks the CRM copy — a correction
+        # ("actually it's Mike") must win over a months-old signup record.
         deltas: list[StateDelta] = []
         for state_path, value in [
             ("personal.name",  payload.name),
@@ -2352,9 +2477,9 @@ class ChatService:
                 deltas.append(StateDelta(
                     path=state_path,
                     value=value.strip(),
-                    confidence=0.98,
-                    source=Source.AI_EXTRACTED,
-                    extracted_by=f"crm_sync.{payload.source_label}",
+                    confidence=EXTERNAL_FORM_CONFIDENCE,
+                    source=Source.EXTERNAL_FORM,
+                    extracted_by=f"external_form.{_label}",
                     raw_excerpt=None,
                 ))
 
@@ -2362,7 +2487,6 @@ class ChatService:
         if not deltas:
             return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
-        _log = structlog.get_logger(__name__)
         _label_map = {"personal.name": "name", "personal.email": "email", "personal.phone": "phone"}
         _MAX_RETRIES = 3
 
@@ -2406,7 +2530,8 @@ class ChatService:
                 _log.info(
                     "crm_facts_injected",
                     thread_id=str(payload.thread_id),
-                    source_label=payload.source_label,
+                    source_label=_label,
+                    provenance=Source.EXTERNAL_FORM.value,
                     fields_applied=fields_applied,
                     attempt=_attempt,
                 )
@@ -4094,6 +4219,14 @@ _RAG_BROAD_INTENTS: frozenset[QueryIntentType] = frozenset(
 
 _RAG_TOP_K_BROAD = 8
 _RAG_TOP_K_NARROW = 3
+
+# Multi-question turns retrieve per question and merge (see _retrieve_for_questions).
+# Each question needs only its own few best chunks, but the merged pack has to be wide
+# enough to actually carry an answer for every one of them — the old single-query path
+# capped the prompt at 5 chunks for a 13-question checklist (chat 5876).
+_RAG_TOP_K_PER_QUESTION = 3
+_RAG_MULTI_QUESTION_FAN_OUT = 8
+_RAG_MULTI_QUESTION_MAX_CHUNKS = 12
 
 
 def _rag_top_k_for_intent(intent: IntentVote) -> int:
