@@ -4,9 +4,17 @@ from typing import Any
 from prometheus_client import Counter
 
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
-from bookcraft.domain.enums import Source
+from bookcraft.domain.enums import Source, manuscript_status_rank
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
+
+# Path whose value carries a monotonic lifecycle ordering. A forward move along it
+# (e.g. draft → published) is allowed to win on an equal/lower confidence, because
+# manuscript progress only advances in normal conversation. See should_apply_delta.
+_MANUSCRIPT_STATUS_PATH = "project.manuscript_status"
+# Floor below which a forward progression is NOT trusted to override — keeps the
+# low-confidence fill value (0.3) from silently advancing a known status.
+_PROGRESSION_MIN_CONFIDENCE = 0.80
 
 NO_OVERWRITE_SKIPS = Counter(
     "extraction_no_overwrite_skips_total",
@@ -96,6 +104,22 @@ def should_apply_delta(existing: FieldMeta[Any] | None, incoming: StateDelta) ->
     # when their extraction confidence is lower than the existing field.
     if incoming.source == Source.USER_CORRECTED:
         return True
+
+    # Manuscript status advances monotonically: a later, further-along statement
+    # ("my book is KDP-ready with a proof copy" after an earlier "draft") supersedes
+    # the stored value even on a confidence tie, which the plain rule below would
+    # otherwise lose. Only *forward* moves get this bypass, and only above the
+    # progression floor, so a low-confidence fill or a stray demotion cannot use it.
+    if incoming.path == _MANUSCRIPT_STATUS_PATH:
+        existing_rank = manuscript_status_rank(existing.value)
+        incoming_rank = manuscript_status_rank(incoming.value)
+        if (
+            existing_rank is not None
+            and incoming_rank is not None
+            and incoming_rank > existing_rank
+            and incoming.confidence >= _PROGRESSION_MIN_CONFIDENCE
+        ):
+            return True
 
     # Otherwise, existing state wins ties. A derived or repeated fact must be
     # strictly more confident before it can replace what the thread remembers.

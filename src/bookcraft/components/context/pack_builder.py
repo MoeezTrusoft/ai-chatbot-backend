@@ -102,6 +102,13 @@ class ContextPackBuilder:
         # content (anything past a bare idea) but hasn't uploaded a file yet. Only
         # eligible outside new-project context. Uses canonical ManuscriptStatus
         # values — the stored status is always coerced to this taxonomy.
+        #
+        # A free EDITORIAL assessment only makes sense for services that act on the
+        # manuscript's text. It must NOT be pitched when the focus is marketing (or
+        # cover, audiobook, website, etc.) — the author isn't asking us to touch the
+        # words, and pitching "upload your manuscript for an editorial review" reads as
+        # a non-sequitur (chat 6943). `edited`/`published` are also dropped: a finished
+        # or already-distributed book has nothing to editorially assess.
         _UPLOAD_ELIGIBLE_STATUSES = {
             "rough_notes",
             "journal_entries",
@@ -111,13 +118,18 @@ class ContextPackBuilder:
             "partial_draft",
             "draft",
             "completed",
-            "edited",
-            "published",
+        }
+        _ASSESSMENT_ELIGIBLE_SERVICES = {
+            ServiceCategory.GHOSTWRITING.value,
+            ServiceCategory.EDITING_PROOFREADING.value,
+            ServiceCategory.PUBLISHING_DISTRIBUTION.value,
+            ServiceCategory.INTERIOR_FORMATTING.value,
         }
         _has_attachments = bool(getattr(state, "attachments_received", None))
         manuscript_upload_eligible = (
             project_event != "new_project"
             and manuscript_status in _UPLOAD_ELIGIBLE_STATUSES
+            and active_service in _ASSESSMENT_ELIGIBLE_SERVICES
             and not _has_attachments
         )
 

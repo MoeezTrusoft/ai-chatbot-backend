@@ -129,6 +129,45 @@ def coerce_manuscript_status(raw: object) -> ManuscriptStatus | None:
         return _MANUSCRIPT_STATUS_ALIASES.get(text)
 
 
+# Monotonic progress ordering of the manuscript lifecycle (higher = further along).
+# Used to let a genuinely *forward* status update (e.g. draft → published) win even
+# when it arrives at an equal-or-lower extraction confidence than the stored value —
+# manuscript progress only moves forward in normal conversation, so a later, more
+# advanced statement supersedes an earlier one. Backward moves are NOT granted this
+# bypass; they still require a stronger signal (higher confidence or a user
+# correction), which guards against a stray phrase demoting a known-advanced status.
+_MANUSCRIPT_STATUS_RANK: dict[ManuscriptStatus, int] = {
+    ManuscriptStatus.UNKNOWN: 0,
+    ManuscriptStatus.IDEA_ONLY: 1,
+    ManuscriptStatus.IDEA: 1,
+    ManuscriptStatus.ROUGH_NOTES: 2,
+    ManuscriptStatus.JOURNAL_ENTRIES: 2,
+    ManuscriptStatus.VOICE_MEMO: 2,
+    ManuscriptStatus.OUTLINE: 3,
+    ManuscriptStatus.IN_PROGRESS: 4,
+    ManuscriptStatus.PARTIAL_DRAFT: 5,
+    ManuscriptStatus.DRAFT: 6,
+    ManuscriptStatus.COMPLETED_DRAFT: 7,
+    ManuscriptStatus.COMPLETED: 7,
+    ManuscriptStatus.EDITED: 8,
+    ManuscriptStatus.PUBLISHED: 9,
+}
+
+
+def manuscript_status_rank(raw: object) -> int | None:
+    """Return the monotonic progress rank of a manuscript status, or None if unknown.
+
+    Accepts anything ``coerce_manuscript_status`` accepts (canonical members, legacy
+    aliases, the LLM extractor's coarse vocabulary). Returns None when the value
+    cannot be mapped, so callers can decline to reason about progression rather than
+    treat an unparseable value as rank 0.
+    """
+    status = coerce_manuscript_status(raw)
+    if status is None:
+        return None
+    return _MANUSCRIPT_STATUS_RANK.get(status)
+
+
 class ContactMethod(StrEnum):
     EMAIL = "email"
     PHONE = "phone"

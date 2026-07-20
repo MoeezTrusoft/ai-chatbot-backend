@@ -78,6 +78,21 @@ _PUBLISHED_PHRASES = (
     "book is published",
     "my book is out",
     "book is out",
+    # KDP / print-ready signals: a passed KDP upload or a proof copy means the
+    # interior + cover files are finalized and distributed — this is a published /
+    # print-ready book, never a "draft" (chat 6943).
+    "kdp ready",
+    "kdp-ready",
+    "ready for kdp",
+    "uploaded it to kdp",
+    "uploaded to kdp",
+    "proof copy",
+    "print ready",
+    "print-ready",
+    "it's live on amazon",
+    "live on amazon",
+    "on amazon already",
+    "for sale on amazon",
 )
 
 _COMPLETED_PHRASES = (
@@ -334,11 +349,18 @@ def _first_match(
 
 
 def _has_already_published_phrase(text: str) -> bool:
-    """Return True when the text clearly states the book IS already published (not a goal)."""
+    """Return True when the text clearly states the book IS already published (not a goal).
+
+    Includes KDP / print-ready signals: a passed KDP upload or a proof copy is
+    evidence the book is finalized and distributed, so it should not be suppressed by
+    a co-occurring publishing *goal* phrase (chat 6943).
+    """
     return bool(
         re.search(
             r"\b(?:already\s+published|book\s+is\s+(?:out|published)|"
-            r"my\s+book\s+is\s+out|is\s+already\s+published)\b",
+            r"my\s+book\s+is\s+out|is\s+already\s+published|"
+            r"kdp[-\s]?ready|proof\s+copy|print[-\s]?ready|"
+            r"uploaded\s+(?:it\s+)?to\s+kdp)\b",
             text,
             re.IGNORECASE,
         )

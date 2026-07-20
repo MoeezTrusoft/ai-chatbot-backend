@@ -160,6 +160,8 @@ EXTRACTION RULES:
    explicitly correcting or updating it.
 8. For manuscript_status: read the user's full statement and use your own judgment to pick
    the single best-fit value from this closed list — do NOT require a literal phrase match.
+   The list is ORDERED from least to most progress; always choose the FURTHEST-along value
+   the user's statement supports.
    Valid values and their meanings:
      "not_started"      — no writing done yet: just an idea, preparing, starting from scratch,
                           story still in their head, haven't begun writing
@@ -167,9 +169,18 @@ EXTRACTION RULES:
                           actual draft pages written
      "early_draft"      — has some drafted content: any chapters written, pages drafted,
                           partial manuscript, prologue written, chapters completed
-     "full_draft"       — complete or near-complete draft manuscript, full book written
+     "full_draft"       — a complete or near-complete DRAFT manuscript, full book written but
+                          not yet finalized/edited
+     "completed"        — the manuscript itself is FINISHED/final — done, complete, "the book
+                          is finished", a final manuscript ready to move forward (but NOT yet
+                          published or formatted for a store)
      "editing_complete" — already finished their own editing pass; they do NOT want an
                           editing service — treat editing as negated for this conversation
+     "published"        — the book is ALREADY published, print-ready, or live on a store:
+                          "it's on Amazon", "already published", "KDP-ready", "uploaded to
+                          KDP", "I have a proof copy", "print-ready files", "it's live", "for
+                          sale". A proof copy or a passed KDP upload means the files are
+                          finalized and distributed — this is "published", NOT a draft.
    Confidence rules:
      0.92 — user's statement clearly implies the stage (even if phrased indirectly)
      0.70 — statement is vague or hedged ("I think I have some notes", "maybe a draft")
@@ -190,7 +201,18 @@ EXTRACTION RULES:
      "I have some notes"                  → notes_only,       0.85
      "I have lore, character arcs, how it ends" → notes_only, 0.92
      "Full manuscript done"               → full_draft,       0.92
+     "Completed"  (answer to "what stage is your book at?") → completed, 0.92
+     "The manuscript is finished / it's done" → completed,    0.92
      "Done with editing"                  → editing_complete, 0.92
+     "My book is already KDP ready. I uploaded it and have a proof copy." → published, 0.92
+     "It's on Amazon already"             → published,        0.92
+     "I already self-published it"        → published,        0.92
+     "I have print-ready files"           → published,        0.90
+   UPDATING a known status: manuscript progress only moves forward. If KNOWN STATE already
+   has a manuscript_status but the user's new message shows the project has ADVANCED past it
+   (e.g. known "draft" and the user now says the book is KDP-ready with a proof copy), you
+   MUST extract the new, further-along status at confidence 0.92 — this is a legitimate
+   update, not a re-extraction. Do NOT stay silent just because a status was already known.
 10. For word_count: extract the integer even when phrased as an estimate.
     "around 130,000" → 130000, confidence 0.70 (hedged)
     "maybe 100,000"  → 100000, confidence 0.70 (hedged)
