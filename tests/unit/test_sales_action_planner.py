@@ -42,7 +42,10 @@ def _intent(
     )
 
 
-def test_lead_with_email_is_ready_but_recommends_name_and_phone() -> None:
+def test_lead_with_email_but_no_name_asks_for_name() -> None:
+    # A lead requires a name (intentional gate, added with the lead objective engine):
+    # email-only is not yet READY — the bot asks for the name rather than dropping the
+    # lead. This is consistent with lead_contact_ready = name AND (email OR phone).
     planner = SalesActionPlanner()
     plan = planner.plan(
         processed=_message(
@@ -55,9 +58,8 @@ def test_lead_with_email_is_ready_but_recommends_name_and_phone() -> None:
     )
 
     assert plan.action_type == ActionType.CREATE_LEAD
-    assert plan.status == ActionStatus.READY
-    assert plan.collected_slots["email"] == "author@example.com"
-    assert plan.recommended_follow_up_slots == ["name", "phone"]
+    assert plan.status == ActionStatus.MISSING_INFO
+    assert plan.missing_slots == ["name"]
 
 
 def test_lead_without_email_or_phone_is_missing_contact() -> None:
@@ -71,7 +73,8 @@ def test_lead_without_email_or_phone_is_missing_contact() -> None:
 
     assert plan.action_type == ActionType.CREATE_LEAD
     assert plan.status == ActionStatus.MISSING_INFO
-    assert plan.missing_slots == ["email_or_phone"]
+    # Name is checked before contact channel, so an empty contact reports "name" first.
+    assert plan.missing_slots == ["name"]
 
 
 def test_schedule_request_missing_name_contact_and_time() -> None:
@@ -427,8 +430,11 @@ def test_consultation_request_with_required_details_needs_confirmation() -> None
     planner = SalesActionPlanner()
 
     plan = planner.plan(
+        # A relative time ("tomorrow at 4pm") needs a timezone (Step 15) or the plan
+        # is MISSING_INFO on preferred_call_timezone — so state it explicitly here to
+        # exercise the fully-specified → NEEDS_CONFIRMATION path.
         processed=_message(
-            "Please schedule a consultation tomorrow at 4pm. "
+            "Please schedule a consultation tomorrow at 4pm Central time. "
             "My name is Maya Author and my email is maya@example.com.",
             atoms={"emails": ["maya@example.com"]},
         ),

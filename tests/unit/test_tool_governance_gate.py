@@ -201,7 +201,7 @@ def test_sufficient_confidence_allows_create_lead_ready() -> None:
     result = _gate.evaluate(
         action_plan=_plan(
             ActionType.CREATE_LEAD,
-            collected_slots={"email": "test@example.com"},
+            collected_slots={"name": "Test User", "email": "test@example.com"},
         ),
         intent=_intent(confidence=0.85),
         processed=_processed("My email is test@example.com"),
@@ -212,7 +212,10 @@ def test_sufficient_confidence_allows_create_lead_ready() -> None:
 
 def test_confidence_exactly_at_threshold_allows() -> None:
     result = _gate.evaluate(
-        action_plan=_plan(ActionType.CREATE_LEAD, collected_slots={"email": "x@y.com"}),
+        action_plan=_plan(
+            ActionType.CREATE_LEAD,
+            collected_slots={"name": "X Y", "email": "x@y.com"},
+        ),
         intent=_intent(confidence=0.60),
         processed=_processed("email x@y.com"),
         state=ThreadState(),
@@ -393,7 +396,7 @@ def test_idempotency_key_present_for_allowed_write_action() -> None:
     result = _gate.evaluate(
         action_plan=_plan(
             ActionType.CREATE_LEAD,
-            collected_slots={"email": "a@b.com"},
+            collected_slots={"name": "A B", "email": "a@b.com"},
         ),
         intent=_intent(confidence=0.90),
         processed=_processed("My email is a@b.com"),

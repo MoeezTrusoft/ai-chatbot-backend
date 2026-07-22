@@ -149,7 +149,9 @@ async def test_live_response_adapter_receives_guarded_prompt() -> None:
     assert "preferred service" in draft.text
     # Purpose now includes the attempt suffix ("response_full", "response_reduced").
     assert adapter.calls[0]["purpose"].startswith("response")
-    assert "Do not invent prices" in adapter.calls[0]["system"]
+    # The price guard was reworded (and made stricter) in refactor 7cbeba0:
+    # from "Do not invent prices" to "Never quote a price…". Behaviour is preserved.
+    assert "Never quote a price" in adapter.calls[0]["system"]
     # The user prompt now uses "The author just wrote:" rather than "normalized_message".
     assert "portfolio samples" in adapter.calls[0]["user"]
 

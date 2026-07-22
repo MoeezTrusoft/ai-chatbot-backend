@@ -186,7 +186,10 @@ class LeadObjectiveEngine:
                 return LeadObjectiveDecision(
                     stage="lead_created",
                     objective_move="request_second_contact_method",
-                    reason="Lead created; politely asking once for the missing second contact method.",
+                    reason=(
+                        "Lead created; politely asking once for the missing "
+                        "second contact method."
+                    ),
                     stop_discovery=True,
                     recommended_primary_goal="lead_contact_capture",
                     next_question=_next_q,
@@ -256,8 +259,18 @@ class LeadObjectiveEngine:
                     audit=audit,
                 )
             query_primary = getattr(intent, "query_primary", None)
-            has_explicit_intent = query_primary in _LEAD_CAPTURE_INTENTS or bool(
-                _EXPLICIT_LEAD_INTENT_RE.search(message)
+            # A customer who volunteers name + email/phone (CONTACT_INFO_PROVIDED) is
+            # giving the strongest possible lead signal — typically right after we
+            # asked for contact. Treating that as "no explicit intent" and continuing
+            # discovery silently drops the lead (regression from the "." commit d3ff6e9).
+            # Non-lead contexts (complaint/test/bug) are already suppressed by the
+            # _NON_LEAD_CONTEXT_RE guard above, so this cannot create junk leads.
+            # Scoped to this contact-ready branch only — do NOT add to
+            # _LEAD_CAPTURE_INTENTS (that set also drives ask_contact behaviour).
+            has_explicit_intent = (
+                query_primary in _LEAD_CAPTURE_INTENTS
+                or query_primary == QueryIntentType.CONTACT_INFO_PROVIDED
+                or bool(_EXPLICIT_LEAD_INTENT_RE.search(message))
             )
             if has_explicit_intent:
                 # Phone is the primary contact method. When the customer offered only

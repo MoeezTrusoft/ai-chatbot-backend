@@ -49,7 +49,9 @@ async def test_extractor_persists_finished_manuscript_and_children_fiction(
     extraction = await CombinedExtractor().extract(processed, ThreadState())
     state = StateApplier().apply(ThreadState(), extraction)
 
-    assert state.project.manuscript_status.value == "completed_draft"
+    # "completed" is the canonical v2 ManuscriptStatus; "completed_draft" is a legacy
+    # alias the pipeline normalizes away (see enums.py _LEGACY_MANUSCRIPT_ALIASES).
+    assert state.project.manuscript_status.value == "completed"
     assert state.project.genre.value == "children's fiction"
 
 

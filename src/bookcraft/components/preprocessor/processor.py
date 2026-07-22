@@ -192,6 +192,7 @@ SERVICE_KEYWORDS = {
     ServiceCategory.COVER_DESIGN_ILLUSTRATION: [
         # Explicit cover-design phrases — no standalone "cover" (Step 3)
         "cover design",
+        "professional cover",
         "book cover",
         "front cover",
         "cover for my book",

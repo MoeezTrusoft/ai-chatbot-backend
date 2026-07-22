@@ -91,3 +91,40 @@ to trigger `create_lead`.
 **Track as issues?** Yes — tests 1–4, 5–7, 10 should be fixed in Batch 5 as a
 "test alignment" pass after all production-readiness changes are merged.  
 **Batch 4 introduces zero new failures.**
+
+---
+
+## Resolution log (2026-07-22)
+
+Re-triaged on current `main`. The May doc's dispositions were mostly right but it
+**misdiagnosed #9** (real source regression, not ordering) and predates two newer
+failures (price-guard rewording, specificity-check removal). Final actions:
+
+| # | Test | Verdict | Action taken |
+|---|------|---------|--------------|
+| 1 | `test_lead_with_email_is_ready...` | stale — name-gate intentional | renamed → `test_lead_with_email_but_no_name_asks_for_name`; asserts MISSING_INFO/["name"] |
+| 2 | `test_lead_without_email_or_phone...` | stale | asserts `missing_slots == ["name"]` (name checked first) |
+| 3 | `test_nda_pending_confirmation_yes...` | **SOURCE BUG** | fixed `is_confirmation_text` — natural affirmatives ("yes send it", "go ahead") now confirm a known pending action (`_GENERIC_POSITIVES`). Matches the team's own `f73fdab` "why live 'yes' isn't consumed" diagnostic. |
+| 4 | `test_consultation_request...needs_confirmation` | stale — Step 15 timezone | added an explicit timezone to the fixture |
+| 5–7 | `test_tool_governance_gate` ×3 | stale — required-slots defense | added `name` to fixtures |
+| 8 | `test_extractor_persists_finished...` | stale — legacy enum | asserts `"completed"` (canonical v2) |
+| 9 | `test_preprocessor_detects_complex_production_order_services` | **SOURCE BUG** (doc misdiagnosed as ordering) | re-added `"professional cover"` keyword dropped by `d3ff6e9` |
+| 10 | `test_contact_ready_moves_to_create_lead` | **SOURCE BUG — loses leads** | `CONTACT_INFO_PROVIDED` now counts as explicit intent in the contact-ready branch of `objective.py` (regression from `d3ff6e9`) |
+| — | `test_response_routing::...guarded_prompt` | stale — guard reworded stricter (`7cbeba0`) | asserts `"Never quote a price"` |
+| — | `test_response_style_policy::test_fails_missing_specificity...` | **REGRESSION CANDIDATE** | xfail + flagged as audit item R6; source removal (`17b03cd`) not restored under fire (feeds quality-gate regeneration) |
+| — | `test_trimatch_verifier_accepts_seed_rules_and_eval` | rule-data drift (shadow) | xfail; regenerate v2 rule pack (audit R5) |
+
+Full unit suite after resolution: **1888 passed, 2 xfailed, 0 failed.**
+
+## Pre-existing INTEGRATION failures (2026-07-22, audit backlog)
+
+The full `tests/integration` suite is slow and env/live-gated. Confirmed present on
+`main` HEAD (verified via `git stash` of `src/`) — NOT caused by the 2026-07-22 fixes:
+
+- `test_lead_capture_chat_flow::test_service_request_asks_contact_instead_of_over_discovery`
+- `test_lead_capture_chat_flow::test_lead_created_response_has_no_more_discovery_question`
+- `test_lead_capture_chat_flow::test_intake_form_rich_segment_present_when_contact_missing`
+- `test_batch_regression_suite::TestScenario1PublishingToConsultation::test_s1_consultation_after_lead_does_not_retrigger`
+
+These cluster around lead-capture discovery/over-questioning behaviour — deferred to the
+behavioural audit (MASTER_AUDIT_PLAN §4.4 / scenario 3), not blockers for the unit-verified fixes.

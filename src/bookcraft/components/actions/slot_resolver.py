@@ -25,6 +25,22 @@ YES_CONFIRMATIONS = {
     "yes send it",
 }
 
+# Action-agnostic affirmatives accepted for ANY known pending action. They contain
+# no action-specific verb, so they cannot cross-confirm the wrong action (the caller
+# already knows what is pending). This is what a customer actually types to confirm.
+_GENERIC_POSITIVES = frozenset(
+    {
+        "yes", "yes please", "yep", "yeah", "yup", "sure", "ok", "okay",
+        "confirm", "confirmed", "confirm it", "please confirm",
+        "go ahead", "yes go ahead", "please go ahead", "go for it",
+        "proceed", "yes proceed", "please proceed", "let's proceed",
+        "do it", "yes do it", "please do", "do that", "yes do that",
+        "send it", "yes send it", "send it over", "please send it",
+        "sounds good", "that works", "yes that works", "works for me",
+        "sure thing", "absolutely", "definitely", "yes lets do it", "lets do it",
+    }
+)
+
 # ---------------------------------------------------------------------------
 # Pending confirmation TTLs (seconds)
 # ---------------------------------------------------------------------------
@@ -116,7 +132,12 @@ def is_confirmation_text(text: str, pending_action_type: str | None = None) -> b
         # cross-action ambiguity (e.g. "yes" can never mean "book a call"
         # when pending action is NDA, but it also cannot accidentally trigger
         # the wrong action because the CALLER already knows what is pending).
-        _GENERIC_POSITIVES = {"yes", "yes please", "confirm", "confirmed"}
+        # Truly action-agnostic affirmatives. These carry no action-specific verb
+        # (unlike "schedule it" / "send the nda"), so they cannot cross-confirm the
+        # wrong action — the caller already knows which action is pending. Kept broad
+        # on purpose: a customer confirming an NDA naturally says "yes, send it" or
+        # "go ahead", not "yes generate the nda" (chat regression — those replies were
+        # silently dropped as non-confirmations and the action never fired).
         if normalized in _GENERIC_POSITIVES:
             return True
         specific = _ACTION_CONFIRMATION_PATTERNS.get(pending_action_type)
