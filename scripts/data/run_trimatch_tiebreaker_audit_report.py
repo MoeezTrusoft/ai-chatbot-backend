@@ -29,10 +29,15 @@ class TiebreakerAuditCase:
 
 AUDIT_CASES: tuple[TiebreakerAuditCase, ...] = (
     TiebreakerAuditCase(
+        # Neutral base + service marker (mirrors the query-dimension cases below) so the
+        # synthetic video_trailer disagreement survives the v2 rule army's stronger base
+        # classification. The extra engine recommends video_trailer via the marker; the
+        # final (active) engine sees no video signal, so the recommendation is considered
+        # but not applied.
         name="service_recommendation_considered_not_applied",
-        message=("I need proofreading help for my manuscript. rare tiebreaker video marker"),
+        message="rare tiebreaker video marker. What does BookCraft do for authors?",
         expected_extra_service="video_trailer",
-        expected_final_service="editing_proofreading",
+        expected_final_query="service_question",
     ),
     TiebreakerAuditCase(
         name="pricing_recommendation_blocked",

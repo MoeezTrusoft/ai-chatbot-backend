@@ -4437,6 +4437,1377 @@
       "confidence": 0.74,
       "enabled": true,
       "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "hello"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "hi"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "hey"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "good",
+        "morning"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "good",
+        "afternoon"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "good",
+        "evening"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-107",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "salam"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-GREETING-PT-108",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "greeting"
+      },
+      "pattern": [
+        "assalam"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "services"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "service",
+        "options"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "handle",
+        "this"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SERVICE_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "service_question"
+      },
+      "pattern": [
+        "what",
+        "can",
+        "bookcraft"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "price"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "pricing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "cost"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "quote"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "estimate"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PRICING_QUESTION-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "pricing_question"
+      },
+      "pattern": [
+        "budget"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIMELINE_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "timeline"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIMELINE_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "turnaround"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIMELINE_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "deadline"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIMELINE_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "rush"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-TIMELINE_QUESTION-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "timeline_question"
+      },
+      "pattern": [
+        "urgent"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "portfolio"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "samples"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "examples"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "case",
+        "studies"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "previous",
+        "work"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "past",
+        "projects"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PORTFOLIO_REQUEST-PT-107",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "portfolio_request"
+      },
+      "pattern": [
+        "sample",
+        "links"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "consultation"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "consultant"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "expert",
+        "review"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "discovery",
+        "call"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "strategy",
+        "call"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONSULTATION_REQUEST-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "consultation_request"
+      },
+      "pattern": [
+        "schedule",
+        "a",
+        "call"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "nda"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "non",
+        "disclosure"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "confidentiality"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "privacy",
+        "agreement"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "protect",
+        "my",
+        "manuscript"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-NDA_REQUEST-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "nda_request"
+      },
+      "pattern": [
+        "before",
+        "i",
+        "upload"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREEMENT_REQUEST-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "contract"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREEMENT_REQUEST-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "statement",
+        "of",
+        "work"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREEMENT_REQUEST-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "sow"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-AGREEMENT_REQUEST-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "agreement_request"
+      },
+      "pattern": [
+        "terms"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REVISION_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "revisions"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REVISION_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "revision",
+        "rounds"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REVISION_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "changes"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-REVISION_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "revision_question"
+      },
+      "pattern": [
+        "edit",
+        "rounds"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAYMENT_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "payment"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAYMENT_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "installments"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAYMENT_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "milestones"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAYMENT_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "invoice"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PAYMENT_QUESTION-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "payment_question"
+      },
+      "pattern": [
+        "deposit"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "ingramspark"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "isbn"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "metadata"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "categories"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "keywords"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "bisac"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-PUBLISHING_PLATFORM_QUESTION-PT-107",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "publishing_platform_question"
+      },
+      "pattern": [
+        "retailer"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "manuscript",
+        "is",
+        "finished"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "completed",
+        "manuscript"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "first",
+        "draft"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "partial",
+        "draft"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "three",
+        "chapters"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-MANUSCRIPT_STATUS_UPDATE-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "manuscript_status_update"
+      },
+      "pattern": [
+        "edited",
+        "manuscript"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT_INFO_PROVIDED-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "my",
+        "phone",
+        "is"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT_INFO_PROVIDED-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "email",
+        "address"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT_INFO_PROVIDED-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "contact",
+        "me",
+        "at"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT_INFO_PROVIDED-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "book",
+        "title",
+        "is"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-CONTACT_INFO_PROVIDED-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "contact_info_provided"
+      },
+      "pattern": [
+        "secondary",
+        "email"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-COMPLAINT_OR_OBJECTION-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "disappointed"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-COMPLAINT_OR_OBJECTION-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "that",
+        "is",
+        "wrong"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-COMPLAINT_OR_OBJECTION-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "too",
+        "slow"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-COMPLAINT_OR_OBJECTION-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "not",
+        "what",
+        "i",
+        "asked"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-COMPLAINT_OR_OBJECTION-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "complaint_or_objection"
+      },
+      "pattern": [
+        "concern"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "ready",
+        "to",
+        "start"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "ready",
+        "to",
+        "proceed"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "let",
+        "us",
+        "start"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "start",
+        "the",
+        "project"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "i",
+        "am",
+        "ready"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-READY_TO_BUY-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "ready_to_buy"
+      },
+      "pattern": [
+        "how",
+        "do",
+        "we",
+        "begin"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "maybe"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "do",
+        "not",
+        "know"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "confused"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-UNCLEAR-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "unclear"
+      },
+      "pattern": [
+        "unclear"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM_OR_ABUSE-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "crypto",
+        "investment"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM_OR_ABUSE-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "click",
+        "this",
+        "link"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM_OR_ABUSE-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "backlinks"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM_OR_ABUSE-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "adult",
+        "content"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-SPAM_OR_ABUSE-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "spam_or_abuse"
+      },
+      "pattern": [
+        "spam",
+        "offer"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-101",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "weather"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-102",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "joke"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-103",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "math",
+        "homework"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-104",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "medical",
+        "diagnosis"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-105",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "legal",
+        "advice"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-106",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "restaurant"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "QUERY-OFF_TOPIC-PT-107",
+      "layer": "pattern",
+      "target": {
+        "query_intent": "off_topic"
+      },
+      "pattern": [
+        "football",
+        "score"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
     }
   ]
 }

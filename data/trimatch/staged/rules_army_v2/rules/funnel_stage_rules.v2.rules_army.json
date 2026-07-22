@@ -551,7 +551,7 @@
         "funnel_stage": "scoping"
       },
       "phrases": [
-        "scope"
+        "project scope"
       ],
       "confidence": 0.965,
       "enabled": true,
@@ -666,6 +666,7 @@
       },
       "pattern": [
         "project",
+        "scope",
         "details"
       ],
       "confidence": 0.93,
@@ -679,8 +680,8 @@
         "funnel_stage": "scoping"
       },
       "pattern": [
-        "genre",
-        "is"
+        "page",
+        "count"
       ],
       "confidence": 0.93,
       "enabled": true,
@@ -771,7 +772,7 @@
         "funnel_stage": "quote_requested"
       },
       "phrases": [
-        "proposal"
+        "written proposal"
       ],
       "confidence": 0.965,
       "enabled": true,
@@ -810,7 +811,7 @@
         "funnel_stage": "quote_requested"
       },
       "phrases": [
-        "cost estimate"
+        "quotation"
       ],
       "confidence": 0.985,
       "enabled": true,
@@ -833,7 +834,7 @@
       "target": {
         "funnel_stage": "quote_requested"
       },
-      "regex": "\\b(formal\\s+quote|pricing\\s+quote|cost\\s+estimate|quote\\s+engine)\\b",
+      "regex": "\\b(formal\\s+quote|pricing\\s+quote|quotation|get\\s+a\\s+quote|quote\\s+engine)\\b",
       "confidence": 0.955,
       "enabled": true,
       "shortcut_allowed": false
@@ -873,8 +874,8 @@
         "funnel_stage": "quote_requested"
       },
       "pattern": [
-        "cost",
-        "estimate"
+        "pricing",
+        "quote"
       ],
       "confidence": 0.93,
       "enabled": true,
@@ -1014,6 +1015,7 @@
       },
       "pattern": [
         "received",
+        "the",
         "quote"
       ],
       "confidence": 0.93,
@@ -1028,6 +1030,7 @@
       },
       "pattern": [
         "reviewing",
+        "the",
         "proposal"
       ],
       "confidence": 0.93,
@@ -1145,7 +1148,7 @@
         "funnel_stage": "negotiation"
       },
       "phrases": [
-        "lower the price"
+        "lower the rate"
       ],
       "confidence": 0.985,
       "enabled": true,
@@ -1183,7 +1186,7 @@
       "target": {
         "funnel_stage": "negotiation"
       },
-      "regex": "\\b(adjust\\s+the\\s+scope|discount|reduce\\s+(the\\s+)?price|lower\\s+the\\s+price|negotiate)\\b",
+      "regex": "\\b(adjust\\s+the\\s+scope|discount|reduce\\s+the\\s+rate|lower\\s+the\\s+rate|cheaper|negotiate)\\b",
       "confidence": 0.955,
       "enabled": true,
       "shortcut_allowed": false
@@ -1207,6 +1210,7 @@
       },
       "pattern": [
         "adjust",
+        "the",
         "scope"
       ],
       "confidence": 0.93,
@@ -1220,8 +1224,8 @@
         "funnel_stage": "negotiation"
       },
       "pattern": [
-        "lower",
-        "price"
+        "payment",
+        "plan"
       ],
       "confidence": 0.93,
       "enabled": true,
@@ -1389,6 +1393,7 @@
       },
       "pattern": [
         "before",
+        "i",
         "upload"
       ],
       "confidence": 0.93,
@@ -1455,7 +1460,7 @@
         "funnel_stage": "agreement_requested"
       },
       "phrases": [
-        "contract"
+        "draft contract"
       ],
       "confidence": 0.965,
       "enabled": true,
@@ -1582,8 +1587,8 @@
         "funnel_stage": "agreement_requested"
       },
       "pattern": [
-        "contract",
-        "packet"
+        "prepare",
+        "agreement"
       ],
       "confidence": 0.93,
       "enabled": true,
@@ -1597,6 +1602,7 @@
       },
       "pattern": [
         "statement",
+        "of",
         "work"
       ],
       "confidence": 0.93,
@@ -1901,6 +1907,312 @@
         "The user is ending or pausing the opportunity"
       ],
       "confidence": 0.74,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NEW-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "new" },
+      "pattern": ["just", "found"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NEW-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "new" },
+      "pattern": ["can", "you", "help"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-EXPLORE-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "exploring" },
+      "pattern": ["just", "exploring"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-EXPLORE-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "exploring" },
+      "pattern": ["looking", "around"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-EXPLORE-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "exploring" },
+      "pattern": ["researching", "services"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-DISC-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "service_discovery" },
+      "pattern": ["about", "services"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-DISC-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "service_discovery" },
+      "pattern": ["you", "offer"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-DISC-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "service_discovery" },
+      "pattern": ["help", "me", "choose"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-DISC-PT-104",
+      "layer": "pattern",
+      "target": { "funnel_stage": "service_discovery" },
+      "pattern": ["package", "fits"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-SCOPE-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "scoping" },
+      "pattern": ["my", "manuscript"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-SCOPE-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "scoping" },
+      "pattern": ["completed", "draft"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-SCOPE-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "scoping" },
+      "pattern": ["rough", "draft"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTE-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quote_requested" },
+      "pattern": ["need", "a", "quote"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTE-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quote_requested" },
+      "pattern": ["estimate", "please"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTED-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quoted" },
+      "pattern": ["quote", "looks"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTED-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quoted" },
+      "pattern": ["proposal", "received"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTED-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quoted" },
+      "pattern": ["after", "your", "quote"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-QUOTED-PT-104",
+      "layer": "pattern",
+      "target": { "funnel_stage": "quoted" },
+      "pattern": ["estimate", "you", "sent"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NEG-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "negotiation" },
+      "pattern": ["discount"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NEG-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "negotiation" },
+      "pattern": ["can", "you", "reduce"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NEG-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "negotiation" },
+      "pattern": ["negotiate"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NDAS-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "nda_requested" },
+      "pattern": ["confidentiality", "agreement"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NDAS-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "nda_requested" },
+      "pattern": ["nda", "packet"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-NDAS-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "nda_requested" },
+      "pattern": ["need", "an", "nda"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-AGR-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "agreement_requested" },
+      "pattern": ["sign", "agreement"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-AGR-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "agreement_requested" },
+      "pattern": ["agreement", "packet"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-AGR-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "agreement_requested" },
+      "pattern": ["formal", "agreement"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-WON-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_won" },
+      "pattern": ["have", "signed"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-WON-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_won" },
+      "pattern": ["payment", "sent"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-WON-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_won" },
+      "pattern": ["let", "us", "begin"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-LOST-PT-101",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_lost" },
+      "pattern": ["chose", "another"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-LOST-PT-102",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_lost" },
+      "pattern": ["expensive", "goodbye"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-LOST-PT-103",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_lost" },
+      "pattern": ["pause", "this", "project"],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "FUNNEL-LOST-PT-104",
+      "layer": "pattern",
+      "target": { "funnel_stage": "closed_lost" },
+      "pattern": ["not", "interested"],
+      "confidence": 0.9,
       "enabled": true,
       "shortcut_allowed": false
     }

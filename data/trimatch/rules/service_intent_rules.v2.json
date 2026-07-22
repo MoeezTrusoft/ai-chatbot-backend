@@ -1,0 +1,6872 @@
+{
+ "version": "service_intent_rules.v2.rules_army",
+ "rules": [
+  {
+   "id": "SERVICE-GHOST-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "ghostwriting"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "ghost writer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "ghostwriter"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "ghost-writing"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my manuscript"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my memoir"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my novel"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my story"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "book writing help"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "manuscript writing help"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write it from scratch"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "full ghostwriting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "ghostwrite my book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "professional ghostwriting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "writing from outline"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "turn my idea into a book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write chapters for me"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "book co-writer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "memoir ghostwriter"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "novel ghostwriter"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "nonfiction ghostwriter"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "business book ghostwriter"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "thought leadership book writing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "autobiography ghostwriting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "story development and writing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "chapter drafting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "draft my book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "author interview to manuscript"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "from idea to manuscript"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "full manuscript creation"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "book manuscript writer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write my life story"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "transform my notes into a book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-035",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "write a book for me"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-EX-036",
+   "layer": "exact",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "phrases": [
+    "done-for-you book writing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-GHOST-RX-037",
+   "layer": "regex",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "regex": "\\b(ghost[ -]?writer|ghost[ -]?writing|ghostwrite)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-RX-038",
+   "layer": "regex",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "regex": "\\b(write|draft|create)\\s+(my|a|the)\\s+(book|manuscript|memoir|novel|story)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "regex": "\\b(turn|convert|transform)\\s+(my\\s+)?(idea|notes|outline|interviews?)\\s+into\\s+(a\\s+)?(book|manuscript)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-RX-040",
+   "layer": "regex",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "regex": "\\b(done[- ]for[- ]you|full[- ]service)\\s+(book\\s+)?writing\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-RX-041",
+   "layer": "regex",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "regex": "\\b(chapter|chapters|manuscript)\\s+(drafting|creation|writing)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-042",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "write",
+    "my",
+    "book"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-043",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "turn",
+    "idea",
+    "book"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "draft",
+    "chapters"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "full",
+    "ghostwriting"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-046",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "author",
+    "interview",
+    "manuscript"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-047",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "write",
+    "life",
+    "story"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-SM-048",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "semantic_examples": [
+    "I have an idea and need someone to write the whole book"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-SM-049",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "semantic_examples": [
+    "I need a professional writer to turn interviews into a manuscript"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "semantic_examples": [
+    "I want help creating a complete memoir from my notes"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-SM-051",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "semantic_examples": [
+    "The manuscript does not exist yet and I need it written"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-SM-052",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "semantic_examples": [
+    "I need a book written under my name from an outline"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "editing"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "proofreading"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "proofread"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "copy editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "copyediting"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "copy edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "line editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "line edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "developmental editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "development edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "manuscript editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "book editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "grammar check"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "spelling check"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "punctuation cleanup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "sentence polish"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "style edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "structure edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "editorial review"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "content edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "substantive edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "final proofread"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "beta reader cleanup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "polish my manuscript"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "clean up my writing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "improve flow"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "fix grammar"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "check typos"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "edit my book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "proof my book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "editorial assessment"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "manuscript critique"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "continuity edit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "fact consistency check"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-035",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "references check"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-036",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "citation consistency"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-037",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "academic editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-038",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "ESL editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-EX-039",
+   "layer": "exact",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "phrases": [
+    "translated manuscript editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-EDIT-RX-040",
+   "layer": "regex",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "regex": "\\b(proof\\s?read(ing)?|copy\\s?edit(ing)?|line\\s?edit(ing)?|developmental\\s+edit(ing)?)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-RX-041",
+   "layer": "regex",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "regex": "\\b(edit|polish|clean\\s+up|revise)\\s+(my\\s+)?(book|manuscript|draft|writing)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-RX-042",
+   "layer": "regex",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "regex": "\\b(fix|check)\\s+(grammar|typos|spelling|punctuation|flow)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-RX-043",
+   "layer": "regex",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "regex": "\\b(editorial\\s+(review|assessment|critique)|manuscript\\s+critique)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-RX-044",
+   "layer": "regex",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "regex": "\\b(citation|references?|footnotes?)\\s+(check|consistency|cleanup|review)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "proofread",
+    "manuscript"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-046",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "fix",
+    "grammar"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-047",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "line",
+    "edit"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-048",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "developmental",
+    "editing"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-049",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "polish",
+    "manuscript"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-050",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "citation",
+    "consistency"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-SM-051",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "semantic_examples": [
+    "The book is already written and needs editing"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-SM-052",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "semantic_examples": [
+    "I need grammar and style cleanup before publishing"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-SM-053",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "semantic_examples": [
+    "I want a professional editor to improve the manuscript"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-SM-054",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "semantic_examples": [
+    "The draft is complete but rough and needs polish"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-SM-055",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "semantic_examples": [
+    "I need proofreading after formatting"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover design"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "book cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "ebook cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "paperback cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "print wrap"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "dust jacket"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover illustration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "custom illustration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "illustrated cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover artwork"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "book jacket"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "front cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "back cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "spine design"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "typography for cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover typography"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover concept"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover mockup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover redesign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "genre cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "fantasy cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "romance cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "memoir cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "children book illustration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "picture book art"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "character illustration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "scene illustration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "full wrap cover"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "KDP cover file"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "IngramSpark cover file"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover design package"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "cover art direction"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "visual identity for book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "phrases": [
+    "series cover branding"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-COVER-RX-035",
+   "layer": "regex",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "regex": "\\b(book|ebook|paperback|print)\\s+cover\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-RX-036",
+   "layer": "regex",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "regex": "\\b(cover|jacket)\\s+(design|artwork|illustration|mockup|redesign)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-RX-037",
+   "layer": "regex",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "regex": "\\b(front\\s+cover|back\\s+cover|spine|full\\s+wrap|print\\s+wrap)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-RX-038",
+   "layer": "regex",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "regex": "\\b(custom|character|scene|children(?:\\'s)?|picture\\s+book)\\s+illustration\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "regex": "\\b(KDP|IngramSpark)\\s+cover\\s+(file|template|wrap)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-040",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "cover",
+    "design"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-041",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "book",
+    "jacket"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-042",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "custom",
+    "illustration"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-043",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "print",
+    "wrap"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "cover",
+    "typography"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "series",
+    "cover",
+    "branding"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-SM-046",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "semantic_examples": [
+    "I need the outside visual design of the book"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-SM-047",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "semantic_examples": [
+    "I want custom artwork for the book jacket"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-SM-048",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "semantic_examples": [
+    "My book needs a professional front cover and spine"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-SM-049",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "semantic_examples": [
+    "I need cover files for ebook and print retailers"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "semantic_examples": [
+    "I want illustrated artwork for a picture book"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "interior formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "book formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "ebook formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "print formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "typesetting"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "interior layout"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "page layout"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "layout design"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "chapter openers"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "running headers"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "page numbers"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "table of contents"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "TOC"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "epub conversion"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "mobi conversion"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "Kindle formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "paperback formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "hardcover formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "print-ready PDF"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "reflowable ebook"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "fixed layout ebook"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "footnotes formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "endnotes formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "image placement"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "caption formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "recipe layout"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "cookbook formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "children book layout"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "large print formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "dyslexia friendly formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "accessible ebook"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "alt text"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "index formatting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "decorative separators"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-035",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "drop caps"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-036",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "widows and orphans"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-037",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "KDP interior file"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-EX-038",
+   "layer": "exact",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "phrases": [
+    "IngramSpark interior file"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-FORMAT-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "regex": "\\b(interior|book|ebook|print|paperback|kindle)\\s+formatting\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-RX-040",
+   "layer": "regex",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "regex": "\\b(typesetting|page\\s+layout|interior\\s+layout|layout\\s+design)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-RX-041",
+   "layer": "regex",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "regex": "\\b(table\\s+of\\s+contents|TOC|chapter\\s+openers?|page\\s+numbers?|running\\s+headers?)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-RX-042",
+   "layer": "regex",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "regex": "\\b(epub|mobi|kindle|reflowable|fixed\\s+layout)\\s+(conversion|formatting|ebook)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-RX-043",
+   "layer": "regex",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "regex": "\\b(print[- ]ready\\s+PDF|KDP\\s+interior|IngramSpark\\s+interior)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "interior",
+    "formatting"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "print",
+    "ready",
+    "pdf"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-046",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "ebook",
+    "formatting"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-047",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "table",
+    "contents"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-048",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "chapter",
+    "openers"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-049",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "accessible",
+    "ebook"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "semantic_examples": [
+    "The manuscript is written and needs to be laid out for print and ebook"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-SM-051",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "semantic_examples": [
+    "I need the inside pages designed and formatted"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-SM-052",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "semantic_examples": [
+    "I need an EPUB and print-ready PDF"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-SM-053",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "semantic_examples": [
+    "My book needs chapter styling and table of contents"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-SM-054",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "semantic_examples": [
+    "I want accessible readable ebook structure"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audio book"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook production"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "narration"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "narrator"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "voice actor"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "voiceover narration"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "ACX"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audible"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook mastering"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audio mastering"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "chapter audio files"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "punch and roll"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "studio recording"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "PFH"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "per finished hour"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audio proofing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook distribution"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "intro music"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "outro music"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audio rights"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "narrator casting"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "sample read"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "voice talent"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audiobook files"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "listening proof"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "sound quality"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "RMS mastering"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "phrases": [
+    "audio chapters"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-AUDIO-RX-031",
+   "layer": "regex",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "regex": "\\b(audio\\s?book|audiobook)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-RX-032",
+   "layer": "regex",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "regex": "\\b(narrator|narration|voice\\s+actor|voice\\s+talent|voiceover)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-RX-033",
+   "layer": "regex",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "regex": "\\b(ACX|Audible|per\\s+finished\\s+hour|PFH)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-RX-034",
+   "layer": "regex",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "regex": "\\b(audio\\s+(mastering|editing|proofing|chapters?|files?))\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-RX-035",
+   "layer": "regex",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "regex": "\\b(narrator\\s+(casting|selection)|sample\\s+read)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-036",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "audiobook",
+    "production"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-037",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "narrator",
+    "selection"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-038",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "audio",
+    "mastering"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-039",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "chapter",
+    "files"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-040",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "ACX",
+    "ready"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-041",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "voice",
+    "talent"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-SM-042",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "semantic_examples": [
+    "I want my book turned into an audiobook"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-SM-043",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "semantic_examples": [
+    "I need narrator selection and mastered audio files"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-SM-044",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "semantic_examples": [
+    "I need ACX-ready audiobook production"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-SM-045",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "semantic_examples": [
+    "I need voice talent and audio editing"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-SM-046",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "semantic_examples": [
+    "I want chapter-by-chapter narration files"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "publishing"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "distribution"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "publishing distribution"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "self publishing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Amazon KDP"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "KDP"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Kindle Direct Publishing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "IngramSpark"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "ISBN"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "metadata"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "BISAC"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "book categories"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "keywords"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "book description"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "retailer upload"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "ebook upload"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "paperback upload"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "hardcover upload"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "book launch setup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "print on demand"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "POD"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "global distribution"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "retailer metadata"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "imprint setup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "copyright page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "publishing platform"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Apple Books"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Kobo"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Barnes and Noble"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Draft2Digital"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Google Play Books"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "publisher account"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "KDP upload support"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "Ingram upload support"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-035",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "trim size setup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-036",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "pricing metadata"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-037",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "territories"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-EX-038",
+   "layer": "exact",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "phrases": [
+    "royalty setup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-PUBLISH-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "regex": "\\b(Amazon\\s+KDP|KDP|Kindle\\s+Direct\\s+Publishing|IngramSpark|Draft2Digital|Kobo|Apple\\s+Books)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-RX-040",
+   "layer": "regex",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "regex": "\\b(ISBN|BISAC|metadata|keywords?|categories|book\\s+description)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-RX-041",
+   "layer": "regex",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "regex": "\\b(publish(ing)?|distribution|self[- ]publishing|retailer\\s+upload)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-RX-042",
+   "layer": "regex",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "regex": "\\b(ebook|paperback|hardcover)\\s+upload\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-RX-043",
+   "layer": "regex",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "regex": "\\b(print\\s+on\\s+demand|POD|global\\s+distribution)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "amazon",
+    "kdp"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "ingramspark",
+    "upload"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-046",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "isbn",
+    "metadata"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-047",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "keywords",
+    "categories"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-048",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "retailer",
+    "upload"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-049",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "publishing",
+    "distribution"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "semantic_examples": [
+    "I need help uploading my book to Amazon and IngramSpark"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-SM-051",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "semantic_examples": [
+    "I need metadata categories and ISBN guidance"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-SM-052",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "semantic_examples": [
+    "I want my book distributed to retailers"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-SM-053",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "semantic_examples": [
+    "I need support setting up ebook and paperback publishing"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-SM-054",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "semantic_examples": [
+    "I need help with self-publishing platforms"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "marketing"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "promotion"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book marketing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book promotion"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "launch campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book launch"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "author platform"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "media outreach"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "PR campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book publicity"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "reader outreach"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "social media campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "Amazon ads"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "Meta ads"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "BookBub"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "newsletter promotion"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "email marketing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "review campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "ARC team"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "advance reader copies"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "street team"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "influencer outreach"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "TikTok campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "Instagram campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "press release"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "media kit"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "author branding"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "launch strategy"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "bestseller campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book reviews"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "book club outreach"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "library outreach"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "Goodreads campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "visibility campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-EX-035",
+   "layer": "exact",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "phrases": [
+    "sales campaign"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-MKT-RX-036",
+   "layer": "regex",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "regex": "\\b(book\\s+)?(marketing|promotion|publicity|PR)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-RX-037",
+   "layer": "regex",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "regex": "\\b(launch\\s+(campaign|strategy|plan)|book\\s+launch)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-RX-038",
+   "layer": "regex",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "regex": "\\b(Amazon|Meta|Facebook|Instagram|TikTok)\\s+ads?\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "regex": "\\b(review\\s+campaign|ARC\\s+team|advance\\s+reader\\s+copies|street\\s+team)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-RX-040",
+   "layer": "regex",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "regex": "\\b(media\\s+(outreach|kit|coverage)|press\\s+release|influencer\\s+outreach)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-041",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "book",
+    "marketing"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-042",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "launch",
+    "campaign"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-043",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "reader",
+    "outreach"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "amazon",
+    "ads"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "review",
+    "campaign"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-046",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "media",
+    "outreach"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-SM-047",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "semantic_examples": [
+    "I need help promoting my book after publication"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-SM-048",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "semantic_examples": [
+    "I want a launch campaign and reader outreach"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-SM-049",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "semantic_examples": [
+    "I need ads and publicity for my book"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "semantic_examples": [
+    "I want help getting visibility without fake guarantees"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-SM-051",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "semantic_examples": [
+    "I need marketing strategy for a book release"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "author website"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "author site"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "writer website"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "book website"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "website"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "landing page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "author homepage"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "book landing page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "newsletter signup"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "email capture"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "lead magnet"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "blog"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "author blog"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "events page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "speaker page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "media page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "press kit page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "book sales page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "ecommerce"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "shop page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "direct sales"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "reader magnet"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "contact form"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "website design"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "web design for author"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "SEO website"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "author portfolio"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "about the author page"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "book pages"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "CMS"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-031",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "WordPress"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-032",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "Squarespace"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-EX-033",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "website copy"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-EX-034",
+   "layer": "exact",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "phrases": [
+    "online presence"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-WEB-RX-035",
+   "layer": "regex",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "regex": "\\b(author|writer|book)\\s+(website|site|homepage|landing\\s+page)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-RX-036",
+   "layer": "regex",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "regex": "\\b(newsletter\\s+signup|email\\s+capture|lead\\s+magnet|reader\\s+magnet)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-RX-037",
+   "layer": "regex",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "regex": "\\b(author\\s+blog|book\\s+pages?|events\\s+page|press\\s+kit|media\\s+page)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-RX-038",
+   "layer": "regex",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "regex": "\\b(ecommerce|shop\\s+page|direct\\s+sales|contact\\s+form)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-RX-039",
+   "layer": "regex",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "regex": "\\b(WordPress|Squarespace|CMS|SEO\\s+website)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-040",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "author",
+    "website"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-041",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "newsletter",
+    "signup"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-042",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "book",
+    "landing",
+    "page"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-043",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "direct",
+    "sales"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-044",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "author",
+    "blog"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-045",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "lead",
+    "magnet"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-SM-046",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "semantic_examples": [
+    "I need a website for my author brand"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-SM-047",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "semantic_examples": [
+    "I want a site with book pages and newsletter signup"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-SM-048",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "semantic_examples": [
+    "I need an online home for readers"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-SM-049",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "semantic_examples": [
+    "I want to sell books directly from my website"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-SM-050",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "semantic_examples": [
+    "I need an author landing page"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-001",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "video trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-002",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "book trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-003",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "trailer"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-004",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "motion graphics"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-005",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "animated trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-006",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "cinematic trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-007",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "promo video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-008",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "book promo video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-009",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "vertical video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-010",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "square video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-011",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "YouTube trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-012",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "reel"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-013",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "short video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-014",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "voiceover"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-015",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "subtitles"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-016",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "captions"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-017",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "licensed music"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-018",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "sound design"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-019",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "script for trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-020",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "storyboard"
+   ],
+   "confidence": 0.965,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-021",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "teaser video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-022",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "launch video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-023",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "social media video"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-024",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "30 second trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-025",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "60 second trailer"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-026",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "kinetic typography"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-027",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "animated typography"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-028",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "visual effects"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-029",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "video editing"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-EX-030",
+   "layer": "exact",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "phrases": [
+    "cover animation"
+   ],
+   "confidence": 0.985,
+   "enabled": true,
+   "shortcut_allowed": true
+  },
+  {
+   "id": "SERVICE-TRAILER-RX-031",
+   "layer": "regex",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "regex": "\\b(book\\s+)?(video\\s+)?trailer\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-RX-032",
+   "layer": "regex",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "regex": "\\b(motion\\s+graphics|animated\\s+trailer|cinematic\\s+trailer|promo\\s+video)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-RX-033",
+   "layer": "regex",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "regex": "\\b(vertical|square|YouTube|social\\s+media)\\s+video\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-RX-034",
+   "layer": "regex",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "regex": "\\b(voiceover|subtitles|captions|licensed\\s+music|sound\\s+design)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-RX-035",
+   "layer": "regex",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "regex": "\\b(storyboard|teaser\\s+video|cover\\s+animation|kinetic\\s+typography)\\b",
+   "confidence": 0.955,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-036",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "book",
+    "trailer"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-037",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "motion",
+    "graphics"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-038",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "voiceover",
+    "subtitles"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-039",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "licensed",
+    "music"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-040",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "vertical",
+    "video"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-041",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "storyboard",
+    "trailer"
+   ],
+   "confidence": 0.93,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-SM-042",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "semantic_examples": [
+    "I need a promotional video for my book"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-SM-043",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "semantic_examples": [
+    "I want a cinematic trailer for launch"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-SM-044",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "semantic_examples": [
+    "I need a vertical reel and YouTube trailer"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-SM-045",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "semantic_examples": [
+    "I want animated motion graphics for a book promo"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-SM-046",
+   "layer": "semantic",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "semantic_examples": [
+    "I need subtitles voiceover and music for a trailer"
+   ],
+   "confidence": 0.74,
+   "enabled": false,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "ghostwriting"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "ghostwriter"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "ghost",
+    "writer"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "ghost",
+    "writing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "write"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "writing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "memoir"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-GHOST-PT-108",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "ghostwriting"
+   },
+   "pattern": [
+    "professional",
+    "writer"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "editing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "edit"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "proofread"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "proofreading"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "copyediting"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "editor"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-EDIT-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "editing_proofreading"
+   },
+   "pattern": [
+    "grammar"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "cover"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "jacket"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "illustration"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "artwork"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "print",
+    "wrap"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-COVER-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "cover_design_illustration"
+   },
+   "pattern": [
+    "visual",
+    "design"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "formatting"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "formatted"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "typesetting"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "layout"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "chapter",
+    "openers"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "running",
+    "headers"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "page",
+    "numbers"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-108",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "table",
+    "of",
+    "contents"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-109",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "laid",
+    "out"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-FORMAT-PT-110",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "interior_formatting"
+   },
+   "pattern": [
+    "epub"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "audiobook"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "audio"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "narrator"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "narration"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "acx"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "audible"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-AUDIO-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "audiobook_production"
+   },
+   "pattern": [
+    "voice",
+    "actor"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "distribution"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "distributed"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "self",
+    "publishing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "kindle"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "kdp"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "ingramspark"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "isbn"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-108",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "metadata"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-109",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "bisac"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-110",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "categories"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-PUBLISH-PT-111",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "publishing_distribution"
+   },
+   "pattern": [
+    "publishing",
+    "distribution"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "marketing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "promotion"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "promoting"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "campaign"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "outreach"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "publicity"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "platform"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-108",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "ads"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-MKT-PT-109",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "marketing_promotion"
+   },
+   "pattern": [
+    "book",
+    "launch"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "website"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "site"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "landing"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "homepage"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-105",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "newsletter"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-106",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "email",
+    "capture"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-107",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "lead",
+    "magnet"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-108",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "blog"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-WEB-PT-109",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "author_website"
+   },
+   "pattern": [
+    "online",
+    "home"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-101",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "trailer"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-102",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "video"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-103",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "reel"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  },
+  {
+   "id": "SERVICE-TRAILER-PT-104",
+   "layer": "pattern",
+   "target": {
+    "service_intent": "video_trailer"
+   },
+   "pattern": [
+    "motion",
+    "graphics"
+   ],
+   "confidence": 0.9,
+   "enabled": true,
+   "shortcut_allowed": false
+  }
+ ]
+}

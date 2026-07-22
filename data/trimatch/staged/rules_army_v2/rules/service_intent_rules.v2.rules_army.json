@@ -5925,6 +5925,948 @@
       "confidence": 0.74,
       "enabled": true,
       "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "ghostwriting"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "ghostwriter"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "ghost",
+        "writer"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "ghost",
+        "writing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "write"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "writing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "memoir"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-GHOST-PT-108",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "ghostwriting"
+      },
+      "pattern": [
+        "professional",
+        "writer"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "editing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "edit"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "proofread"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "proofreading"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "copyediting"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "editor"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-EDIT-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "editing_proofreading"
+      },
+      "pattern": [
+        "grammar"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "cover"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "jacket"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "illustration"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "artwork"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "print",
+        "wrap"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-COVER-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "cover_design_illustration"
+      },
+      "pattern": [
+        "visual",
+        "design"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "formatting"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "formatted"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "typesetting"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "layout"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "chapter",
+        "openers"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "running",
+        "headers"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "page",
+        "numbers"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-108",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "table",
+        "of",
+        "contents"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-109",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "laid",
+        "out"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-FORMAT-PT-110",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "interior_formatting"
+      },
+      "pattern": [
+        "epub"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "audiobook"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "audio"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "narrator"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "narration"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "acx"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "audible"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-AUDIO-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "audiobook_production"
+      },
+      "pattern": [
+        "voice",
+        "actor"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "distribution"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "distributed"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "self",
+        "publishing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "kindle"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "kdp"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "ingramspark"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "isbn"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-108",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "metadata"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-109",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "bisac"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-110",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "categories"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-PUBLISH-PT-111",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "publishing_distribution"
+      },
+      "pattern": [
+        "publishing",
+        "distribution"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "marketing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "promotion"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "promoting"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "campaign"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "outreach"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "publicity"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "platform"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-108",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "ads"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-MKT-PT-109",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "marketing_promotion"
+      },
+      "pattern": [
+        "book",
+        "launch"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "website"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "site"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "landing"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "homepage"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-105",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "newsletter"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-106",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "email",
+        "capture"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-107",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "lead",
+        "magnet"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-108",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "blog"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-WEB-PT-109",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "author_website"
+      },
+      "pattern": [
+        "online",
+        "home"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-TRAILER-PT-101",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "video_trailer"
+      },
+      "pattern": [
+        "trailer"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-TRAILER-PT-102",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "video_trailer"
+      },
+      "pattern": [
+        "video"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-TRAILER-PT-103",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "video_trailer"
+      },
+      "pattern": [
+        "reel"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
+    },
+    {
+      "id": "SERVICE-TRAILER-PT-104",
+      "layer": "pattern",
+      "target": {
+        "service_intent": "video_trailer"
+      },
+      "pattern": [
+        "motion",
+        "graphics"
+      ],
+      "confidence": 0.9,
+      "enabled": true,
+      "shortcut_allowed": false
     }
   ]
 }

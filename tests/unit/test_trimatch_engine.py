@@ -60,7 +60,9 @@ def test_trimatch_classifies_query_service_and_funnel_stage_shadow() -> None:
 
     assert result.query_primary == QueryIntentType.PRICING_QUESTION
     assert result.service_primary == ServiceCategory.GHOSTWRITING
-    assert result.funnel_stage is None
+    # v2 rule army reads the explicit "quote" cue as the quote_requested funnel stage
+    # (v1 had no funnel coverage here). Funnel remains a shadow-only dimension.
+    assert result.funnel_stage == SalesStage.QUOTE_REQUESTED
     assert result.mode == TriMatchMode.SHADOW
 
 
