@@ -9,19 +9,43 @@ from bookcraft.components.language_guard.models import LanguageDecision
 from bookcraft.components.language_guard.pii_masking import is_predominantly_pii, mask_pii
 
 # ---------------------------------------------------------------------------
-# Step 14: Roman Urdu / Hinglish lead-gen vocabulary
+# Roman Urdu / Hindi (transliterated) detection
 # ---------------------------------------------------------------------------
-
-# Common Roman Urdu phrases that indicate a publishing/book service intent.
-# Detected BEFORE the hard language redirect so these customers are not lost.
-_ROMAN_URDU_INTENT_RE = re.compile(
-    r"\b(?:kitab|book\s+publish|meri\s+book|meri\s+kitab|publish\s+karwani|"
-    r"publish\s+karna|editing\s+chahiye|cover\s+design\s+chahiye|"
-    r"ghostwriting\s+chahiye|price\s+kya\s+hai|kitna\s+(?:cost|price)|"
-    r"consultation\s+chahiye|call\s+karein|call\s+karo|"
-    r"writing\s+(?:karwani|karna)|"
-    r"format(?:ting)?\s+chahiye|marketing\s+chahiye|website\s+chahiye)\b",
-    re.IGNORECASE,
+# Policy: BookCraft support is ENGLISH-ONLY. Roman Urdu / Hinglish is Latin script,
+# so `lingua` (which has no Urdu and no transliteration model) classifies it
+# unreliably — short messages leaked through as "English" and got answered (the bot
+# even mirrored the customer's Urdu), while longer ones tripped the redirect. That
+# flip-flop (chat 6685) is fixed by detecting transliterated Urdu/Hindi directly,
+# length-independently, and redirecting it consistently BEFORE any bypass.
+#
+# These are common Roman Urdu/Hindi function words that rarely appear in English.
+# Anything that overlaps ENGLISH_HINTS is filtered out at match time, so a token
+# like "hi" (an English hint) never counts as an Urdu marker.
+_ROMAN_URDU_MARKERS = frozenset(
+    {
+        # to-be / questions
+        "hai", "hain", "hoo", "hun", "kya", "kia", "kyun", "kyu", "kaisa", "kaise",
+        "kaisi", "kahan", "kahaan", "kaun", "kon", "kitna", "kitni", "kitne",
+        # pronouns / possessives
+        "mera", "meri", "mere", "tera", "teri", "tere", "tum", "tumhe", "tumhein",
+        "tumhara", "tumhari", "aap", "apka", "apki", "apko", "hum", "humein",
+        "hamara", "hamari", "mein", "mujhe", "mujhko", "usko", "unko",
+        # negation / affirmation
+        "nahi", "nahin", "nai", "acha", "accha", "achi", "achha", "theek", "bilkul",
+        # verbs
+        "chalo", "chaliye", "karo", "karna", "karni", "karein", "karta", "karti",
+        "karte", "kar", "raha", "rahe", "rahi", "rha", "rhe", "rahay", "kehrahay",
+        "keh", "kaha", "bol", "bolo", "batao", "bata", "batayein", "likha", "likhli",
+        "likhi", "dena", "denan", "chahiye", "chahiyay", "karwani", "karwana",
+        # common adverbs / connectors / nouns
+        "kuch", "kuchh", "sab", "phir", "phr", "wapas", "abhi", "filhaal", "yaar",
+        "bhai", "behen", "sahab", "sahib", "saheb", "matlab", "wala", "wali",
+        "waisay", "waise", "thoda", "zyada", "ziada", "bohat", "bahut", "buhat",
+        "yeh", "woh", "wohi", "kyunki", "magar", "lekin", "agar", "warna", "aur",
+        "naam", "daftar", "kitab", "kitaab", "baat", "baray", "pagal", "insaan",
+        "hee", "urdu", "angrezi", "angerezi", "jawab", "baap", "pehle",
+        "choro", "chhoro", "karlo", "ghora", "ghoray", "masnoi", "zahanat",
+    }
 )
 
 LANGUAGE_DETECTION_SECONDS = Histogram(
@@ -81,24 +105,28 @@ class LanguageGuard:
             return self._record("en", True, 1.0, "disabled", started)
 
         stripped = text.strip()
-        # Short-message bypass: single words and very short replies ("Consultation?",
-        # "Yes please", "OK", "Sure", "Tomorrow") are too brief for reliable language
-        # detection — inherit the session's cached language instead.
-        # Threshold raised from 12 to 25 to cover single domain-specific words.
-        if len(stripped) < 25:
-            language = cached_language or "en"
-            return self._record(language, language == "en", 0.9, "short_message", started)
 
-        # Step 14: detect Roman Urdu / Hinglish book-service intent before hard redirect.
-        # These are ASCII (Roman script) so they pass the ascii_ratio check but get
-        # misclassified by lingua as non-English. We route them as English-adjacent.
-        if _ROMAN_URDU_INTENT_RE.search(stripped):
-            return self._record("en", True, 0.8, "roman_urdu_lead_bypass", started)
+        # Roman Urdu / Hindi (transliterated) is detected FIRST, at any length, and
+        # redirected consistently — English-only policy. This runs before the
+        # short-message bypass so brief Urdu ("acha", "kia kehrahay hoo") can no
+        # longer slip through as English and get answered/mirrored (chat 6685).
+        if self._is_roman_urdu(stripped):
+            return self._record("ur", False, 0.9, "roman_urdu", started)
 
         # PII/contact bypass: messages that are predominantly contact info must not be
         # rejected as non-English (names, emails, phone numbers are language-neutral).
         if is_predominantly_pii(stripped):
             return self._record("en", True, 0.95, "pii_bypass", started)
+
+        # Short-message bypass: single words and very short replies ("Consultation?",
+        # "Yes please", "OK", "Sure", "Tomorrow") are too brief for reliable language
+        # detection. A short message carrying an English hint stays English; otherwise
+        # it inherits the session's cached language.
+        if len(stripped) < 25:
+            if set(re.findall(r"[a-z']+", stripped.lower())) & ENGLISH_HINTS:
+                return self._record("en", True, 0.9, "short_message_en", started)
+            language = cached_language or "en"
+            return self._record(language, language == "en", 0.9, "short_message", started)
 
         # Run detection on PII-masked text to prevent name/email bias.
         pii_result = mask_pii(stripped)
@@ -164,6 +192,28 @@ class LanguageGuard:
             source=source,
             redirect_message=redirect,
         )
+
+    @staticmethod
+    def _is_roman_urdu(text: str) -> bool:
+        """Detect transliterated (Roman-script) Urdu/Hindi, length-independent.
+
+        Fires when the message carries enough Roman-Urdu function words to be
+        unmistakable, while staying quiet on short English replies. Tokens that are
+        also English hints (e.g. "hi") never count as Urdu markers.
+        """
+        tokens = re.findall(r"[a-zA-Z']+", text.lower())
+        if not tokens:
+            return False
+        markers = [t for t in tokens if t in _ROMAN_URDU_MARKERS and t not in ENGLISH_HINTS]
+        marker_count = len(markers)
+        if marker_count >= 2:  # noqa: PLR2004
+            return True
+        # A single unambiguous marker is enough only when it dominates a very short
+        # message ("acha", "likhli hai") — never for one stray word in a long English
+        # sentence, which the ascii/lingua paths below still handle.
+        if marker_count == 1 and (len(tokens) <= 2 or marker_count / len(tokens) >= 0.5):  # noqa: PLR2004
+            return True
+        return False
 
     @staticmethod
     def _ascii_ratio(text: str) -> float:

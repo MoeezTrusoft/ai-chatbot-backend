@@ -181,6 +181,15 @@ EXTRACTION RULES:
                           KDP", "I have a proof copy", "print-ready files", "it's live", "for
                           sale". A proof copy or a passed KDP upload means the files are
                           finalized and distributed — this is "published", NOT a draft.
+   CRITICAL — a publishing GOAL is NOT the published STATE. Wanting/intending to publish is
+   a request for the publishing SERVICE, not evidence the book is already published. When the
+   user says "I need to publish it", "I want to get it published", "looking to publish",
+   "planning to publish", "help me publish", "ready to publish" — that describes what they
+   want to DO, and tells you NOTHING about the manuscript stage. Do NOT set manuscript_status
+   to "published" (or any stage) from a bare publishing goal. Only choose "published" when the
+   user states the book is ALREADY out/finalized/distributed (on a store, proof copy, KDP
+   upload done, print-ready, live, for sale). If a message expresses only a goal to publish
+   with no stage evidence, leave manuscript_status null.
    Confidence rules:
      0.92 — user's statement clearly implies the stage (even if phrased indirectly)
      0.70 — statement is vague or hedged ("I think I have some notes", "maybe a draft")
@@ -208,6 +217,10 @@ EXTRACTION RULES:
      "It's on Amazon already"             → published,        0.92
      "I already self-published it"        → published,        0.92
      "I have print-ready files"           → published,        0.90
+     "Yes need to publish it"             → manuscript_status NULL (publishing GOAL, no stage)
+     "I want to get it published"         → manuscript_status NULL (goal, not a state)
+     "Looking to publish my book"         → manuscript_status NULL (goal, not a state)
+     "Ready to publish"                   → manuscript_status NULL (intent to start publishing)
    UPDATING a known status: manuscript progress only moves forward. If KNOWN STATE already
    has a manuscript_status but the user's new message shows the project has ADVANCED past it
    (e.g. known "draft" and the user now says the book is KDP-ready with a proof copy), you

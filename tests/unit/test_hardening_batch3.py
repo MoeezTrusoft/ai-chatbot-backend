@@ -300,50 +300,51 @@ def test_consultation_booked_triggers_when_blocked():
 
 
 # ---------------------------------------------------------------------------
-# Step 14: Roman Urdu / Hinglish detection
+# Roman Urdu / Hinglish detection — ENGLISH-ONLY policy (chat 6685)
+# Support is English-only: transliterated Urdu/Hindi is detected and redirected
+# consistently at any length. (Reverses the earlier "keep Roman Urdu leads" bypass.)
 # ---------------------------------------------------------------------------
 
 
-def test_roman_urdu_book_publish_is_not_redirected():
-    """Roman Urdu 'kitab publish' phrase should NOT get a language redirect."""
+def test_roman_urdu_book_publish_is_redirected():
+    """Roman Urdu 'kitab publish' phrase must get the English-only redirect."""
     from bookcraft.components.language_guard.guard import LanguageGuard
 
     guard = LanguageGuard(enabled=True)
     decision = guard.detect("Mujhe apni kitab publish karwani hai")
-    # Should pass as English-adjacent, not redirect.
-    assert decision.is_english is True
-    assert decision.redirect_message is None
+    assert decision.is_english is False
+    assert decision.redirect_message is not None
+    assert decision.source == "roman_urdu"
 
 
-def test_roman_urdu_price_query_bypassed():
-    """'Price kya hai editing ka?' should not redirect to English-only."""
+def test_roman_urdu_price_query_redirected():
+    """'Price kya hai editing ka?' must redirect to English-only."""
     from bookcraft.components.language_guard.guard import LanguageGuard
 
     guard = LanguageGuard(enabled=True)
     decision = guard.detect("Price kya hai editing ka?")
-    assert decision.is_english is True
+    assert decision.is_english is False
 
 
 def test_roman_urdu_source_label():
-    """Roman Urdu bypass should be recorded with correct source label."""
+    """Roman Urdu detection is recorded with the 'roman_urdu' source label."""
     from bookcraft.components.language_guard.guard import LanguageGuard
 
     guard = LanguageGuard(enabled=True)
     decision = guard.detect("editing chahiye mujhe")
-    assert decision.source == "roman_urdu_lead_bypass" or decision.is_english is True
+    assert decision.source == "roman_urdu"
+    assert decision.is_english is False
 
 
 def test_fully_arabic_script_still_redirected():
-    """Genuine non-Roman-script Arabic should still get language redirect."""
+    """Genuine non-Roman-script Arabic should still get a language redirect."""
     from bookcraft.components.language_guard.guard import LanguageGuard
 
     guard = LanguageGuard(enabled=True)
-    # Arabic script — not Roman Urdu, should not bypass.
+    # Arabic (Urdu) script — non-ASCII, so not the Roman-Urdu path; lingua handles it.
     decision = guard.detect("مجھے اپنی کتاب شائع کروانی ہے")
-    # This is Urdu script — language guard should detect as non-English.
-    # We don't assert exact behavior here since lingua may not detect ur,
-    # but we verify it's not a Roman Urdu bypass.
-    assert decision.source != "roman_urdu_lead_bypass"
+    assert decision.source != "roman_urdu"
+    assert decision.is_english is False
 
 
 # ---------------------------------------------------------------------------

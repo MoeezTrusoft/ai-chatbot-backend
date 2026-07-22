@@ -16,6 +16,18 @@ _MANUSCRIPT_STATUS_PATH = "project.manuscript_status"
 # low-confidence fill value (0.3) from silently advancing a known status.
 _PROGRESSION_MIN_CONFIDENCE = 0.80
 
+# First-write floor. Most fields accept any positive-confidence "fill" onto an empty
+# field, but a few high-impact semantic fields get *stated back as established fact*
+# by the response layer, so a hedged low-confidence guess must never land there.
+# The LLM extractor floors every sub-0.85 extraction to 0.3 (a synthetic "unsure"
+# marker); those must not populate these fields, while genuine clear extractions
+# (0.92) and the deterministic detector (0.86) clear the floor. See chat 6992:
+# "Yes need to publish it" produced a 0.3 manuscript_status="published" that then
+# became "since it's already published…". Keyed by StateDelta path.
+_FIRST_WRITE_MIN_CONFIDENCE = {
+    _MANUSCRIPT_STATUS_PATH: 0.60,
+}
+
 NO_OVERWRITE_SKIPS = Counter(
     "extraction_no_overwrite_skips_total",
     "State deltas skipped by no-overwrite rule.",
@@ -97,12 +109,19 @@ class StateApplier:
 
 
 def should_apply_delta(existing: FieldMeta[Any] | None, incoming: StateDelta) -> bool:
-    if existing is None or existing.value is None:
+    # Explicit user corrections are allowed to replace durable facts even
+    # when their extraction confidence is lower than the existing field — and even
+    # onto an empty field below the first-write floor below.
+    if incoming.source == Source.USER_CORRECTED:
         return True
 
-    # Explicit user corrections are allowed to replace durable facts even
-    # when their extraction confidence is lower than the existing field.
-    if incoming.source == Source.USER_CORRECTED:
+    if existing is None or existing.value is None:
+        # First write onto an empty field. Accept any positive-confidence fill,
+        # EXCEPT for fields with a first-write floor: a hedged low-confidence guess
+        # there would be spoken back as fact (see _FIRST_WRITE_MIN_CONFIDENCE).
+        floor = _FIRST_WRITE_MIN_CONFIDENCE.get(incoming.path)
+        if floor is not None and incoming.confidence < floor:
+            return False
         return True
 
     # Manuscript status advances monotonically: a later, further-along statement

@@ -443,42 +443,31 @@ class TestScenario6PortfolioNoRawUrls:
 
 
 class TestScenario7RomanUrduRouting:
-    def test_s7_roman_urdu_publish_not_redirected(self, client: TestClient) -> None:
-        """Roman Urdu 'kitab publish' must not get language redirect (Batch 3 Step 14)."""
-        client.app.state.chat_service.response_generator = _SafeGen(
-            "I understood you're asking about publishing your book. "
-            "What format would you like — ebook, paperback, or both?"
-        )
+    """ENGLISH-ONLY policy (chat 6685): transliterated Urdu/Hindi is redirected."""
+
+    def test_s7_roman_urdu_publish_is_redirected(self, client: TestClient) -> None:
+        """Roman Urdu 'kitab publish' must get the English-only language redirect."""
         body = _chat(client, "Mujhe apni kitab publish karwani hai")
-        # Must NOT be a language redirect — response must have actual help.
-        assert body.get("language_status") == "en", (
-            "Roman Urdu lead inquiry must be treated as English"
-        )
-        assert body.get("bubbles") and len(body["bubbles"]) > 0, (
-            "Must get a response, not a redirect"
+        assert body.get("language_status") == "ur", (
+            "Roman Urdu must be detected as non-English and redirected"
         )
         response_text = _text(body)
-        # Must not be the English-only redirect message.
-        assert "currently available in English" not in response_text
+        assert "currently available in English" in response_text
 
-    def test_s7_roman_urdu_editing_price_query(self, client: TestClient) -> None:
-        """'Price kya hai editing ka?' must be routed as an editing pricing question."""
-        client.app.state.chat_service.response_generator = _SafeGen(
-            "For editing, pricing depends on manuscript length and service level. "
-            "What's the word count or page count of your manuscript?"
-        )
+    def test_s7_roman_urdu_editing_price_query_redirected(self, client: TestClient) -> None:
+        """'Price kya hai editing ka?' must be redirected, not routed as a query."""
         body = _chat(client, "Price kya hai editing ka?")
-        assert body.get("language_status") == "en"
-        assert body.get("bubbles") and len(body["bubbles"]) > 0
+        assert body.get("language_status") == "ur"
+        assert "currently available in English" in _text(body)
 
-    def test_s7_roman_urdu_bypass_source_label(self, client: TestClient) -> None:
-        """Roman Urdu bypass must be recorded with correct source label in language decision."""
+    def test_s7_roman_urdu_source_label(self, client: TestClient) -> None:
+        """Roman Urdu detection is recorded with the 'roman_urdu' source label."""
         from bookcraft.components.language_guard.guard import LanguageGuard
 
         guard = LanguageGuard(enabled=True)
         decision = guard.detect("editing chahiye mujhe")
-        assert decision.is_english is True
-        assert decision.source in {"roman_urdu_lead_bypass", "ascii_fast_path", "short_message"}
+        assert decision.is_english is False
+        assert decision.source == "roman_urdu"
 
 
 # ===========================================================================
