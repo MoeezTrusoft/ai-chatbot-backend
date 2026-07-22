@@ -164,17 +164,12 @@ def test_verifier_rejects_funnel_pricing_or_legal_rules() -> None:
     assert result.errors
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Rule-data drift, not a code bug: the v2 eval sets (data/trimatch/eval/*.v2.jsonl) "
-        "were staged without regenerating the active v1 rule pack, so precision/coverage "
-        "fall below the 0.97 verifier bar. Tri-Match runs in shadow mode (non-load-bearing), "
-        "so this is a rule-curation task (run the miner/compiler to produce a passing v2 pack). "
-        "Tracked in the audit plan."
-    ),
-    strict=False,
-)
 def test_trimatch_verifier_accepts_seed_rules_and_eval() -> None:
+    # The active gate verifies the ACTIVE (seed/v1) rule pack against the eval that
+    # matches it (v1). The v2 rules-army eval lives with its own staged army under
+    # data/trimatch/staged/rules_army_v2/ — it must NOT be dropped into this active
+    # dir (doing so graded v1 rules against unpromoted v2-army eval; see the v2
+    # PROMOTION_STATUS for the calibration gap that gates that promotion).
     rule_pack = RuleRepository("data/trimatch/rules").load_active_rules()
     result = TriMatchVerifier().verify(rule_pack, load_eval_examples("data/trimatch/eval"))
 

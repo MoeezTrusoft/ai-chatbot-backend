@@ -49,20 +49,6 @@ def test_fails_excessive_weak_phrases() -> None:
     assert any("excessive_weak_language" in failure for failure in report.failures)
 
 
-@pytest.mark.xfail(
-    reason=(
-        "The missing_specificity_known_context check was removed in refactor 17b03cd "
-        "(replaced by a permanent :skip stub in style_policy.py). This looks like an "
-        "incomplete removal (orphaned audit line; the 'redundant' claim is inaccurate — "
-        "it does not overlap repeated_known_fact_question), so it MAY be a regression: "
-        "the bot can now emit generic replies ('Can you share more details?') when it "
-        "already knows the service/genre. Not restored here because the check feeds the "
-        "quality-gate regeneration path and a false positive rejects good responses in "
-        "prod. Flagged as the top behavioural-audit item — restore source if the audit "
-        "confirms the bot gives generic replies with known context."
-    ),
-    strict=False,
-)
 def test_fails_missing_specificity_when_context_known() -> None:
     context_pack = ContextPack(
         active_service="cover_design_illustration",

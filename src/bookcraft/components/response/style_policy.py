@@ -245,7 +245,38 @@ class ResponseStylePolicy:
         else:
             audit.append(f"check:more_than_one_question:pass:{question_count}")
 
-        audit.append("check:missing_specificity_known_context:skip")
+        # Specificity: when the thread already knows concrete context (service, genre,
+        # manuscript status, or captured facts), a reply must reference at least one of
+        # them — a generic "can you share more details?" is a failure. Restored after an
+        # incomplete refactor (17b03cd) left this as a no-op stub; it is NOT redundant
+        # with repeated_known_fact_question below (that one only guards forbidden re-asks).
+        if context_pack is not None and context_pack.known_facts:
+            known_values = [str(fact.value).strip().lower() for fact in context_pack.known_facts]
+            if context_pack.active_service:
+                known_values.append(context_pack.active_service.replace("_", " ").lower())
+            if context_pack.active_genre:
+                known_values.append(context_pack.active_genre.lower())
+            if context_pack.manuscript_status:
+                known_values.append(context_pack.manuscript_status.replace("_", " ").lower())
+
+            def _value_mentioned(value: str, body: str) -> bool:
+                if not value or len(value) <= 2:  # noqa: PLR2004
+                    return False
+                if value in body:
+                    return True
+                words = [w for w in value.split() if len(w) > 3]  # noqa: PLR2004
+                return bool(words) and any(w in body for w in words)
+
+            if any(_value_mentioned(value, text_lower) for value in known_values):
+                audit.append("check:missing_specificity_known_context:pass")
+            else:
+                failures.append("missing_specificity_known_context")
+                suggestions.append(
+                    "Reference at least one known fact (service, genre, or manuscript status)."
+                )
+                audit.append("check:missing_specificity_known_context:fail")
+        else:
+            audit.append("check:missing_specificity_known_context:skip")
 
         if context_pack is not None and context_pack.forbidden_reasks and _QUESTION_MARK in text:
             reask_hits = [

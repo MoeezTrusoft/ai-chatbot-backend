@@ -129,8 +129,8 @@ Complex, multi-turn, adversarial — each becomes a `complex_chat_probe` scenari
 | R2 | Confidence **collapse to flat 0.3** hides gradation; floor only on manuscript_status | Med | `llm_extractor._delta_confidence` | Preserve graded confidence; extend first-write floors to other spoken fields |
 | R3 | Confirmation matcher still narrow for some phrasings | Med | `slot_resolver.is_confirmation_text` | Behavioural sweep (scenario 4); widen as needed |
 | R4 | Language guard has no per-thread stickiness | Low-Med | `guard.detect` / `chat.py:436` | Persist `detected_language`; feed `cached_language` |
-| R5 | Tri-Match rules below 0.97 vs v2 eval | Med (shadow) | `data/trimatch/*` | Regenerate rule pack; keep shadow until green |
-| R6 | Specificity guard **removed** — bot may give generic replies with known context | Med | `style_policy.py:248` (`:skip` stub) | **Top behavioural item** — confirm via scenario, restore source if real |
+| R5 | Tri-Match v2 army needs calibration before promotion (pattern recall ~0.23 vs 0.45; 6 structural + 1 precision) | Med (shadow) | `data/trimatch/staged/rules_army_v2/` | ACTIVE gate fixed (removed mis-filed v2 eval); v2 promotion tracked in that dir's `PROMOTION_STATUS.md` |
+| R6 | Specificity guard was removed — bot could give generic replies with known context | Med | `style_policy.py` | **RESTORED** 2026-07-22 (was a `:skip` stub); test un-xfail'd |
 
 (R1, R2, R4, R5, R6 were surfaced during the 2026-07-22 component-health pass; R3, R6 each already have a failing/xfail test pinned.)
 
