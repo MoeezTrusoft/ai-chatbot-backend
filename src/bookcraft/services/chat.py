@@ -433,7 +433,12 @@ class ChatService:
                     system_message=input_safety_decision.system_message,
                 )
 
-            language = self.language_guard.detect(payload.message, cached_language="en")
+            # B5: feed the thread's last detected language back in, so a short
+            # follow-up after a non-English turn ("si", "gracias") stays consistent
+            # instead of silently defaulting to English.
+            _cached_lang = getattr(state, "detected_language", None) or "en"
+            language = self.language_guard.detect(payload.message, cached_language=_cached_lang)
+            state.detected_language = language.language
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
                 sequence=event_sequence,
@@ -455,6 +460,21 @@ class ChatService:
                     _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
+                # B5: persist the detected language on the early-return redirect path
+                # (which otherwise never saves state) so the next short follow-up
+                # inherits it via cached_language above.
+                if self.thread_repository is not None:
+                    try:
+                        await self.thread_repository.save_state(
+                            thread_id=thread_id,
+                            state=state,
+                            expected_version=thread.version,
+                            language=language.language,
+                        )
+                    except Exception:  # noqa: BLE001 - best-effort; a conflict just skips stickiness
+                        pass
+                elif thread_id in self.threads:
+                    self.threads[thread_id].state = state
                 self._record_live_trace(
                     {
                         "thread_id": str(thread_id),

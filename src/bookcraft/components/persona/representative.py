@@ -114,9 +114,18 @@ class BookCraftPersona:
 
         if not is_identity:
             audit.append("signal:not_identity_question")
-            # Even when not an identity question, return the current name
-            # so the system prompt can always include it.
+            # Assign a stable representative name on the FIRST turn (not only on an
+            # identity question) and persist it to state, so the consultant's name is
+            # consistent for the whole conversation and never invented ad hoc by the
+            # model (audit B2 — present as a named representative, name saved in state).
             existing = getattr(state, "representative_name", None)
+            if not existing:
+                existing = random.choice(REPRESENTATIVE_NAMES)  # noqa: S311
+                try:
+                    object.__setattr__(state, "representative_name", existing)
+                except (AttributeError, TypeError):  # noqa: S110 - read-only state in some tests
+                    pass
+                audit.append(f"signal:name_assigned:{existing}")
             return PersonaDecision(
                 is_identity_question=False,
                 representative_name=existing,

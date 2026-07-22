@@ -169,6 +169,13 @@ class CombinedExtractor:
                         )
                     )
                     EXTRACTION_FIELDS.labels(category="contact").inc()
+            # A count stated on a correction turn ("actually 80k instead") must be
+            # allowed to overwrite an existing count — tag it USER_CORRECTED so the
+            # state applier bypasses the confidence gate (otherwise the bot says the
+            # new number but keeps storing the old one).
+            _count_source = (
+                Source.USER_CORRECTED if is_correction_turn(message.raw) else Source.USER_STATED
+            )
             if word_counts := atoms.get("word_counts"):
                 count = _first_int(word_counts)
                 if count is not None:
@@ -178,7 +185,7 @@ class CombinedExtractor:
                             path="project.word_count",
                             value=count,
                             confidence=0.96,
-                            source=Source.USER_STATED,
+                            source=_count_source,
                             extracted_by="deterministic_preextractor.v1",
                             raw_excerpt=f"{count} words",
                         )
@@ -193,7 +200,7 @@ class CombinedExtractor:
                             path="project.page_count",
                             value=count,
                             confidence=0.94,
-                            source=Source.USER_STATED,
+                            source=_count_source,
                             extracted_by="deterministic_preextractor.v1",
                             raw_excerpt=f"{count} pages",
                         )

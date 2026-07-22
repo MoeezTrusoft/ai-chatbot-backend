@@ -270,8 +270,12 @@ class ThreadState(BaseModel):
     # contact method (phone or email). Prevents asking more than once.
     contact_second_method_requested: bool = False
     # Persona: assigned BookCraft representative name for this thread.
-    # Set on the first identity question; reused for the rest of the conversation.
+    # Set on the first turn; reused for the rest of the conversation.
     representative_name: str | None = None
+    # Last detected message language for this thread. Fed back to the language guard
+    # as cached_language so short follow-ups after a non-English turn stay consistent
+    # instead of defaulting to English (audit B5 — no per-thread language stickiness).
+    detected_language: str | None = None
     # CSR handover context — populated when a CSR takes over and sends messages.
     csr_handover_active: bool = False
     csr_context_abstract: str = ""        # LLM-compressed summary of oldest CSR turns

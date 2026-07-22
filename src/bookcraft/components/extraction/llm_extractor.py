@@ -112,6 +112,15 @@ def _strip_authorship_from_title(title_value: object) -> object:
 _HIGH_CONFIDENCE_THRESHOLD = 0.85
 _LOW_CONFIDENCE_FILL_VALUE = 0.3  # fills only empty fields via StateApplier rules
 
+# Explicit-correction cues. On these turns the LLM's extracted values are tagged
+# USER_CORRECTED so they override an existing stored value (chat 5264 / audit B4:
+# the bot said "80k instead of 130k" but kept storing 130k).
+_LLM_CORRECTION_RE = re.compile(
+    r"\b(?:actually|instead|i\s+meant|correction|let'?s?\s+say|make\s+it|"
+    r"rather|scratch\s+that|no\s+wait|now\s+it'?s|change\s+(?:it\s+)?to)\b",
+    re.IGNORECASE,
+)
+
 # Minimum confidence to confirm a service-specific metadata fact into state.
 _SERVICE_METADATA_MIN_CONFIDENCE = 0.70
 
@@ -356,7 +365,7 @@ def _delta_confidence(ev: ExtractedValue) -> float:
     return _LOW_CONFIDENCE_FILL_VALUE
 
 
-def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
+def _facts_to_deltas(facts: LLMExtractedFacts, *, is_correction: bool = False) -> list[StateDelta]:
     """Convert structured LLM output into StateDelta objects for existing StateApplier."""
     deltas: list[StateDelta] = []
 
@@ -428,7 +437,10 @@ def _facts_to_deltas(facts: LLMExtractedFacts) -> list[StateDelta]:
                 path=state_path,
                 value=raw_value,
                 confidence=_delta_confidence(ev),
-                source=Source.AI_EXTRACTED,
+                # On an explicit correction turn the extracted value must override the
+                # existing stored one, so tag it USER_CORRECTED (bypasses the applier
+                # confidence gate). Otherwise a corrected count is spoken but not stored.
+                source=Source.USER_CORRECTED if is_correction else Source.AI_EXTRACTED,
                 extracted_by="llm_metadata_extractor.v1",
                 raw_excerpt=ev.source_quote or None,
             )
@@ -568,7 +580,7 @@ class LLMMetadataExtractor:
         else:
             facts = raw
 
-        deltas = _facts_to_deltas(facts)
+        deltas = _facts_to_deltas(facts, is_correction=bool(_LLM_CORRECTION_RE.search(user_text)))
         rich = _facts_to_rich_metadata(facts)
         service_metadata = _facts_to_service_metadata(facts, active_service)
 
