@@ -121,6 +121,24 @@ def _anthropic_system_payload(
     (e.g. the current date/time) is appended as a SEPARATE, uncached block so it
     never invalidates the cached prefix.  When caching is off, the two are simply
     concatenated so the model still sees identical content.
+
+    Why only ONE cache breakpoint (advisory item #3, deliberately NOT expanded):
+    Anthropic allows up to 4 ``cache_control`` breakpoints, but caching matches a
+    prefix from byte 0, so a second breakpoint only pays off when an *invariant*
+    span precedes the variable one. Neither prompt satisfies that here:
+      * The user message (``messages[0].content``) is volatile from its first
+        byte — it opens with the author's current message — so it has no stable
+        prefix to cache.
+      * The system prompt's large invariant policy body (contact info,
+        consultation flow, scope, output protocol) is preceded by a per-turn /
+        per-thread VARIABLE head (persona identity + service-specific style, see
+        ``generator._response_system_prompt``). Turn-to-turn within a thread the
+        whole system text is byte-stable, so the single breakpoint already
+        captures that hit; sharing the invariant body across threads would
+        require reordering it ahead of the variable head, which changes the exact
+        bytes the model sees and is out of scope for a caching-only change.
+    So the only content outside the cached block is the volatile date/time suffix
+    — a contract locked by ``tests/unit/test_adapter_prompt_cache.py``.
     """
     if cache_enabled:
         blocks: list[dict[str, object]] = [
