@@ -1577,9 +1577,13 @@ class ChatService:
                 document_status_message = self._sales_action_status_message(
                     action_plan, action_result
                 ) or _document_status_message(intent)
-            # Step 2 (tone fix): build recent conversation turns from persisted state.
+            # Step 2 (tone fix) + advisory item #1: build the recent conversation
+            # window from the persisted rolling buffer (last 5 exchanges). Fall
+            # back to the single prior pair for old threads that predate the ring.
             _recent_turns: list[tuple[str, str]] | None = None
-            if state.last_user_message and state.last_assistant_text:
+            if state.recent_turns:
+                _recent_turns = [tuple(pair) for pair in state.recent_turns[-5:]]
+            elif state.last_user_message and state.last_assistant_text:
                 _recent_turns = [(state.last_user_message, state.last_assistant_text)]
             with STAGE_LATENCY.labels(stage="response_generation").time():
                 # Mixed English + another language: tell the model to answer the
@@ -1854,8 +1858,15 @@ class ChatService:
                 state.contact_second_method_requested = True
             # Step 2 (tone fix): persist prior turn for conversation history in next turn.
             # Store normalized message (not raw) to avoid PII in state.
-            state.last_user_message = (processed.normalized or "")[:300]
-            state.last_assistant_text = final_text[:300]
+            _turn_user_text = (processed.normalized or "")[:300]
+            _turn_assistant_text = final_text[:300]
+            state.last_user_message = _turn_user_text
+            state.last_assistant_text = _turn_assistant_text
+            # Advisory item #1: append to the rolling window and trim to the last
+            # 5 exchanges so the generator can replay several turns, not just one.
+            state.recent_turns.append((_turn_user_text, _turn_assistant_text))
+            if len(state.recent_turns) > 5:
+                del state.recent_turns[:-5]
             if self.thread_repository is not None and self._token_superseded(
                 _turn_token, _loaded_latest_token
             ):
