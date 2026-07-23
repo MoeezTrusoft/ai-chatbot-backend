@@ -52,3 +52,34 @@ def test_roman_urdu_variants_redirect(message: str) -> None:
 def test_plain_english_not_redirected(message: str) -> None:
     d = _guard.detect(message)
     assert d.is_english, f"{message!r} should stay English, got {d.language}/{d.source}"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I need help with editing mera book",
+        "Can you edit my book? mera naam Ali hai",
+        "What is the price aur kitna time lagega",
+    ],
+)
+def test_mixed_language_proceeds_not_redirected(message: str) -> None:
+    """Mixed English+foreign: answered by Claude (English part + polite ask), not a
+    hard redirect. Guard flags is_mixed and lets the turn proceed."""
+    d = _guard.detect(message)
+    assert d.is_mixed is True
+    assert d.is_english is True  # proceeds through the pipeline
+    assert d.redirect_message is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Price kya hai editing ka?",   # Urdu sentence with English loanwords -> redirect
+        "mujhe editing chahiye",
+    ],
+)
+def test_urdu_with_loanwords_still_redirects(message: str) -> None:
+    d = _guard.detect(message)
+    assert d.is_mixed is False
+    assert d.is_english is False
+    assert d.source == "roman_urdu"

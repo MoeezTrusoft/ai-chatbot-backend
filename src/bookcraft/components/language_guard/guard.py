@@ -102,6 +102,25 @@ ENGLISH_HINTS = {
 }
 
 
+# English GRAMMATICAL function words — signal a genuine English clause, unlike domain
+# loanwords ("price", "editing", "cover") that routinely appear inside otherwise-Urdu
+# sentences ("Price kya hai editing ka?"). Mixed-language detection requires a real
+# English clause (>= 2 of these), so a Roman-Urdu sentence sprinkled with English nouns
+# still gets the clean English-only redirect rather than being treated as "mixed".
+_ENGLISH_STRUCTURAL = frozenset(
+    {
+        "i", "i'm", "i've", "i'll", "i'd", "me", "my", "we", "our", "you", "your",
+        "he", "she", "they", "it", "this", "that", "these", "those",
+        "can", "could", "would", "will", "should", "do", "does", "did", "is", "are",
+        "am", "be", "been", "was", "were", "have", "has", "had", "want", "need",
+        "help", "get", "make", "tell", "give", "know", "like", "looking",
+        "what", "how", "when", "where", "why", "who", "which",
+        "the", "a", "an", "to", "with", "for", "from", "of", "in", "on",
+        "and", "or", "if", "please", "about",
+    }
+)
+
+
 @dataclass(slots=True)
 class LanguageGuard:
     enabled: bool = True
@@ -112,6 +131,19 @@ class LanguageGuard:
             return self._record("en", True, 1.0, "disabled", started)
 
         stripped = text.strip()
+
+        # Mixed English + another language: the author wrote a real English request
+        # AND some words in another language. Policy: answer the English part, then
+        # politely ask for the rest in English — that reply is Claude-generated, so we
+        # DON'T hard-redirect. Requires SUBSTANTIAL English (>= 2 distinct English
+        # function words) that is at least as prominent as the foreign markers;
+        # otherwise a mostly-Urdu message with one stray English word still gets the
+        # clean redirect below.
+        _mix_tokens = set(re.findall(r"[a-zA-Z']+", stripped.lower()))
+        _urdu = len({t for t in _mix_tokens if t in _ROMAN_URDU_MARKERS and t not in ENGLISH_HINTS})
+        _eng_struct = len({t for t in _mix_tokens if t in _ENGLISH_STRUCTURAL})
+        if _urdu >= 1 and _eng_struct >= 2:  # noqa: PLR2004
+            return self._record_mixed(started)
 
         # Roman Urdu / Hindi (transliterated) is detected FIRST, at any length, and
         # redirected consistently — English-only policy. This runs before the
@@ -174,6 +206,27 @@ class LanguageGuard:
         iso = language.iso_code_639_1.name.lower()
         is_english = iso == "en"
         return self._record(iso, is_english, 0.8, "lingua", started)
+
+    def _record_mixed(self, started: float) -> LanguageDecision:
+        """Record a mixed English+foreign message.
+
+        Proceeds to normal (Claude) generation in English — `is_english=True` so the
+        pipeline runs and the turn is NOT redirected — but carries `is_mixed=True` so
+        chat.py injects a directive telling the model to answer the English part and
+        ask for the rest in English. No template reply is authored here.
+        """
+        LANGUAGE_DETECTION_SECONDS.labels(source="mixed_language").observe(
+            time.perf_counter() - started
+        )
+        LANGUAGE_DETECTION_RESULTS.labels(language="mixed").inc()
+        return LanguageDecision(
+            language="en",
+            is_english=True,
+            confidence=0.85,
+            source="mixed_language",
+            redirect_message=None,
+            is_mixed=True,
+        )
 
     def _record(
         self,

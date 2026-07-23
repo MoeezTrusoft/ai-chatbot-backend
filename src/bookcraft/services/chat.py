@@ -1582,6 +1582,23 @@ class ChatService:
             if state.last_user_message and state.last_assistant_text:
                 _recent_turns = [(state.last_user_message, state.last_assistant_text)]
             with STAGE_LATENCY.labels(stage="response_generation").time():
+                # Mixed English + another language: tell the model to answer the
+                # English part and ask for the rest in English. Kept out of the
+                # reserved "repeat_message" hint keyword. The reply itself is
+                # Claude-generated — never a template.
+                if getattr(language, "is_mixed", False) and response_hint != "repeat_message":
+                    _mixed_directive = (
+                        "LANGUAGE — MIXED MESSAGE: The author mixed English with words in "
+                        "another language (BookCraft support is English-only). Answer the "
+                        "English part of their message normally and helpfully, then add ONE "
+                        "short, warm line saying you didn't quite catch the rest and asking "
+                        "them to resend that part in English. Do NOT translate, guess at, or "
+                        "reply in the other language."
+                    )
+                    response_hint = (
+                        f"{response_hint}\n{_mixed_directive}" if response_hint else _mixed_directive
+                    )
+
                 draft = await self.response_generator.generate(
                     message=processed,
                     state=state,
