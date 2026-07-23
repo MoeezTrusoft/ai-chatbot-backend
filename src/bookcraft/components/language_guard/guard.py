@@ -45,6 +45,13 @@ _ROMAN_URDU_MARKERS = frozenset(
         "naam", "daftar", "kitab", "kitaab", "baat", "baray", "pagal", "insaan",
         "hee", "urdu", "angrezi", "angerezi", "jawab", "baap", "pehle",
         "choro", "chhoro", "karlo", "ghora", "ghoray", "masnoi", "zahanat",
+        # Transliteration variants that leaked through (chat: "kia haal he kese ho?").
+        # Roman Urdu has no fixed spelling, so common respellings must be covered.
+        "kese", "kesay", "kaisay", "kesa", "kesi", "kesy", "kese", "haal",
+        "hou", "houn", "kro", "krna", "krni", "kren", "krein", "krlo",
+        "kyunke", "kyunkay", "kripya", "shukriya", "shukria", "meharbani",
+        "thek", "thik", "kaha", "kahan", "kaisay", "batana", "samajh", "samjha",
+        "chahye", "chahiya", "hoga", "hogi", "hoge", "tha", "thi", "thay",
     }
 )
 
@@ -206,13 +213,20 @@ class LanguageGuard:
             return False
         markers = [t for t in tokens if t in _ROMAN_URDU_MARKERS and t not in ENGLISH_HINTS]
         marker_count = len(markers)
+        english_hint_present = any(t in ENGLISH_HINTS for t in tokens)
         if marker_count >= 2:  # noqa: PLR2004
             return True
-        # A single unambiguous marker is enough only when it dominates a very short
-        # message ("acha", "likhli hai") — never for one stray word in a long English
-        # sentence, which the ascii/lingua paths below still handle.
-        if marker_count == 1 and (len(tokens) <= 2 or marker_count / len(tokens) >= 0.5):  # noqa: PLR2004
-            return True
+        if marker_count == 1:
+            # A single unmistakable Roman-Urdu marker is enough when the message
+            # carries NO English signal at all — a genuine English sentence almost
+            # always contains at least one English function word ("i", "the", "you",
+            # "is", "to", "help", "book"...). Zero English hints + an Urdu marker is a
+            # strong non-English signal, length-independent. Also fire when the marker
+            # dominates a very short message ("acha", "likhli hai").
+            if not english_hint_present:
+                return True
+            if len(tokens) <= 2 or marker_count / len(tokens) >= 0.5:  # noqa: PLR2004
+                return True
         return False
 
     @staticmethod
