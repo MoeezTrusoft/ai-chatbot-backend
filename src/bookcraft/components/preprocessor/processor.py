@@ -223,7 +223,6 @@ SERVICE_KEYWORDS = {
         "interior layout",
         "page layout",
         "layout breaking",
-        "layout",
         "recipe tables",
         "ingredient lists",
         "section dividers",
@@ -236,7 +235,15 @@ SERVICE_KEYWORDS = {
         "format it for print and kindle",
         "print and Kindle",
     ],
-    ServiceCategory.AUDIOBOOK_PRODUCTION: ["audiobook", "audio book", "narration"],
+    ServiceCategory.AUDIOBOOK_PRODUCTION: [
+        "audiobook",
+        "audio book",
+        # Bare "narration" removed: "the narration is first person" is a craft
+        # remark about narrative voice, not an audiobook request. Require an
+        # audiobook/narrator-for-my-book context instead.
+        "audiobook narration",
+        "narrator for my book",
+    ],
     ServiceCategory.PUBLISHING_DISTRIBUTION: [
         "publishing",
         "distribution",
@@ -252,7 +259,9 @@ SERVICE_KEYWORDS = {
     ],
     ServiceCategory.MARKETING_PROMOTION: ["marketing", "promotion", "ads", "campaign", "launch"],
     ServiceCategory.AUTHOR_WEBSITE: ["author website", "website"],
-    ServiceCategory.VIDEO_TRAILER: ["video trailer", "trailer"],
+    # Bare "trailer" removed: "it's set in a trailer park" is a setting, not a
+    # book-trailer request. Require an explicit book/video trailer phrase.
+    ServiceCategory.VIDEO_TRAILER: ["video trailer", "book trailer"],
     ServiceCategory.FINE_ART_MONOGRAPH: [
         "art book",
         "fine art book",
@@ -641,6 +650,89 @@ def _dedupe_spans(spans: list[Span]) -> list[Span]:
     return sorted(unique.values(), key=lambda item: (item.start, item.end, item.cue))
 
 
+# Ambiguous single keywords that legitimately name a service but also appear in
+# unrelated prose. When these fire in a clearly non-service context we drop the
+# mention so a bare word does not mis-scope the whole thread.
+_BUY_CUES = (
+    "bought",
+    "buy",
+    "buying",
+    "purchase",
+    "purchased",
+    "ordered",
+    "found it on",
+    "found you on",
+    "read it on",
+    "reading it on",
+    "review on",
+)
+_PUBLISH_INTENT_CUES = (
+    "publish",
+    "distribut",
+    "sell",
+    "selling",
+    "list my",
+    "get on",
+    "kdp",
+    "kindle",
+    "ingramspark",
+)
+# Physical/product launches — not a book marketing launch.
+_NON_BOOK_LAUNCH_PRECEDERS = (
+    "rocket",
+    "product",
+    "space",
+    "spaceship",
+    "satellite",
+    "missile",
+    "ship",
+    "boat",
+    "car",
+    "vehicle",
+    "software",
+    "app",
+    "website",
+)
+_LAUNCH_NON_SERVICE_FOLLOWERS = ("party", "pad", "site")
+# Referral / possessive references to *our* site — "how they found us", not a request.
+_WEBSITE_REFERRAL_PRECEDERS = ("your ", "via ", "through your", "on your", "found you")
+
+
+def _is_non_service_context(keyword_lower: str, lowered: str, start: int, end: int) -> bool:
+    """Return True when an ambiguous keyword is used in a non-service sense.
+
+    Surgical disambiguation for a handful of bare keywords that otherwise mis-scope
+    a service on unrelated prose (audit-confirmed false positives). Only these exact
+    keywords are guarded; every other keyword passes through unchanged.
+    """
+    pre = lowered[max(0, start - 40) : start]
+
+    if keyword_lower == "amazon":
+        # "I bought a book on Amazon" — a buying/reading reference, not a request to
+        # publish/distribute there. Keep it only when publishing intent is present.
+        if any(cue in pre for cue in _BUY_CUES) and not any(
+            cue in lowered for cue in _PUBLISH_INTENT_CUES
+        ):
+            return True
+
+    if keyword_lower == "launch":
+        post = lowered[end : end + 12]
+        if any(post.lstrip().startswith(f) for f in _LAUNCH_NON_SERVICE_FOLLOWERS):
+            return True
+        preceding_word = pre.rstrip().rsplit(" ", 1)[-1] if pre.strip() else ""
+        if preceding_word in _NON_BOOK_LAUNCH_PRECEDERS:
+            return True
+
+    if keyword_lower == "website":
+        # Bare "website" as a referral source ("I found you via your website").
+        # The genuine request "I need an author website" also matches the dedicated
+        # "author website" phrase, so suppressing the bare match here is safe.
+        if any(cue in pre for cue in _WEBSITE_REFERRAL_PRECEDERS):
+            return True
+
+    return False
+
+
 def _service_mentions(
     text: str,
     negation_spans: list[Span],
@@ -652,7 +744,10 @@ def _service_mentions(
 
     for service, keywords in SERVICE_KEYWORDS.items():
         for keyword in keywords:
-            for match in re.finditer(rf"(?<!\w){re.escape(keyword.lower())}(?!\w)", lowered):
+            keyword_lower = keyword.lower()
+            for match in re.finditer(rf"(?<!\w){re.escape(keyword_lower)}(?!\w)", lowered):
+                if _is_non_service_context(keyword_lower, lowered, match.start(), match.end()):
+                    continue
                 mentions.append(
                     {
                         "service": service.value,
