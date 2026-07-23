@@ -2134,16 +2134,25 @@ class ChatService:
             )
             base_action_events = self._build_action_events(action_result)
 
-            # When the planner decides the customer should book a consultation
-            # (consultation_scoping goal) and no contact info is captured yet,
-            # emit a show_consultation_form event so the chat widget renders a
-            # booking button. Claude's intent drives this — not backend heuristics.
+            # Whenever the planner is offering or collecting details for a consultation,
+            # emit a show_consultation_form event so the chat widget renders a booking
+            # button. Covers the whole scoping→contact→time capture arc (NOT the
+            # already-booked handoff/deferred goals), so the button persists while the
+            # bot asks for details — it previously only fired on the initial
+            # "consultation_scoping" goal and vanished the moment the first field was
+            # captured. Claude's intent drives this — not backend heuristics.
+            _CONSULTATION_FORM_GOALS = frozenset(
+                {
+                    "consultation_scoping",
+                    "consultation_offer",
+                    "contact_capture_for_consultation",
+                    "consultation_time_capture",
+                }
+            )
             _show_form_event: list[dict[str, object]] = []
             if (
                 response_plan is not None
-                and response_plan.primary_goal == "consultation_scoping"
-                and not getattr(state.personal.name, "value", None)
-                and not getattr(state.personal.phone, "value", None)
+                and response_plan.primary_goal in _CONSULTATION_FORM_GOALS
                 and not any(e.get("type") == "show_consultation_form" for e in base_action_events)
             ):
                 _show_form_event = [{"type": "show_consultation_form"}]
