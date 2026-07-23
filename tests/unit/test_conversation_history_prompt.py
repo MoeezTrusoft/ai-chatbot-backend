@@ -34,15 +34,19 @@ def test_recent_turns_prior_assistant_text_present() -> None:
     assert "What book project" in section
 
 
-def test_recent_turns_caps_at_three() -> None:
-    """Only the last 3 turns are included — older turns are dropped."""
+def test_recent_turns_caps_at_five() -> None:
+    """Only the last 5 turns are included — older turns are dropped."""
     turns = [
         ("turn 1 user", "turn 1 assistant"),
         ("turn 2 user", "turn 2 assistant"),
         ("turn 3 user", "turn 3 assistant"),
         ("turn 4 user", "turn 4 assistant"),
+        ("turn 5 user", "turn 5 assistant"),
+        ("turn 6 user", "turn 6 assistant"),
     ]
     section = _recent_turns_prompt_section(turns)
+    assert "turn 6 user" in section
+    assert "turn 5 user" in section
     assert "turn 4 user" in section
     assert "turn 3 user" in section
     assert "turn 2 user" in section
