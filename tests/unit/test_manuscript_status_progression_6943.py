@@ -161,18 +161,41 @@ def test_applier_advances_draft_to_published_end_to_end():
 # ---------------------------------------------------------------------------
 
 
-def test_kdp_ready_and_proof_copy_detected_as_published():
+def test_kdp_ready_and_proof_copy_detected_as_completed():
+    # Refined semantics: "KDP-ready" / "proof copy" mean the files are FINALIZED and
+    # ready to publish (COMPLETED) — not that the book is already distributed
+    # (PUBLISHED). This still keeps it out of the draft/idea buckets that 6943 fixed.
     status = detect_manuscript_status(
         "My book is already KDP ready. I uploaded it and have a proof copy."
     )
-    assert status == ManuscriptStatus.PUBLISHED
+    assert status == ManuscriptStatus.COMPLETED
 
 
 def test_kdp_ready_survives_a_cooccurring_publishing_goal_phrase():
+    # A publishing GOAL must not suppress the genuine readiness signal → COMPLETED.
     status = detect_manuscript_status(
         "I want to get it published — it's already KDP-ready with a proof copy."
     )
-    assert status == ManuscriptStatus.PUBLISHED
+    assert status == ManuscriptStatus.COMPLETED
+
+
+def test_ready_to_publish_kdp_ready_is_completed_not_published():
+    # Regression: "ready to publish ... KDP ready" was wrongly stored as PUBLISHED,
+    # making the bot treat an unpublished book as already out.
+    status = detect_manuscript_status(
+        "its ready to publish fully formatted and edited also KDP ready"
+    )
+    assert status == ManuscriptStatus.COMPLETED
+
+
+def test_actually_distributed_book_is_published():
+    assert (
+        detect_manuscript_status("My book is published and for sale on Amazon")
+        == ManuscriptStatus.PUBLISHED
+    )
+    assert (
+        detect_manuscript_status("It's live on Amazon already") == ManuscriptStatus.PUBLISHED
+    )
 
 
 def test_plain_publishing_goal_is_not_a_published_status():

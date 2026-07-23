@@ -72,27 +72,24 @@ _COVER_COMPLETE_RE = re.compile(
 # Status phrase groups
 # ---------------------------------------------------------------------------
 
+# PUBLISHED = the book is actually distributed / for sale. "Ready to publish" and
+# "KDP-ready" are NOT published — they mean the files are finalized (COMPLETED). Only
+# genuine distribution/upload evidence counts here (chat: "ready to publish ... KDP
+# ready" was wrongly stored as published, derailing the whole flow).
 _PUBLISHED_PHRASES = (
     "published",
     "already published",
     "book is published",
     "my book is out",
     "book is out",
-    # KDP / print-ready signals: a passed KDP upload or a proof copy means the
-    # interior + cover files are finalized and distributed — this is a published /
-    # print-ready book, never a "draft" (chat 6943).
-    "kdp ready",
-    "kdp-ready",
-    "ready for kdp",
     "uploaded it to kdp",
     "uploaded to kdp",
-    "proof copy",
-    "print ready",
-    "print-ready",
     "it's live on amazon",
     "live on amazon",
     "on amazon already",
     "for sale on amazon",
+    "for sale on kindle",
+    "available on amazon",
 )
 
 _COMPLETED_PHRASES = (
@@ -126,6 +123,21 @@ _COMPLETED_PHRASES = (
     "my novel is complete",
     "my book is finished",
     "my novel is finished",
+    # Ready-to-publish / print-ready signals: the interior + cover files are finalized
+    # and ready to go out, but the book is NOT yet distributed — that is COMPLETED, not
+    # PUBLISHED. ("ready to publish ... KDP ready" must never read as already published.)
+    "kdp ready",
+    "kdp-ready",
+    "ready for kdp",
+    "print ready",
+    "print-ready",
+    "proof copy",
+    "publication ready",
+    "publication-ready",
+    "ready for publication",
+    "fully formatted",
+    "formatted and edited",
+    "formatted and ready",
 )
 
 _DRAFT_PHRASES = (
@@ -332,12 +344,20 @@ def _first_match(
     cover_complete: bool = False,
 ) -> ManuscriptStatus | None:
     for status, phrases in _STATUS_PRIORITY:
-        # Guard both PUBLISHED and COMPLETED against publishing-goal context.
-        if status in (ManuscriptStatus.COMPLETED, ManuscriptStatus.PUBLISHED):
+        # PUBLISHED under a publishing GOAL needs real distribution evidence — "I want
+        # to publish" must never read as already published.
+        if status == ManuscriptStatus.PUBLISHED:
             if publishing_goal and not _has_already_published_phrase(text):
                 continue
         if status == ManuscriptStatus.COMPLETED:
             if cover_complete and not _has_manuscript_keyword(text):
+                continue
+            # A publishing goal ("I want to publish my finished/KDP-ready manuscript")
+            # does NOT cancel a genuine completion/readiness signal — only suppress
+            # COMPLETED when the text is a bare goal with no completion evidence.
+            if publishing_goal and not (
+                _has_already_published_phrase(text) or _has_completion_readiness(text)
+            ):
                 continue
         for match in iter_phrase_matches(text, phrases):
             if match_is_negated(text, match, negation_spans):
@@ -349,18 +369,36 @@ def _first_match(
 
 
 def _has_already_published_phrase(text: str) -> bool:
-    """Return True when the text clearly states the book IS already published (not a goal).
+    """Return True when the text clearly states the book IS already DISTRIBUTED.
 
-    Includes KDP / print-ready signals: a passed KDP upload or a proof copy is
-    evidence the book is finalized and distributed, so it should not be suppressed by
-    a co-occurring publishing *goal* phrase (chat 6943).
+    Only genuine publication evidence (live/for sale/uploaded to KDP) — NOT mere
+    readiness signals like "KDP-ready" or "print-ready", which mean the files are
+    finalized (COMPLETED) but the book is not yet published.
     """
     return bool(
         re.search(
             r"\b(?:already\s+published|book\s+is\s+(?:out|published)|"
             r"my\s+book\s+is\s+out|is\s+already\s+published|"
-            r"kdp[-\s]?ready|proof\s+copy|print[-\s]?ready|"
+            r"(?:it'?s\s+)?live\s+on\s+amazon|for\s+sale\s+on\s+\w+|"
+            r"available\s+on\s+amazon|"
             r"uploaded\s+(?:it\s+)?to\s+kdp)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _has_completion_readiness(text: str) -> bool:
+    """Return True when the text carries a genuine 'manuscript is finished / ready to
+    publish' signal (finalized files), so a co-occurring publishing GOAL does not
+    wrongly suppress COMPLETED."""
+    return bool(
+        re.search(
+            r"\b(?:kdp[-\s]?ready|print[-\s]?ready|ready\s+for\s+kdp|proof\s+copy|"
+            r"publication[-\s]?ready|ready\s+for\s+publication|fully\s+formatted|"
+            r"formatted\s+and\s+(?:edited|ready)|final\s+draft|fully\s+drafted|"
+            r"finished\s+(?:my\s+|the\s+)?manuscript|complete(?:d)?\s+manuscript|"
+            r"manuscript\s+is\s+(?:complete|finished|done|ready|finalized))\b",
             text,
             re.IGNORECASE,
         )
