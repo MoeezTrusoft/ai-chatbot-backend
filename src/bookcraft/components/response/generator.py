@@ -45,6 +45,10 @@ _MULTI_QUESTION_RAG_CHUNKS = 12
 class SonnetResponseGenerator:
     provider_name: str = "mock_sonnet"
     adapter: LLMProvider | None = None
+    # Secondary Claude model (e.g. Sonnet) tried when the primary (e.g. Opus) fails
+    # every attempt — usually HTTP 529 Overloaded. Answering with another Claude model
+    # keeps the reply Claude-generated instead of dropping to the canned template.
+    fallback_adapter: LLMProvider | None = None
     router: ResponseRouter = field(default_factory=ResponseRouter)
     # Number of no-RAG re-initiations tried after the full (with-RAG) attempt
     # before conceding to the safe template. The model is stochastic, so re-issuing
@@ -265,9 +269,38 @@ class SonnetResponseGenerator:
                         approved_urls=_engine_approved_urls,
                     )
 
-            # Absolute last resort: every re-initiation failed (provider persistently
-            # down or rejecting). Emit the safe template so the customer still gets a
-            # coherent reply rather than silence.
+            # Before conceding to the template, try a SECONDARY Claude model (Sonnet).
+            # The primary (Opus) failing every attempt is usually HTTP 529 Overloaded,
+            # which the more-available model routinely serves — keeping the reply
+            # Claude-generated instead of canned.
+            if self.fallback_adapter is not None:
+                fb_text = await self._try_llm(
+                    message=message,
+                    state=state,
+                    intent=intent,
+                    extraction=extraction,
+                    rag_chunks=[],
+                    route_name=route.name,
+                    runtime_atoms=runtime_atoms,
+                    response_hint=response_hint,
+                    context_pack=context_pack,
+                    response_plan=response_plan,
+                    recent_turns=recent_turns,
+                    engine_facts=_engine_facts,
+                    persona_decision=persona_decision,
+                    attempt="fallback_model",
+                    adapter_override=self.fallback_adapter,
+                )
+                if fb_text is not None:
+                    return ResponseDraft(
+                        text=fb_text,
+                        source=f"{self.provider_name}_fallback_model",
+                        approved_urls=_engine_approved_urls,
+                    )
+
+            # Absolute last resort: every re-initiation AND the fallback model failed
+            # (provider persistently down or rejecting). Emit the safe template so the
+            # customer still gets a coherent reply rather than silence.
             return ResponseDraft(
                 text=template_fallback,
                 source=route.name if route.name != "direct_answer" else self.provider_name,
@@ -526,15 +559,17 @@ class SonnetResponseGenerator:
         engine_facts: str | None = None,
         persona_decision: Any | None = None,
         attempt: str = "full",
+        adapter_override: LLMProvider | None = None,
     ) -> str | None:
-        assert self.adapter is not None
+        _adapter = adapter_override or self.adapter
+        assert _adapter is not None
 
         LLM_CALLS.labels(provider=self.provider_name, purpose=f"response_{attempt}").inc()
 
         try:
             generated = cast(
                 GeneratedResponseText,
-                await self.adapter.structured(
+                await _adapter.structured(
                     system=_response_system_prompt(
                         active_service=context_pack.active_service
                         if context_pack is not None

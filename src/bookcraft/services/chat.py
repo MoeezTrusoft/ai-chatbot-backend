@@ -2147,12 +2147,17 @@ class ChatService:
                     "consultation_offer",
                     "contact_capture_for_consultation",
                     "consultation_time_capture",
+                    # Contact capture in this product exists to book a specialist
+                    # consultation, so the booking button belongs here too — this is
+                    # the goal the planner lands on when it asks "may I have your name?"
+                    # after a consultation offer (state: lead_objective_stage=contact_requested).
+                    "lead_contact_capture",
                 }
             )
             _show_form_event: list[dict[str, object]] = []
+            _pg = response_plan.primary_goal if response_plan is not None else None
             if (
-                response_plan is not None
-                and response_plan.primary_goal in _CONSULTATION_FORM_GOALS
+                _pg in _CONSULTATION_FORM_GOALS
                 and not any(e.get("type") == "show_consultation_form" for e in base_action_events)
             ):
                 _show_form_event = [{"type": "show_consultation_form"}]

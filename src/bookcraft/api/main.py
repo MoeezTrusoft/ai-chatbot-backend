@@ -718,9 +718,28 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             thinking_mode=settings.response_thinking_mode,
             max_tokens=settings.response_max_tokens,
         )
+        # Fallback model: when the primary (Opus) is Overloaded (HTTP 529) or otherwise
+        # fails every retry, we would rather answer with ANOTHER Claude model than drop
+        # to the canned template (final replies must stay Claude-generated). Build a
+        # cheaper/more-available Sonnet adapter for that purpose. Skip when the response
+        # and extraction models are identical (nothing to fall back to).
+        _fallback_adapter = None
+        if settings.anthropic_extraction_model != settings.anthropic_response_model:
+            _fallback_adapter = AnthropicAdapter(
+                api_key=settings.anthropic_api_key,
+                base_url=settings.anthropic_base_url,
+                timeout_seconds=settings.llm_request_timeout_seconds,
+                model=settings.anthropic_extraction_model,
+                name="claude_sonnet_fallback",
+                read_timeout=_generation_read_timeout,
+                prompt_cache_enabled=settings.prompt_cache_enabled,
+                max_tokens=settings.response_max_tokens,
+                thinking_mode="disabled",
+            )
         return SonnetResponseGenerator(
             provider_name="claude_sonnet",
             adapter=adapter,
+            fallback_adapter=_fallback_adapter,
         )
 
     # No API key in production-like environment or when live mode is explicit.

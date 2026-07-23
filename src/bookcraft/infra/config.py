@@ -161,8 +161,10 @@ class Settings(BaseSettings):
     sonnet_max_tokens: int = 600
     haiku_max_tokens: int = 2048
     # Output-token ceiling for response generation. Billed on tokens actually
-    # produced, so headroom is free; 1024 truncated multi-question replies.
-    response_max_tokens: int = 2048
+    # produced, so headroom is free; 1024 truncated multi-question replies, and at
+    # 2048 Opus occasionally hit stop_reason=max_tokens (truncated → validation
+    # reject → template fallback), so raised to 3072.
+    response_max_tokens: int = 3072
     # "disabled" | "adaptive" | "omit" — sent as the request's `thinking` field.
     # MUST stay explicit: claude-sonnet-4-6 read an omitted field as no-thinking,
     # claude-sonnet-5 reads the same omission as adaptive, and thinking shares the
