@@ -185,3 +185,32 @@ def test_trace_includes_attachment_intake(client: TestClient) -> None:
     assert "assessment_type" in ai
     assert "content_analysis_allowed" in ai
     assert ai["content_analysis_allowed"] is False
+
+
+def test_quick_look_enrichment_round_trips_through_service(client: TestClient) -> None:
+    """Pre-extracted 'quick look' metadata from the upload service must survive the
+    full turn (intake -> state -> trace) so the LLM can narrate a human first
+    impression. The backend still performs no content analysis of its own."""
+    r = _chat(
+        client,
+        "Here's my manuscript for editing.",
+        attachments=[
+            {
+                "filename": "winter-memoir.docx",
+                "mime_type": (
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                "page_count": 134,
+                "word_count": 40200,
+                "excerpt": "It was the winter my mother finally stopped speaking.",
+            }
+        ],
+    )
+    t = _trace(client, str(r["thread_id"]))
+    att = t["attachment_intake"]["attachments"][0]
+    assert att["page_count"] == 134
+    assert att["word_count"] == 40200
+    assert "winter" in (att["excerpt"] or "")
+    # Backend never claims to have read it, even with an excerpt present.
+    assert t["attachment_intake"]["content_analysis_allowed"] is False

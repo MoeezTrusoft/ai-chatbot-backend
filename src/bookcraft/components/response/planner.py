@@ -360,6 +360,28 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
         # ("Got your file 'Chapter 2.docx'") rather than only by category.
         if names:
             facts.append(f"attachment_filename: {', '.join(names)}")
+        # "Quick look" metadata (pre-extracted by the upload service) so the bot can
+        # give a human first impression of size and subject — never a full read.
+        _pages = [a.page_count for a in context_pack.attachments_received if a.page_count]
+        if _pages:
+            facts.append(f"attachment_page_count: {max(_pages)}")
+        _words = [a.word_count for a in context_pack.attachments_received if a.word_count]
+        if _words:
+            facts.append(f"attachment_word_count: {max(_words)}")
+        _dims = [
+            (a.image_width, a.image_height)
+            for a in context_pack.attachments_received
+            if a.image_width and a.image_height
+        ]
+        if _dims:
+            w, h = _dims[0]
+            facts.append(f"attachment_image_dimensions: {w}x{h}")
+        _excerpts = [
+            a.excerpt.strip() for a in context_pack.attachments_received if a.excerpt
+        ]
+        if _excerpts:
+            # Defensive cap even though the upload service already trims it.
+            facts.append(f"attachment_excerpt: {_excerpts[0][:500]}")
         if context_pack.assessment_type:
             facts.append(f"assessment_type: {context_pack.assessment_type}")
         if context_pack.specialist_role:

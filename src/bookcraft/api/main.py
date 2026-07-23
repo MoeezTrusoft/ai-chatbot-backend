@@ -409,8 +409,31 @@ def build_chat_service(
     )
     response_generator = build_response_generator(settings)
     _rg_adapter = getattr(response_generator, "adapter", None)
+    # Extraction + CSR summarization run on a cheaper model than response generation
+    # (which is now Opus). Build a dedicated adapter so a single env/config change does
+    # not silently drag high-frequency structured-JSON calls onto Opus. Falls back to the
+    # response adapter (None in mock/no-key mode) so test behavior is unchanged.
+    _extraction_adapter = _rg_adapter
+    if settings.anthropic_api_key and _rg_adapter is not None:
+        _extraction_adapter = AnthropicAdapter(
+            api_key=settings.anthropic_api_key,
+            base_url=settings.anthropic_base_url,
+            timeout_seconds=settings.llm_request_timeout_seconds,
+            model=settings.anthropic_extraction_model,
+            name="claude_extraction",
+            read_timeout=(
+                settings.llm_read_timeout_extraction_seconds
+                if settings.llm_bounded_timeouts_enabled
+                else None
+            ),
+            prompt_cache_enabled=settings.prompt_cache_enabled,
+            max_tokens=settings.response_max_tokens,
+            thinking_mode="disabled",
+        )
     llm_metadata_extractor = (
-        LLMMetadataExtractor(adapter=_rg_adapter) if _rg_adapter is not None else None
+        LLMMetadataExtractor(adapter=_extraction_adapter)
+        if _extraction_adapter is not None
+        else None
     )
     trg_fact_store = (
         TRGFactStore(session_factory=session_factory) if session_factory is not None else None
@@ -428,7 +451,7 @@ def build_chat_service(
         if elasticsearch_client is not None
         else None
     )
-    csr_summarizer = CsrContextSummarizer(adapter=_rg_adapter)
+    csr_summarizer = CsrContextSummarizer(adapter=_extraction_adapter)
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -678,7 +701,7 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             api_key=settings.anthropic_api_key,
             base_url=settings.anthropic_base_url,
             timeout_seconds=settings.llm_request_timeout_seconds,
-            model=settings.anthropic_sonnet_model,
+            model=settings.anthropic_response_model,
             name="claude_sonnet",
             read_timeout=_generation_read_timeout,
             prompt_cache_enabled=settings.prompt_cache_enabled,
@@ -691,7 +714,7 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             response_generator_adapter="anthropic",
             response_generator_provider="claude_sonnet",
             response_generator_contract_mode=contract_mode,
-            anthropic_model=settings.anthropic_sonnet_model,
+            anthropic_model=settings.anthropic_response_model,
             thinking_mode=settings.response_thinking_mode,
             max_tokens=settings.response_max_tokens,
         )

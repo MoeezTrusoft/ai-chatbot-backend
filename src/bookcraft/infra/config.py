@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     anthropic_base_url: str = "https://api.anthropic.com"
     anthropic_haiku_model: str = "claude-haiku-4-5-20251001"
     anthropic_sonnet_model: str = "claude-sonnet-4-6"
+    # Response generation runs on Opus for the highest-quality customer-facing reply.
+    # Kept SEPARATE from extraction: the LLM metadata extractor + CSR summarizer are
+    # high-frequency structured-JSON tasks where Opus adds cost/latency with no accuracy
+    # benefit, so they stay on a cheaper model via `anthropic_extraction_model`.
+    anthropic_response_model: str = "claude-opus-4-8"
+    anthropic_extraction_model: str = "claude-sonnet-5"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_intent_model: str = "gpt-5.4-mini"

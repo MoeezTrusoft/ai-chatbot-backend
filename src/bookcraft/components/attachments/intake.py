@@ -3,7 +3,12 @@
 Classifies file attachments by category and maps them to the appropriate
 BookCraft assessment type and specialist role.
 
-Content analysis is NEVER performed. Only filename/MIME metadata is used.
+This backend performs NO content analysis of its own — it never opens or parses
+file bytes. It may, however, receive *pre-extracted* light metadata from the upload
+service (the Node app, which already holds the bytes): page/word count and a short
+opening excerpt. These let the bot give a human "quick look" acknowledgement
+("a ~134-page draft that reads like a family memoir") without ever claiming to have
+read the manuscript. Only metadata crosses this boundary — never the file itself.
 """
 
 from __future__ import annotations
@@ -38,6 +43,17 @@ class ChatAttachment(BaseModel):
     storage_key: str | None = None
     category: _AttachmentCategory | None = None
     size_bytes: int | None = None
+    # Pre-extracted "quick look" metadata supplied by the upload service (Node). The
+    # backend never computes these — it only narrates them. All optional; absent for
+    # files the upload service could not (or chose not to) peek at.
+    page_count: int | None = None
+    word_count: int | None = None
+    # A short opening excerpt (plain text, already length-capped by the upload service).
+    # Used only so the bot can characterize the material in its OWN words — never quoted.
+    excerpt: str | None = None
+    # Image dimensions (e.g. for cover-design uploads).
+    image_width: int | None = None
+    image_height: int | None = None
 
 
 class AttachmentIntakeResult(BaseModel):
