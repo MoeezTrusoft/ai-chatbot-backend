@@ -180,16 +180,19 @@ EXTRACTION RULES:
                           partial manuscript, prologue written, chapters completed
      "full_draft"       — a complete or near-complete DRAFT manuscript, full book written but
                           not yet finalized/edited
-     "completed"        — the manuscript itself is FINISHED/final — done, complete, "the book
-                          is finished", a final manuscript ready to move forward (but NOT yet
-                          published or formatted for a store)
+     "completed"        — the manuscript is FINISHED/final OR the files are finalized and
+                          READY TO PUBLISH but NOT yet distributed: "the book is finished",
+                          "final manuscript", "fully formatted and edited", "KDP-ready",
+                          "print-ready", "formatted for the store", "I have a proof copy",
+                          "ready to publish". Ready/print-ready/proof means done and ready to
+                          go out — it is NOT the same as already being on a store.
      "editing_complete" — already finished their own editing pass; they do NOT want an
                           editing service — treat editing as negated for this conversation
-     "published"        — the book is ALREADY published, print-ready, or live on a store:
-                          "it's on Amazon", "already published", "KDP-ready", "uploaded to
-                          KDP", "I have a proof copy", "print-ready files", "it's live", "for
-                          sale". A proof copy or a passed KDP upload means the files are
-                          finalized and distributed — this is "published", NOT a draft.
+     "published"        — the book is ALREADY DISTRIBUTED / for sale: "it's on Amazon",
+                          "already published", "it's live", "for sale", "uploaded to KDP and
+                          it's live", "available on Kindle". Only genuine distribution counts —
+                          mere readiness ("KDP-ready", "print-ready", "proof copy") is
+                          "completed", NOT "published".
    CRITICAL — a publishing GOAL is NOT the published STATE. Wanting/intending to publish is
    a request for the publishing SERVICE, not evidence the book is already published. When the
    user says "I need to publish it", "I want to get it published", "looking to publish",
@@ -222,14 +225,16 @@ EXTRACTION RULES:
      "Completed"  (answer to "what stage is your book at?") → completed, 0.92
      "The manuscript is finished / it's done" → completed,    0.92
      "Done with editing"                  → editing_complete, 0.92
-     "My book is already KDP ready. I uploaded it and have a proof copy." → published, 0.92
+     "My book is already KDP ready with a proof copy." → completed, 0.90 (ready, not distributed)
+     "ready to publish, fully formatted and edited, KDP ready" → completed, 0.90
+     "I have print-ready files"           → completed,        0.90
      "It's on Amazon already"             → published,        0.92
      "I already self-published it"        → published,        0.92
-     "I have print-ready files"           → published,        0.90
+     "It's live and for sale on Kindle"   → published,        0.92
      "Yes need to publish it"             → manuscript_status NULL (publishing GOAL, no stage)
      "I want to get it published"         → manuscript_status NULL (goal, not a state)
      "Looking to publish my book"         → manuscript_status NULL (goal, not a state)
-     "Ready to publish"                   → manuscript_status NULL (intent to start publishing)
+     "Ready to publish" (alone, no other stage evidence) → manuscript_status NULL (intent)
    UPDATING a known status: manuscript progress only moves forward. If KNOWN STATE already
    has a manuscript_status but the user's new message shows the project has ADVANCED past it
    (e.g. known "draft" and the user now says the book is KDP-ready with a proof copy), you
