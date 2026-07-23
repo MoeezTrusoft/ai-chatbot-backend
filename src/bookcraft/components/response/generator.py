@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import structlog
 from prometheus_client import Histogram
 
-from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
@@ -68,6 +68,12 @@ class SonnetResponseGenerator:
     # off-context (chat 6688's "bestseller" template). The first re-initiation keeps
     # the historical "reduced" label; the rest are "retry" attempts.
     response_retry_attempts: int = 3
+    # Advisory item 5: max known-facts rendered into the prompt per turn (0 = render all,
+    # the behavior-preserving default for the no-adapter/test path). Wired from
+    # ``settings.context_pack_render_fact_cap`` on the live adapter path.
+    known_facts_render_cap: int = 0
+    # Advisory item 4: collapse duplicate/near-duplicate RAG chunk text within a prompt.
+    rag_within_prompt_dedup: bool = True
 
     async def generate(
         self,
@@ -484,6 +490,8 @@ class SonnetResponseGenerator:
             recent_turns=recent_turns,
             engine_facts=None,
             persona_decision=persona_decision,
+            known_facts_render_cap=self.known_facts_render_cap,
+            rag_within_prompt_dedup=self.rag_within_prompt_dedup,
         )
         async for chunk in self.adapter.stream_text(
             system=system,
@@ -597,6 +605,8 @@ class SonnetResponseGenerator:
             recent_turns=recent_turns,
             engine_facts=engine_facts,
             persona_decision=persona_decision,
+            known_facts_render_cap=self.known_facts_render_cap,
+            rag_within_prompt_dedup=self.rag_within_prompt_dedup,
         )
 
         # Observability only: emit an approximate per-turn token budget so we
@@ -1600,6 +1610,8 @@ def _response_user_prompt(
     recent_turns: list[tuple[str, str]] | None = None,
     engine_facts: str | None = None,
     persona_decision: Any | None = None,
+    known_facts_render_cap: int = 0,
+    rag_within_prompt_dedup: bool = True,
 ) -> str:
     del extraction, route_name
 
@@ -1700,12 +1712,18 @@ def _response_user_prompt(
 
     rag_notes = ""
     if rag_chunks:
-        notes: list[str] = []
         # Gap 5 (mission audit): raised from 3×400 to 5×600 — wider grounding window.
+        snippets: list[str] = []
         for chunk in rag_chunks[:5]:
             snippet = (chunk.content or "")[:600].strip().replace("\n", " ")
             if snippet:
-                notes.append(f"- {snippet}")
+                snippets.append(snippet)
+        # RAG hygiene (advisory item 4): collapse identical / near-duplicate chunk text
+        # within this single prompt so the same passage is not injected repeatedly in
+        # one turn (saves tokens and shrinks verbatim-bleed surface).
+        if rag_within_prompt_dedup:
+            snippets = _dedupe_rag_snippets(snippets)
+        notes: list[str] = [f"- {snippet}" for snippet in snippets]
         if notes:
             rag_notes = (
                 "\n\nBookCraft grounding context "
@@ -1720,7 +1738,9 @@ def _response_user_prompt(
         if response_hint
         else ""
     )
-    context_pack_str = _context_pack_prompt_section(context_pack)
+    context_pack_str = _context_pack_prompt_section(
+        context_pack, fact_render_cap=known_facts_render_cap
+    )
     response_plan_str = _response_plan_prompt_section(response_plan)
 
     # Step 2 (tone fix): inject recent conversation history so the LLM can
@@ -1938,13 +1958,77 @@ def _response_repair_user_prompt(
     )
 
 
-def _context_pack_prompt_section(context_pack: ContextPack | None) -> str:
+def _dedupe_rag_snippets(snippets: list[str]) -> list[str]:
+    """Collapse identical / near-duplicate RAG snippets within a single prompt.
+
+    Advisory item 4 (RAG hygiene): drops a snippet when it is an exact normalized
+    duplicate of, or fully contained in, a snippet already kept. Chunks arrive
+    relevance-ranked (best first), so the first occurrence is the one retained. This is
+    within-prompt only — retrieval is untouched. Never raises.
+    """
+    kept: list[str] = []
+    kept_norm: list[str] = []
+    for snippet in snippets:
+        norm = " ".join(snippet.lower().split())
+        if not norm:
+            continue
+        if any(norm == existing or norm in existing for existing in kept_norm):
+            continue
+        kept.append(snippet)
+        kept_norm.append(norm)
+    return kept
+
+
+def _select_rendered_facts(
+    known_facts: list[KnownFact], cap: int
+) -> list[KnownFact]:
+    """Bound the known-facts RENDERED into the prompt to at most ``cap`` items.
+
+    Advisory item 5: ``ContextPack.known_facts`` grows unbounded as facts accumulate
+    and is injected every turn. This caps what is rendered per turn WITHOUT mutating
+    persisted state. Contact and active-service facts are always kept (they anchor the
+    conversation and must never be re-asked); the remaining slots are filled by the
+    highest-confidence facts. The original ordering is preserved in the output so the
+    rendered recap stays stable and readable.
+
+    ``cap <= 0`` (or a list already within the cap) is a no-op, preserving today's
+    behavior for callers that do not opt in.
+    """
+    if cap <= 0 or len(known_facts) <= cap:
+        return list(known_facts)
+
+    def _always_keep(fact: KnownFact) -> bool:
+        path = (getattr(fact, "path", "") or "")
+        return (
+            path.startswith("personal")
+            or path.startswith("contact")
+            or path.startswith("service")
+        )
+
+    keep_ids = {id(f) for f in known_facts if _always_keep(f)}
+    remaining = [f for f in known_facts if id(f) not in keep_ids]
+    slots = cap - len(keep_ids)
+    if slots > 0 and remaining:
+        ranked = sorted(
+            remaining,
+            key=lambda f: getattr(f, "confidence", 0.0) or 0.0,
+            reverse=True,
+        )
+        keep_ids.update(id(f) for f in ranked[:slots])
+    # Emit in original order for a stable, readable recap.
+    return [f for f in known_facts if id(f) in keep_ids]
+
+
+def _context_pack_prompt_section(
+    context_pack: ContextPack | None, *, fact_render_cap: int = 0
+) -> str:
     if context_pack is None:
         return ""
 
     # Keep each fact's provenance attached. pack_builder already resolves it; dropping
     # it here is what let form-submitted contact data read as something the author said
     # in chat (chat 5876).
+    rendered_facts = _select_rendered_facts(context_pack.known_facts, fact_render_cap)
     known = (
         "; ".join(
             f"{fact.path}: {fact.value}"
@@ -1953,9 +2037,9 @@ def _context_pack_prompt_section(context_pack: ContextPack | None) -> str:
                 if fact.source == Source.EXTERNAL_FORM.value
                 else ""
             )
-            for fact in context_pack.known_facts
+            for fact in rendered_facts
         )
-        if context_pack.known_facts
+        if rendered_facts
         else "none"
     )
     missing = ", ".join(context_pack.missing_facts) or "none"
