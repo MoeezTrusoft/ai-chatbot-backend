@@ -183,6 +183,21 @@ EXTERNAL_PASSIVE_SOURCE_LABELS: frozenset[str] = frozenset({
 # conversation always overrides the CRM's copy. Still high enough to fill a gap.
 EXTERNAL_FORM_CONFIDENCE = 0.90
 
+# Planner goals during which the "Book a consultation" button is shown to the customer.
+# Covers the whole offer -> contact -> time-capture arc (NOT the already-booked handoff/
+# deferred goals). Used both to emit the show_consultation_form event AND, before
+# generation, to tell Claude to point the author to the button instead of collecting
+# name/email/phone in chat.
+_CONSULTATION_FORM_GOALS = frozenset(
+    {
+        "consultation_scoping",
+        "consultation_offer",
+        "contact_capture_for_consultation",
+        "consultation_time_capture",
+        "lead_contact_capture",
+    }
+)
+
 
 @dataclass
 class _EventBuffer:
@@ -1603,6 +1618,27 @@ class ChatService:
                         f"{response_hint}\n{_mixed_directive}" if response_hint else _mixed_directive
                     )
 
+                # Consultation button: when a "Book a consultation" button will be shown
+                # below this reply, point the author to it instead of asking for their
+                # name/email/phone in chat — the booking form collects those. The button
+                # is persistent, so this may naturally re-reference it on later turns.
+                _button_pg = response_plan.primary_goal if response_plan is not None else None
+                if _button_pg in _CONSULTATION_FORM_GOALS and response_hint != "repeat_message":
+                    _button_directive = (
+                        "CONSULTATION BUTTON: A clickable '\U0001f4c5 Book a consultation' "
+                        "button is shown right below your message. Warmly invite the author "
+                        "to use it to pick a time and book — e.g. 'Grab a time that works "
+                        "using the button below.' Do NOT ask for their name, email, or phone "
+                        "in chat; the booking form collects those. Keep it to one natural, "
+                        "non-pushy line; if you already pointed to it recently, a lighter "
+                        "nudge is fine."
+                    )
+                    response_hint = (
+                        f"{response_hint}\n{_button_directive}"
+                        if response_hint
+                        else _button_directive
+                    )
+
                 draft = await self.response_generator.generate(
                     message=processed,
                     state=state,
@@ -2146,25 +2182,9 @@ class ChatService:
             base_action_events = self._build_action_events(action_result)
 
             # Whenever the planner is offering or collecting details for a consultation,
-            # emit a show_consultation_form event so the chat widget renders a booking
-            # button. Covers the whole scoping→contact→time capture arc (NOT the
-            # already-booked handoff/deferred goals), so the button persists while the
-            # bot asks for details — it previously only fired on the initial
-            # "consultation_scoping" goal and vanished the moment the first field was
-            # captured. Claude's intent drives this — not backend heuristics.
-            _CONSULTATION_FORM_GOALS = frozenset(
-                {
-                    "consultation_scoping",
-                    "consultation_offer",
-                    "contact_capture_for_consultation",
-                    "consultation_time_capture",
-                    # Contact capture in this product exists to book a specialist
-                    # consultation, so the booking button belongs here too — this is
-                    # the goal the planner lands on when it asks "may I have your name?"
-                    # after a consultation offer (state: lead_objective_stage=contact_requested).
-                    "lead_contact_capture",
-                }
-            )
+            # emit a show_consultation_form event so the chat widget renders the booking
+            # button (goal set defined at module level; the reply was already told to
+            # point the author to the button rather than collect contact in chat).
             _show_form_event: list[dict[str, object]] = []
             _pg = response_plan.primary_goal if response_plan is not None else None
             if (
