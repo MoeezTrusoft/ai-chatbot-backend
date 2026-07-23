@@ -1300,6 +1300,15 @@ def _response_system_prompt(
     # delivered as a separate uncached system block (see `_current_datetime_line`
     # passed as `system_cache_suffix` in `_try_llm` / `_stream_via_adapter`) so
     # this stable prompt can be prompt-cached across turns and threads.
+    #
+    # Caching caveat (advisory item #3): the persona identity and service-specific
+    # style below form a per-turn / per-thread VARIABLE head that precedes the
+    # large invariant policy body. Because Anthropic caches a prefix from byte 0,
+    # this ordering means the single cache breakpoint (see
+    # `adapters._anthropic_system_payload`) only shares across turns of the SAME
+    # thread, not across threads. Reordering the invariant body ahead of this head
+    # would enable a cross-thread breakpoint but changes the bytes the model sees,
+    # so it is intentionally NOT done as a caching-only change.
     style = _STYLE_POLICY.style_instructions(active_service=active_service)
 
     # Persona: build identity instruction based on assigned representative name.
