@@ -258,6 +258,12 @@ class ThreadState(BaseModel):
     # Stored as normalized/redacted text — not raw PII-bearing user input.
     last_user_message: str = ""
     last_assistant_text: str = ""
+    # Context-management advisory item #1: rolling window of the last 5 (user,
+    # assistant) exchanges so the LLM stays coherent across several turns, not
+    # just the single prior pair above. Each side stored normalized/redacted and
+    # truncated to 300 chars (same PII handling as last_user_message). Pydantic
+    # coerces the persisted JSON arrays back into tuples on load.
+    recent_turns: list[tuple[str, str]] = Field(default_factory=list)
     # Highest realtime turn token persisted for this thread. Shared across workers
     # via the thread store so a superseded (lower-token) turn — aborted by the
     # realtime layer when a concatenated burst is re-sent — never overwrites a newer

@@ -1246,14 +1246,14 @@ def _truncate_on_word_boundary(text: str, max_chars: int) -> str:
 def _recent_turns_prompt_section(
     recent_turns: list[tuple[str, str]] | None,
 ) -> str:
-    """Render the last ≤3 conversation turns as a plain block for the LLM.
+    """Render the last ≤5 conversation turns as a plain block for the LLM.
 
     Each turn is (user_text, assistant_text), oldest first.  Truncates each
     side to 300 chars on a word boundary so the prompt stays compact.
     """
     if not recent_turns:
         return ""
-    capped = recent_turns[-3:]
+    capped = recent_turns[-5:]
     lines = ["\nRecent conversation (oldest first; use to stay coherent):"]
     for user_text, asst_text in capped:
         u = _truncate_on_word_boundary(user_text.strip(), 300)
