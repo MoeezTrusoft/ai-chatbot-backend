@@ -34,6 +34,17 @@ logger = structlog.get_logger(__name__)
 # Module-level style policy used to build the LLM system prompt.
 _STYLE_POLICY = ResponseStylePolicy.default()
 
+
+def _approx_tokens(text: str) -> int:
+    """Cheap, dependency-free token estimate (chars/4 heuristic).
+
+    Deliberately approximate — used only for observability of the prompt
+    budget, never for control flow. Non-negative and monotonic in length.
+    """
+    if not text:
+        return 0
+    return (len(text) + 3) // 4
+
 # How many retrieved chunks reach the prompt. A normal turn answers one thing and a
 # tight pack keeps it focused; a multi-question turn has to carry grounding for every
 # question asked, so it gets a wider budget (chat 5876).
@@ -566,31 +577,56 @@ class SonnetResponseGenerator:
 
         LLM_CALLS.labels(provider=self.provider_name, purpose=f"response_{attempt}").inc()
 
+        system = _response_system_prompt(
+            active_service=context_pack.active_service
+            if context_pack is not None
+            else None,
+            persona_decision=persona_decision,
+        )
+        user = _response_user_prompt(
+            message=message,
+            state=state,
+            intent=intent,
+            extraction=extraction,
+            rag_chunks=rag_chunks,
+            route_name=route_name,
+            runtime_atoms=runtime_atoms,
+            response_hint=response_hint,
+            context_pack=context_pack,
+            response_plan=response_plan,
+            recent_turns=recent_turns,
+            engine_facts=engine_facts,
+            persona_decision=persona_decision,
+        )
+
+        # Observability only: emit an approximate per-turn token budget so we
+        # can see which prompt segment is growing over time. Must never raise.
+        try:
+            system_tokens = _approx_tokens(system)
+            user_tokens = _approx_tokens(user)
+            # Cheap sub-segment: how much of the prompt is raw RAG note text
+            # (only the chunk bodies that reach the user prompt, capped at 5).
+            rag_text = "".join((c.content or "")[:600] for c in rag_chunks[:5])
+            logger.info(
+                "response_prompt_budget",
+                provider=self.provider_name,
+                attempt=attempt,
+                system_tokens=system_tokens,
+                user_tokens=user_tokens,
+                total_tokens=system_tokens + user_tokens,
+                rag_chunks=len(rag_chunks),
+                rag_tokens=_approx_tokens(rag_text),
+            )
+        except Exception:
+            # Instrumentation must never affect the response path.
+            pass
+
         try:
             generated = cast(
                 GeneratedResponseText,
                 await _adapter.structured(
-                    system=_response_system_prompt(
-                        active_service=context_pack.active_service
-                        if context_pack is not None
-                        else None,
-                        persona_decision=persona_decision,
-                    ),
-                    user=_response_user_prompt(
-                        message=message,
-                        state=state,
-                        intent=intent,
-                        extraction=extraction,
-                        rag_chunks=rag_chunks,
-                        route_name=route_name,
-                        runtime_atoms=runtime_atoms,
-                        response_hint=response_hint,
-                        context_pack=context_pack,
-                        response_plan=response_plan,
-                        recent_turns=recent_turns,
-                        engine_facts=engine_facts,
-                        persona_decision=persona_decision,
-                    ),
+                    system=system,
+                    user=user,
                     output_model=GeneratedResponseText,
                     purpose=f"response_{attempt}",
                     system_cache_suffix=_current_datetime_line(),
