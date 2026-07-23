@@ -119,14 +119,38 @@ def is_valid_phone(value: object) -> bool:
     """True when *value* is plausibly a real phone number.
 
     A phone must carry 10–15 digits (NANP through E.164) and must not be a
-    year/era range like "1770-1810" or an age range like "6-12".
+    year/era range like "1770-1810", an age range like "6-12", or an ISBN-13
+    (publishing customers mention ISBNs constantly — "978-3-16-148410-0" was being
+    stored as the customer's phone number and polluting the primary contact).
     """
     if not isinstance(value, str) or not value.strip():
         return False
     if looks_like_year_or_date_range(value):
         return False
-    digit_count = sum(c.isdigit() for c in value)
-    return 10 <= digit_count <= 15
+    digits = "".join(c for c in value if c.isdigit())
+    digit_count = len(digits)
+    if not (10 <= digit_count <= 15):
+        return False
+    # ISBN-13 (13 digits, 978/979 prefix) is a book identifier, never a phone.
+    if digit_count == 13 and digits.startswith(("978", "979")):
+        return False
+    return True
+
+
+# Numbers introduced by these labels are identifiers (ISBN/SKU/order/etc.), not phones.
+_IDENTIFIER_LABEL_RE = re.compile(
+    r"\b(?:isbn|asin|sku|upc|ean|barcode|tracking|order|reference|invoice|"
+    r"account|confirmation)\b",
+    re.IGNORECASE,
+)
+
+
+def is_identifier_number(text: str, start: int) -> bool:
+    """True when the number at *start* in *text* is introduced by an identifier label
+    (ISBN, SKU, order/reference number, ...) within the preceding ~24 chars, so it must
+    not be captured as a phone. Small window keeps it from firing on distant mentions."""
+    prefix = text[max(0, start - 24) : start]
+    return bool(_IDENTIFIER_LABEL_RE.search(prefix))
 
 # All placeholder strings emitted by the state sanitizer / redaction layer.
 # Add new ones here if the sanitizer gains new sentinel formats.

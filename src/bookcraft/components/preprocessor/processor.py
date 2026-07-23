@@ -17,6 +17,7 @@ from bookcraft.components.preprocessor.detectors import (
     has_pricing_intent,
     split_questions,
 )
+from bookcraft.components.leads.contact_utils import is_identifier_number
 from bookcraft.components.preprocessor.embedding import EmbeddingClient
 from bookcraft.components.preprocessor.negation_targets import NegationTargetResolver
 from bookcraft.components.preprocessor.schemas import ProcessedMessage, Span, TokenInfo
@@ -487,7 +488,17 @@ class SharedPreprocessor:
 
         self._put_all(atoms, "emails", re.findall(r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}", text))
         self._put_all(atoms, "urls", re.findall(r"https?://\S+", text))
-        self._put_all(atoms, "phones", re.findall(r"(?:\+?\d[\d\s().-]{7,}\d)", text))
+        # Skip numbers introduced by an identifier label (ISBN/SKU/order no.) so a
+        # publishing customer's "ISBN is 978-…" is never captured as their phone.
+        self._put_all(
+            atoms,
+            "phones",
+            [
+                m.group(0)
+                for m in re.finditer(r"(?:\+?\d[\d\s().-]{7,}\d)", text)
+                if not is_identifier_number(text, m.start())
+            ],
+        )
         self._put_all(atoms, "currency", re.findall(r"(?:\$|USD\s*)\d[\d,]*(?:\.\d+)?", text))
         word_counts = [
             int(value.replace(",", ""))
@@ -560,7 +571,11 @@ class SharedPreprocessor:
             if uncertainty.negated_genres:
                 atoms["negated_genres"] = uncertainty.negated_genres
         else:
-            genre = detect_genre(text)
+            genre = detect_genre(
+                text,
+                negation_spans=negation_spans,
+                counterfactual_spans=counterfactual_spans,
+            )
             if genre:
                 atoms["genre"] = genre
                 ATOMS_EXTRACTED.labels(atom_type="genre").inc()
