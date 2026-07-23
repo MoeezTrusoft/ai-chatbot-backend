@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     trg_repetition_edges_v2: bool = False  # P2-T7: REPEATS edge to prior occurrence
     context_pack_budget_enabled: bool = False  # P4-T3: hint-source token budgeting
     context_pack_hint_token_budget: int = 1200  # P4-T3: max approx tokens of response_hint
+    # Bound structured-state growth (advisory item 5): cap how many known-facts are
+    # RENDERED into the response prompt per turn so a long, fact-rich thread does not
+    # creep the prompt upward every turn. Contact + active-service facts are always kept;
+    # the rest are selected by confidence. 0 = unbounded (render all). Persisted state is
+    # never pruned — only what is rendered per turn is bounded.
+    context_pack_render_fact_cap: int = 12
+    # RAG hygiene (advisory item 4): collapse identical / near-duplicate RAG chunk texts
+    # within a single prompt so the same passage is not injected multiple times in one
+    # turn (saves tokens and shrinks verbatim-bleed surface). Retrieval is unchanged.
+    rag_within_prompt_dedup_enabled: bool = True
     staged_pipeline_enabled: bool = False  # P4-T2: staged TurnContext pipeline (foundation)
     # Always ask the customer for a phone number once before booking, even when an
     # email is already captured (the customer can still decline and proceed email-only).

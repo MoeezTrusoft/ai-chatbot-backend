@@ -740,6 +740,8 @@ def build_response_generator(settings: Settings) -> SonnetResponseGenerator:
             provider_name="claude_sonnet",
             adapter=adapter,
             fallback_adapter=_fallback_adapter,
+            known_facts_render_cap=settings.context_pack_render_fact_cap,
+            rag_within_prompt_dedup=settings.rag_within_prompt_dedup_enabled,
         )
 
     # No API key in production-like environment or when live mode is explicit.
