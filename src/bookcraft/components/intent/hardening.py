@@ -292,16 +292,23 @@ def _service_from_text(text: str) -> ServiceCategory | None:
     if _mentions_any(
         text,
         [
+            # Bare "trailer" removed: "set in a trailer park" is a setting, not a
+            # book-trailer request. Require a qualified phrase.
             "video trailer",
             "book trailer",
-            "trailer",
+            "promo trailer",
+            "promotional video",
             "motion graphics",
-            "voiceover",
         ],
     ):
         return ServiceCategory.VIDEO_TRAILER
 
-    if _mentions_any(text, ["author website", "website", "blog", "newsletter", "lead magnet"]):
+    # Bare "website"/"blog" removed: "I found you via your website" is a referral, not
+    # a request for an author website. Require a qualified phrase / specific platform cue.
+    if _mentions_any(
+        text,
+        ["author website", "book website", "writer website", "author site", "newsletter", "lead magnet"],
+    ):
         return ServiceCategory.AUTHOR_WEBSITE
 
     if _mentions_any(text, ["audiobook", "narrator", "acx", "mastering", "chapter files"]):

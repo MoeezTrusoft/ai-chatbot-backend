@@ -4738,19 +4738,6 @@
    "shortcut_allowed": true
   },
   {
-   "id": "SERVICE-WEB-EX-005",
-   "layer": "exact",
-   "target": {
-    "service_intent": "author_website"
-   },
-   "phrases": [
-    "website"
-   ],
-   "confidence": 0.965,
-   "enabled": true,
-   "shortcut_allowed": false
-  },
-  {
    "id": "SERVICE-WEB-EX-006",
    "layer": "exact",
    "target": {
@@ -5359,19 +5346,6 @@
    "shortcut_allowed": true
   },
   {
-   "id": "SERVICE-TRAILER-EX-003",
-   "layer": "exact",
-   "target": {
-    "service_intent": "video_trailer"
-   },
-   "phrases": [
-    "trailer"
-   ],
-   "confidence": 0.965,
-   "enabled": true,
-   "shortcut_allowed": false
-  },
-  {
    "id": "SERVICE-TRAILER-EX-004",
    "layer": "exact",
    "target": {
@@ -5728,7 +5702,7 @@
    "target": {
     "service_intent": "video_trailer"
    },
-   "regex": "\\b(book\\s+)?(video\\s+)?trailer\\b",
+   "regex": "\\b(?:book|video|promo|promotional|animated|cinematic|youtube)\\s+trailer\\b",
    "confidence": 0.955,
    "enabled": true,
    "shortcut_allowed": false
@@ -6696,19 +6670,6 @@
    "shortcut_allowed": false
   },
   {
-   "id": "SERVICE-WEB-PT-101",
-   "layer": "pattern",
-   "target": {
-    "service_intent": "author_website"
-   },
-   "pattern": [
-    "website"
-   ],
-   "confidence": 0.9,
-   "enabled": true,
-   "shortcut_allowed": false
-  },
-  {
    "id": "SERVICE-WEB-PT-102",
    "layer": "pattern",
    "target": {
@@ -6810,19 +6771,6 @@
    "pattern": [
     "online",
     "home"
-   ],
-   "confidence": 0.9,
-   "enabled": true,
-   "shortcut_allowed": false
-  },
-  {
-   "id": "SERVICE-TRAILER-PT-101",
-   "layer": "pattern",
-   "target": {
-    "service_intent": "video_trailer"
-   },
-   "pattern": [
-    "trailer"
    ],
    "confidence": 0.9,
    "enabled": true,
