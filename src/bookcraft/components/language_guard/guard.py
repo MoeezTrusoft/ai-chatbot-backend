@@ -120,6 +120,36 @@ _ENGLISH_STRUCTURAL = frozenset(
     }
 )
 
+# Non-Latin writing systems, keyed by ISO 639-1. BookCraft support is English-only,
+# but `lingua` (below) is built with only a handful of languages and silently defaults
+# any script it wasn't given — notably Gujarati — to English, so short non-Latin
+# messages ("કેમ છો?") slipped through as English and got answered. We catch these by
+# Unicode block FIRST, independent of lingua and independent of message length. Each
+# entry is (iso, low_codepoint, high_codepoint).
+_NON_LATIN_SCRIPT_RANGES = (
+    ("gu", 0x0A80, 0x0AFF),   # Gujarati
+    ("hi", 0x0900, 0x097F),   # Devanagari (Hindi/Marathi/Nepali)
+    ("bn", 0x0980, 0x09FF),   # Bengali/Assamese
+    ("pa", 0x0A00, 0x0A7F),   # Gurmukhi (Punjabi)
+    ("or", 0x0B00, 0x0B7F),   # Odia
+    ("ta", 0x0B80, 0x0BFF),   # Tamil
+    ("te", 0x0C00, 0x0C7F),   # Telugu
+    ("kn", 0x0C80, 0x0CFF),   # Kannada
+    ("ml", 0x0D00, 0x0D7F),   # Malayalam
+    ("si", 0x0D80, 0x0DFF),   # Sinhala
+    ("th", 0x0E00, 0x0E7F),   # Thai
+    ("ar", 0x0600, 0x06FF),   # Arabic
+    ("fa", 0x0750, 0x077F),   # Arabic Supplement (Persian/Urdu extras)
+    ("he", 0x0590, 0x05FF),   # Hebrew
+    ("ru", 0x0400, 0x04FF),   # Cyrillic
+    ("el", 0x0370, 0x03FF),   # Greek
+    ("hy", 0x0530, 0x058F),   # Armenian
+    ("ka", 0x10A0, 0x10FF),   # Georgian
+    ("ko", 0xAC00, 0xD7A3),   # Hangul syllables (Korean)
+    ("ja", 0x3040, 0x30FF),   # Hiragana + Katakana (Japanese)
+    ("zh", 0x4E00, 0x9FFF),   # CJK Unified Ideographs
+)
+
 
 @dataclass(slots=True)
 class LanguageGuard:
@@ -151,6 +181,18 @@ class LanguageGuard:
         # longer slip through as English and get answered/mirrored (chat 6685).
         if self._is_roman_urdu(stripped):
             return self._record("ur", False, 0.9, "roman_urdu", started)
+
+        # Non-Latin script (Gujarati, Hindi, Bengali, Arabic, CJK, Cyrillic, ...).
+        # Runs BEFORE the short-message bypass so a brief line like "કેમ છો?" is no
+        # longer defaulted to English, and BEFORE lingua (which is built with only a
+        # few languages and would misfile or drop most of these scripts). If the author
+        # also wrote a substantial English clause we treat it as mixed (answer the
+        # English part); otherwise it's the clean English-only redirect.
+        _script = self._dominant_non_latin_script(stripped)
+        if _script is not None:
+            if _eng_struct >= 2:  # noqa: PLR2004
+                return self._record_mixed(started)
+            return self._record(_script, False, 0.9, "non_latin_script", started)
 
         # PII/contact bypass: messages that are predominantly contact info must not be
         # rejected as non-English (names, emails, phone numbers are language-neutral).
@@ -281,6 +323,34 @@ class LanguageGuard:
             if len(tokens) <= 2 or marker_count / len(tokens) >= 0.5:  # noqa: PLR2004
                 return True
         return False
+
+    @staticmethod
+    def _dominant_non_latin_script(text: str) -> str | None:
+        """Return the ISO 639-1 code of a non-Latin script that DOMINATES the text.
+
+        Looks only at alphabetic characters and maps each to a writing system by
+        Unicode block. Returns the top non-Latin script only when it accounts for at
+        least half of the letters, so a stray foreign glyph inside an English sentence
+        doesn't trigger a redirect while a genuinely Gujarati/Arabic/CJK message does.
+        Returns None for Latin-script text (English, Roman-Urdu, accented European),
+        which continues down the normal detection path.
+        """
+        letters = [ch for ch in text if ch.isalpha()]
+        if not letters:
+            return None
+        counts: dict[str, int] = {}
+        for ch in letters:
+            cp = ord(ch)
+            for iso, lo, hi in _NON_LATIN_SCRIPT_RANGES:
+                if lo <= cp <= hi:
+                    counts[iso] = counts.get(iso, 0) + 1
+                    break
+        if not counts:
+            return None
+        top_iso, top_count = max(counts.items(), key=lambda kv: kv[1])
+        if top_count / len(letters) >= 0.5:  # noqa: PLR2004
+            return top_iso
+        return None
 
     @staticmethod
     def _ascii_ratio(text: str) -> float:
