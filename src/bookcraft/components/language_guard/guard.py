@@ -151,6 +151,27 @@ _NON_LATIN_SCRIPT_RANGES = (
 )
 
 
+# Process-wide lingua detector, built once and reused for every message. Rebuilding it
+# per call (the previous behavior) reloaded the language models on every detection.
+# It now spans ALL languages lingua supports (~75) in high-accuracy mode, so Latin-
+# script languages (Spanish, French, ...) and any script we don't special-case are
+# identified natively rather than being forced into a small fixed set (which silently
+# defaulted e.g. Gujarati to English). Models load lazily on first use, so the resident
+# set stays proportional to the languages actually seen — mostly English in practice.
+# NB: the FIRST detection after a fresh process pays a one-time (~2 s) model-load cost;
+# lingua is only reached for longer, non-ASCII / ambiguous messages, so this is rare.
+_LINGUA_DETECTOR = None
+
+
+def _get_lingua_detector():
+    global _LINGUA_DETECTOR
+    if _LINGUA_DETECTOR is None:
+        from lingua import LanguageDetectorBuilder
+
+        _LINGUA_DETECTOR = LanguageDetectorBuilder.from_all_languages().build()
+    return _LINGUA_DETECTOR
+
+
 @dataclass(slots=True)
 class LanguageGuard:
     enabled: bool = True
@@ -227,21 +248,7 @@ class LanguageGuard:
             return self._record("en", True, 0.5, "failure_default", started)
 
     def _detect_with_lingua(self, text: str, started: float) -> LanguageDecision:
-        from lingua import Language, LanguageDetectorBuilder
-
-        detector = LanguageDetectorBuilder.from_languages(
-            Language.ENGLISH,
-            Language.SPANISH,
-            Language.FRENCH,
-            Language.GERMAN,
-            Language.PORTUGUESE,
-            Language.ITALIAN,
-            Language.CHINESE,
-            Language.JAPANESE,
-            Language.ARABIC,
-            Language.HINDI,
-            Language.RUSSIAN,
-        ).build()
+        detector = _get_lingua_detector()
         language = detector.detect_language_of(text)
         if language is None:
             return self._record("en", True, 0.5, "lingua_low_confidence", started)
