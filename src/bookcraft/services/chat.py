@@ -198,6 +198,10 @@ _CONSULTATION_FORM_GOALS = frozenset(
     }
 )
 
+# The English-only language redirect is sent at most once per this many user messages,
+# so a run of non-English turns is nudged occasionally instead of on every message.
+_LANGUAGE_REDIRECT_EVERY_N = 10
+
 
 @dataclass
 class _EventBuffer:
@@ -463,9 +467,25 @@ class ChatService:
                 payload=sanitize_event_payload("user.message", {"text": payload.message}),
                 _buf=_evt_buf,
             )
+            # Rate-limit the English-only redirect to at most once per N user messages,
+            # counting every user message regardless of language. `_since` includes the
+            # current message; capped so a long English stretch doesn't let it grow
+            # unbounded (and so a non-English message after the cap redirects promptly).
+            _since_redirect = min(
+                getattr(state, "msgs_since_language_redirect", _LANGUAGE_REDIRECT_EVERY_N) + 1,
+                _LANGUAGE_REDIRECT_EVERY_N,
+            )
             event_ids = [event_id]
             if not language.is_english:
-                bubbles = self.formatter.format(language.redirect_message or "")
+                # Send the notice only when at least N user messages have passed since
+                # the last one; otherwise stay silent (empty bubbles) instead of
+                # repeating "BookCraft support is available in English" every message.
+                if _since_redirect >= _LANGUAGE_REDIRECT_EVERY_N:
+                    bubbles = self.formatter.format(language.redirect_message or "")
+                    state.msgs_since_language_redirect = 0
+                else:
+                    bubbles = []
+                    state.msgs_since_language_redirect = _since_redirect
                 event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                     thread_id=thread_id,
                     sequence=event_sequence,
@@ -518,6 +538,11 @@ class ChatService:
                     language_status=language.language,
                     debug_event_ids=self._debug_event_ids(event_ids),
                 )
+
+            # Reached here => the author wrote in English (or a mixed message answered
+            # in English). This message still counts toward the redirect window, so a
+            # later non-English message re-nudges only after N total user messages.
+            state.msgs_since_language_redirect = _since_redirect
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
             trimatch_result = None

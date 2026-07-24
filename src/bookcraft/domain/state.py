@@ -282,6 +282,12 @@ class ThreadState(BaseModel):
     # as cached_language so short follow-ups after a non-English turn stay consistent
     # instead of defaulting to English (audit B5 — no per-thread language stickiness).
     detected_language: str | None = None
+    # User messages seen since the English-only redirect ("Language Unavailable") was
+    # last sent. The redirect is rate-limited to at most once per N user messages
+    # (see chat.py) so a run of non-English turns gets the notice occasionally, not on
+    # every message. Counts ALL user messages (any language). Defaults high so the very
+    # first non-English message always sends; capped at the threshold thereafter.
+    msgs_since_language_redirect: int = 10
     # CSR handover context — populated when a CSR takes over and sends messages.
     csr_handover_active: bool = False
     csr_context_abstract: str = ""        # LLM-compressed summary of oldest CSR turns
