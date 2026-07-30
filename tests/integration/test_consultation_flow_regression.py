@@ -245,8 +245,12 @@ def test_timezone_requested_for_relative_window() -> None:
 
 
 def test_timezone_requested_when_consultation_active() -> None:
-    """When consultation is requested, contact is ready, and time is a relative window,
-    timezone must be requested."""
+    """When consultation is requested, contact is ready, and a DEFINITE clock time is
+    given but the customer's timezone is still unknown, the reducer must ask for the
+    timezone before booking — a bare "Friday at 2pm" must never be silently booked as
+    Central (chat 6070). (A relative window like "Friday afternoon" takes the earlier
+    indefinite→offer-slots branch instead; that path is covered in
+    test_consultation_slot_suggestions.py.)"""
     from unittest.mock import MagicMock
 
     from bookcraft.components.sales.consultation_state import (
@@ -256,8 +260,8 @@ def test_timezone_requested_when_consultation_active() -> None:
     from bookcraft.domain.state import ThreadState
 
     state = ThreadState()
-    state.preferred_call_time = "Friday afternoon"
-    # No timezone set in state
+    state.preferred_call_time = "Friday at 2pm"
+    # Definite clock time, but no timezone set anywhere in state.
 
     intent = MagicMock()
     from bookcraft.domain.enums import QueryIntentType
@@ -266,7 +270,7 @@ def test_timezone_requested_when_consultation_active() -> None:
 
     decision = reduce_consultation_state(
         state=state,
-        message="I'd like to book a consultation for Friday afternoon.",
+        message="I'd like to book a consultation for Friday at 2pm.",
         intent=intent,
         contact_ready=True,
     )
@@ -283,8 +287,10 @@ def test_timezone_requested_when_consultation_active() -> None:
 
 
 def test_ready_to_schedule_when_all_details_present() -> None:
-    """With contact ready, specific time (with digits), and no relative window,
-    the reducer must return READY_TO_SCHEDULE."""
+    """With contact ready, a definite clock time, AND the customer's timezone known,
+    the reducer must return READY_TO_SCHEDULE. "All details present" now includes the
+    timezone: a definite time alone no longer suffices, because a clock time with an
+    unknown zone must first go through TIME_CAPTURED_NEEDS_TIMEZONE (chat 6070)."""
     from unittest.mock import MagicMock
 
     from bookcraft.components.sales.consultation_state import (
@@ -295,7 +301,8 @@ def test_ready_to_schedule_when_all_details_present() -> None:
 
     state = ThreadState()
     state.preferred_call_time = "Friday at 3pm"
-    # "3pm" has digits → not purely relative → no timezone ask
+    # Definite clock time AND a known timezone → all booking details are present.
+    state.preferred_timezone = "America/Chicago"
 
     intent = MagicMock()
     from bookcraft.domain.enums import QueryIntentType
