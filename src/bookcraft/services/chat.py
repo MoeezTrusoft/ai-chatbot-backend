@@ -2663,6 +2663,129 @@ class ChatService:
 
         return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
+    async def handle_consultation_confirmed(self, payload: Any) -> Any:
+        """Mark a consultation as booked from an external form submission.
+
+        The redesigned booking flow (commit 4f1ab63) points the customer at the
+        "📅 Book a consultation" button, whose form POSTs straight to the Node
+        backend — the bot never runs its internal ``SCHEDULE_CONSULTATION`` action,
+        so ``confirmed_appointment_id`` / ``consultation_handoff_created`` stay unset
+        and every consultation gate keeps re-soliciting a call time and re-showing
+        the button (chat 7266). This handler flips exactly the fields the bot's own
+        booking would set (see ``_apply_sales_action_result_to_state``), so the very
+        next turn recognises the booking and stops the loop.
+
+        Idempotent and loop-safe: re-posting the same confirmation just re-asserts
+        the booked state. Uses the same optimistic-locking retry as inject_facts so
+        it never races a live turn into a 500.
+
+        ``payload`` is a ``ConsultationConfirmedRequest``.
+        """
+        from bookcraft.api.chat import (
+            ConsultationConfirmedRequest as _CReq,
+            ConsultationConfirmedResponse as _CResp,
+        )
+
+        if not isinstance(payload, _CReq):
+            return _CResp(thread_id=payload.thread_id, confirmed=False)
+
+        _log = structlog.get_logger(__name__)
+        # A booking with no external id still must trip the gate — synthesise one
+        # deterministically so re-posts stay idempotent and never create a second id.
+        _appointment_id = (payload.appointment_id or "").strip() or (
+            f"external_form-{payload.thread_id}"
+        )
+        _MAX_RETRIES = 3
+
+        for _attempt in range(_MAX_RETRIES):
+            try:
+                if self.thread_repository is not None:
+                    _thread = await self.thread_repository.load_or_create(
+                        thread_id=payload.thread_id, customer_id=None,
+                    )
+                    _state = _thread.state
+                    self._apply_external_consultation_confirmation(
+                        _state, payload, _appointment_id
+                    )
+                    await self.thread_repository.save_state(
+                        thread_id=_thread.thread_id,
+                        state=_state,
+                        expected_version=_thread.version,
+                        language=getattr(_state, "detected_language", None) or "en",
+                    )
+                else:
+                    _mem = self.threads.setdefault(payload.thread_id, ThreadMemory())
+                    self._apply_external_consultation_confirmation(
+                        _mem.state, payload, _appointment_id
+                    )
+
+                _log.info(
+                    "external_consultation_confirmed",
+                    thread_id=str(payload.thread_id),
+                    appointment_id=_appointment_id,
+                    attempt=_attempt,
+                )
+                return _CResp(thread_id=payload.thread_id, confirmed=True)
+
+            except Exception as _exc:  # noqa: BLE001
+                _is_conflict = (
+                    "versionconflict" in type(_exc).__name__.lower()
+                    or "conflict" in str(_exc).lower()
+                )
+                if _is_conflict and _attempt < _MAX_RETRIES - 1:
+                    _log.warning(
+                        "consultation_confirmed_conflict_retry",
+                        thread_id=str(payload.thread_id), attempt=_attempt,
+                    )
+                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    continue
+                _log.warning(
+                    "consultation_confirmed_save_failed",
+                    thread_id=str(payload.thread_id),
+                    attempt=_attempt,
+                    exception_class=type(_exc).__name__,
+                )
+                return _CResp(thread_id=payload.thread_id, confirmed=False)
+
+        return _CResp(thread_id=payload.thread_id, confirmed=False)
+
+    @staticmethod
+    def _apply_external_consultation_confirmation(
+        state: Any, payload: Any, appointment_id: str
+    ) -> None:
+        """Flip thread state to "consultation booked" from an external form signal.
+
+        Mirrors the ``SCHEDULE_CONSULTATION`` branch of
+        ``_apply_sales_action_result_to_state`` so the same gates trip, but without a
+        bot action_result — the booking happened in the Node backend, not here.
+        """
+        consult = state.sales_actions.consultation
+        consult.requested = True
+        consult.pending_confirmation = False
+        consult.pending_slot = None
+        consult.confirmed_appointment_id = appointment_id
+        if payload.csr_name:
+            consult.csr_name = payload.csr_name
+        if payload.customer_timezone:
+            consult.customer_timezone = payload.customer_timezone
+        if payload.houston_display_time:
+            consult.confirmed_display_time = payload.houston_display_time
+        if payload.customer_display_time:
+            consult.confirmed_customer_display_time = payload.customer_display_time
+        # Clear any stale pending confirmation so no follow-up "confirm?" fires.
+        state.sales_actions.pending_confirmation.type = None
+        state.sales_actions.pending_confirmation.payload = None
+        state.sales_actions.pending_confirmation.created_at = None
+        state.sales_actions.pending_confirmation.expires_at = None
+        # Top-level gate fields: consultation_state.py returns SCHEDULED (stop_discovery)
+        # when either of these is set; consultation_objective.py suppresses the
+        # call-time ask on handoff_created.
+        state.consultation_handoff_created = True
+        state.consultation_handoff_action_id = appointment_id
+        state.consultation_stage = "scheduled"
+        if payload.preferred_call_time:
+            state.preferred_call_time = payload.preferred_call_time
+
     async def handle_handover(self, payload: Any) -> Any:
         """Signal a handover between bot and CSR.
 

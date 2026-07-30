@@ -113,6 +113,40 @@ class ChatFactsResponse(BaseModel):
     fields_applied: list[str]
 
 
+class ConsultationConfirmedRequest(BaseModel):
+    """Signal that a consultation was booked OUTSIDE the bot's own action flow.
+
+    The redesigned booking path routes real bookings through the "📅 Book a
+    consultation" form button, which POSTs straight to the Node backend and never
+    runs the bot's internal ``SCHEDULE_CONSULTATION`` action. Without this signal
+    the bot's ThreadState keeps ``consultation_handoff_created == False`` forever,
+    so it never learns the booking happened and loops — re-asking for a day/time
+    and re-showing the button, which drives duplicate form submissions (chat 7266).
+
+    Node calls this right after ``createConsultation`` succeeds so the same gates
+    the bot's own booking trips (``confirmed_appointment_id`` /
+    ``consultation_handoff_created``) also trip for a form booking. All fields
+    except ``thread_id`` are optional context used for display/acknowledgement.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    appointment_id: str | None = Field(default=None, max_length=128)
+    customer_display_time: str | None = Field(default=None, max_length=255)
+    houston_display_time: str | None = Field(default=None, max_length=255)
+    csr_name: str | None = Field(default=None, max_length=255)
+    customer_timezone: str | None = Field(default=None, max_length=128)
+    preferred_call_time: str | None = Field(default=None, max_length=255)
+
+
+class ConsultationConfirmedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    confirmed: bool
+
+
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
     settings: Settings = request.app.state.settings
@@ -237,6 +271,24 @@ async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> Chat
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
     return await service.handle_inject_facts(payload)
+
+
+@router.post("/consultation-confirmed", response_model=ConsultationConfirmedResponse)
+async def chat_consultation_confirmed(
+    payload: ConsultationConfirmedRequest, request: Request
+) -> ConsultationConfirmedResponse:
+    """Mark a consultation as booked in thread state from an external form submission.
+
+    Called by the Node backend right after the "📅 Book a consultation" form is
+    submitted and the booking row is created. This flips the same state fields the
+    bot's own ``SCHEDULE_CONSULTATION`` action would set, so the bot recognises the
+    booking on its next turn and stops re-soliciting a call time / re-showing the
+    booking button (chat 7266).
+    """
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    return await service.handle_consultation_confirmed(payload)
 
 
 @router.websocket("/ws/{thread_id}")
