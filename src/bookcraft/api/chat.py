@@ -42,6 +42,10 @@ class ChatGreetRequest(BaseModel):
     landing_page: str | None = Field(default=None, max_length=200)
     landing_keyword: str | None = Field(default=None, max_length=200)
     correlation_id: str | None = Field(default=None, max_length=128)
+    # "greeting" = the opening message when the widget opens. "followup" = a gentle
+    # re-engagement nudge sent a short while later when the visitor saw the greeting
+    # but hasn't replied yet (the Node bridge arms this ~1 min after the greeting).
+    variant: Literal["greeting", "followup"] = "greeting"
 
 
 class CsrTurnRequest(BaseModel):

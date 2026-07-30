@@ -2265,12 +2265,16 @@ class ChatService:
             elif thread_id in self.threads:
                 self.threads[thread_id].state = thread.state
 
+        _variant = getattr(payload, "variant", "greeting") or "greeting"
         if self.response_generator.adapter is not None:
             greeting_text = await _llm_proactive_greeting(
                 adapter=self.response_generator.adapter,
                 landing_page=payload.landing_page,
                 landing_keyword=payload.landing_keyword,
+                variant=_variant,
             )
+        elif _variant == "followup":
+            greeting_text = _FOLLOWUP_FALLBACK
         else:
             greeting_text = _greet_fallback(_landing_service)
 
@@ -5353,6 +5357,14 @@ _GREET_FALLBACK = (
     "I'd be happy to help you find the right publishing plan for your manuscript."
 )
 
+# Deterministic fallback for the delayed re-engagement nudge (variant="followup"),
+# used only when the LLM call is unavailable or fails. Never re-greets ("Welcome"),
+# because the visitor was already greeted a moment earlier.
+_FOLLOWUP_FALLBACK = (
+    "Still thinking it over? Whenever you're ready, just tell me a bit about your "
+    "book and I'll point you to the right next step."
+)
+
 # Friendly, first-message phrasing per service for the deterministic greeting fallback.
 _GREET_SERVICE_PHRASES: dict[ServiceCategory, str] = {
     ServiceCategory.GHOSTWRITING: "ghostwriting or book writing",
@@ -5433,10 +5445,13 @@ async def _llm_proactive_greeting(
     adapter: Any,
     landing_page: str | None,
     landing_keyword: str | None,
+    variant: str = "greeting",
 ) -> str:
-    """Generate a personalised first message via the LLM.
+    """Generate a personalised proactive message via the LLM.
 
-    Always attempts the LLM call.  Only falls back to ``_GREET_FALLBACK`` when
+    ``variant="greeting"`` writes the opening welcome. ``variant="followup"`` writes
+    a gentle re-engagement nudge for a visitor who saw the greeting but hasn't replied
+    yet. Always attempts the LLM call; only falls back to the deterministic text when
     the call raises or returns an unusable response.
     """
     page_label = _normalise_page_slug(landing_page) or "homepage"
@@ -5447,31 +5462,56 @@ async def _llm_proactive_greeting(
         else ""
     )
 
-    system = (
-        "You are a BookCraft AI chat assistant. "
-        "BookCraft is a full-service publishing company that helps authors write, edit, design, "
-        "format, and publish their books.\n\n"
-        "Your task: write ONE warm, professional opening message for a visitor who just opened "
-        "the chat widget. Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
-        "Rules:\n"
-        "- 1–2 sentences, 30 words maximum.\n"
-        "- Never quote a price or make a commitment.\n"
-        "- No markdown, bullet points, or headings.\n"
-        "- Sound like a knowledgeable, friendly colleague — not a sales bot.\n"
-        "- End with one open question inviting the visitor to share what they need.\n"
-        "- Do not start with 'I'."
-    )
-    user = (
-        f"Landing page: {page_label}{keyword_line}\n\n"
-        "Return the JSON greeting now."
-    )
+    if variant == "followup":
+        system = (
+            "You are a BookCraft AI chat assistant. "
+            "BookCraft is a full-service publishing company that helps authors write, edit, "
+            "design, format, and publish their books.\n\n"
+            "Context: the visitor opened the chat about a minute ago and already saw a warm "
+            "opening message, but has not replied yet. Your task: write ONE brief, low-pressure "
+            "follow-up nudge that gently re-invites them to share what they're working on. "
+            "Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+            "Rules:\n"
+            "- 1–2 sentences, 30 words maximum.\n"
+            "- Do NOT greet again ('Hello', 'Welcome', 'Hi there') — they were already greeted.\n"
+            "- Acknowledge they may still be deciding; never pushy or salesy.\n"
+            "- Never quote a price or make a commitment.\n"
+            "- No markdown, bullet points, or headings.\n"
+            "- End with one light, open question inviting them to share what they need.\n"
+            "- Do not start with 'I'."
+        )
+        user = (
+            f"Landing page: {page_label}{keyword_line}\n\n"
+            "Return the JSON follow-up nudge now."
+        )
+        purpose = "proactive_followup"
+    else:
+        system = (
+            "You are a BookCraft AI chat assistant. "
+            "BookCraft is a full-service publishing company that helps authors write, edit, design, "
+            "format, and publish their books.\n\n"
+            "Your task: write ONE warm, professional opening message for a visitor who just opened "
+            "the chat widget. Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+            "Rules:\n"
+            "- 1–2 sentences, 30 words maximum.\n"
+            "- Never quote a price or make a commitment.\n"
+            "- No markdown, bullet points, or headings.\n"
+            "- Sound like a knowledgeable, friendly colleague — not a sales bot.\n"
+            "- End with one open question inviting the visitor to share what they need.\n"
+            "- Do not start with 'I'."
+        )
+        user = (
+            f"Landing page: {page_label}{keyword_line}\n\n"
+            "Return the JSON greeting now."
+        )
+        purpose = "proactive_greeting"
 
     try:
         result = await adapter.structured(
             system=system,
             user=user,
             output_model=_GreetingResponse,
-            purpose="proactive_greeting",
+            purpose=purpose,
         )
         text = (getattr(result, "text", None) or "").strip()
         if text and len(text) > 10:
@@ -5479,4 +5519,4 @@ async def _llm_proactive_greeting(
     except Exception:
         pass
 
-    return _greet_fallback(_landing_service)
+    return _FOLLOWUP_FALLBACK if variant == "followup" else _greet_fallback(_landing_service)
