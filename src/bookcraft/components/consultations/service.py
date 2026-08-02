@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from bookcraft.components.consultations.holidays import is_blackout_date
 from bookcraft.components.consultations.repository import ConsultationRepositoryProtocol
 from bookcraft.components.consultations.schemas import (
     ConsultationActionRequest,
@@ -28,6 +29,10 @@ class RequestedTimeInPastError(RequestedTimeError):
 
 class AmbiguousDateError(RequestedTimeError):
     """The customer's date is internally contradictory (e.g. weekday vs day-of-month)."""
+
+
+class HolidayError(RequestedTimeError):
+    """The customer explicitly asked to book on a date the business is closed."""
 
 
 DEFAULT_CSR_ROSTER = [
@@ -326,6 +331,15 @@ def _parse_requested_start(
 
     target_date, kind = _resolve_target_date(text, now=now)
 
+    # A customer who *explicitly* names a closed day is told we're shut that day
+    # (never silently slid to another date). An *inferred* date that happens to
+    # land on a holiday is rolled forward by _normalize_to_business_window below,
+    # mirroring how weekends and after-hours are handled.
+    if kind == "explicit" and target_date is not None and is_blackout_date(target_date):
+        raise HolidayError(
+            f"requested date {target_date.isoformat()} is a business holiday"
+        )
+
     requested_time = _time_from_text(lowered)
     has_explicit_time = requested_time is not None
 
@@ -580,7 +594,8 @@ def _normalize_to_business_window(
 ) -> datetime:
     normalized = value.replace(second=0, microsecond=0)
 
-    while normalized.weekday() >= 5:
+    # Roll off weekends *and* holiday blackout dates to the next open day's open.
+    while normalized.weekday() >= 5 or is_blackout_date(normalized.date()):
         normalized = (normalized + timedelta(days=1)).replace(
             hour=business_start_hour,
             minute=0,

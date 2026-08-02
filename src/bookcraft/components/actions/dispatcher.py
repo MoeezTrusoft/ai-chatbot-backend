@@ -15,6 +15,7 @@ from bookcraft.components.consultations import (
     AmbiguousDateError,
     ConsultationActionRequest,
     ConsultationActionService,
+    HolidayError,
     RequestedTimeInPastError,
 )
 from bookcraft.components.document_actions import (
@@ -290,6 +291,19 @@ class SalesActionDispatcher:
                 ),
                 internal_summary=_exception_summary(exc),
                 error_code="ambiguous_requested_date",
+                duration_ms=_elapsed_ms(started),
+            )
+        except HolidayError as exc:
+            return ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=False,
+                customer_safe_summary=(
+                    "We're closed that day, so I can't book a consultation then. "
+                    "Our specialists are available Monday–Friday, 10 AM to 7 PM "
+                    "Central Time — what other day works for you?"
+                ),
+                internal_summary=_exception_summary(exc),
+                error_code="requested_date_is_holiday",
                 duration_ms=_elapsed_ms(started),
             )
         except Exception as exc:

@@ -1,5 +1,6 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.admin_analysis import router as admin_analysis_router
 from bookcraft.api.chat import router as chat_router
+from bookcraft.api.holidays import router as holidays_router
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
@@ -24,7 +26,10 @@ from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.consultations import (
     ConsultationActionService,
     ConsultationRepository,
+    HolidayRepository,
+    refresh_holiday_cache,
 )
+from bookcraft.components.consultations.holidays import HOLIDAY_CACHE_TTL_SECONDS
 from bookcraft.components.document_actions import (
     AgreementActionService,
     DocumentRequestRepository,
@@ -143,7 +148,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else None
                 )
             )
+
+        # Keep the holiday blackout cache warm: load once now, then refresh from
+        # the DB on a fixed interval so a holiday added from the CSR calendar
+        # takes effect (bot stops offering/booking that day) within ~1 minute
+        # without a redeploy. Failures never block scheduling — an empty cache
+        # simply means "no holidays configured".
+        holiday_repository = getattr(app.state, "holiday_repository", None)
+        holiday_refresh_task: asyncio.Task[None] | None = None
+        if holiday_repository is not None:
+            try:
+                await refresh_holiday_cache(holiday_repository)
+            except Exception:
+                structlog.get_logger(__name__).warning(
+                    "holiday_cache_initial_load_failed", exc_info=True
+                )
+
+            async def _holiday_refresh_loop() -> None:
+                while True:
+                    await asyncio.sleep(HOLIDAY_CACHE_TTL_SECONDS)
+                    try:
+                        await refresh_holiday_cache(holiday_repository)
+                    except Exception:
+                        structlog.get_logger(__name__).warning(
+                            "holiday_cache_refresh_failed", exc_info=True
+                        )
+
+            holiday_refresh_task = asyncio.create_task(_holiday_refresh_loop())
+
         yield
+        if holiday_refresh_task is not None:
+            holiday_refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await holiday_refresh_task
         await _adapters_module.close_shared_client()
         db_engine = getattr(app.state, "db_engine", None)
         if db_engine is not None:
@@ -200,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory = create_session_factory(db_engine)
         thread_repository = ThreadRepository(session_factory=session_factory)
         app.state.db_engine = db_engine
+        app.state.holiday_repository = HolidayRepository(session_factory=session_factory)
 
         elasticsearch_client = AsyncElasticsearch(
             hosts=[resolved_settings.elasticsearch_url],
@@ -227,6 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
+    app.include_router(holidays_router)
 
     @app.middleware("http")
     async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]

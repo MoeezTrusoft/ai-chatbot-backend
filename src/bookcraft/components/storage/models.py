@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -93,6 +93,22 @@ class SalesPricingQuoteRecord(SQLModel, table=True):
     status: str = Field(default="created", max_length=64, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ConsultationHolidayRecord(SQLModel, table=True):
+    """A calendar date (business timezone) on which no consultation may be booked.
+
+    Single source of truth for the holiday blackout. One row per closed day; the
+    ISO date is the natural primary key. Managed from the CSR consultation
+    calendar and read by the scheduling engine via a cached loader.
+    """
+
+    __tablename__ = "consultation_holidays"
+
+    holiday_date: date = Field(primary_key=True)
+    label: str | None = Field(default=None, max_length=255)
+    created_by: str | None = Field(default=None, max_length=128)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class PortfolioSampleViewRecord(SQLModel, table=True):

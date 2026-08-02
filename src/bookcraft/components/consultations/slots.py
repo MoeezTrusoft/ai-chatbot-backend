@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from bookcraft.components.consultations.holidays import is_blackout_date
+
 DEFAULT_BUSINESS_TZ = "America/Chicago"
 DEFAULT_BUSINESS_START_HOUR = 10
 DEFAULT_BUSINESS_END_HOUR = 19
@@ -55,9 +57,10 @@ def _next_business_half_hour(
     ``business_end_hour - 0:30`` (e.g. 18:30 for a 19:00 close).
     """
     candidate = _round_up_to_half_hour(value)
-    # Bounded loop — at most a few iterations to roll past weekends / after-hours.
+    # Bounded loop — at most a few iterations to roll past weekends / holidays /
+    # after-hours. 14 comfortably covers a holiday adjacent to a weekend.
     for _ in range(14):
-        if candidate.weekday() >= 5:  # Saturday/Sunday
+        if candidate.weekday() >= 5 or is_blackout_date(candidate.date()):  # weekend/holiday
             candidate = (candidate + timedelta(days=1)).replace(
                 hour=business_start_hour, minute=0
             )
