@@ -2790,6 +2790,127 @@ class ChatService:
         if payload.preferred_call_time:
             state.preferred_call_time = payload.preferred_call_time
 
+    async def handle_consultation_cancelled(self, payload: Any) -> Any:
+        """Reset thread state after a consultation is deleted/cancelled externally.
+
+        The inverse of :meth:`handle_consultation_confirmed`: a CSR deleting a
+        consultation in the CRM must not leave the bot believing a call is still
+        booked (it would keep suppressing the call-time ask and the booking
+        button forever). Clears the same gates the confirmation set.
+
+        Appointment-id scoped: if ``payload.appointment_id`` is given and no
+        longer matches the booking on record, the reset is skipped — deleting a
+        stale/duplicate row never wipes a newer active booking. Uses the same
+        optimistic-locking retry as the confirmation handler.
+
+        ``payload`` is a ``ConsultationCancelledRequest``.
+        """
+        from bookcraft.api.chat import (
+            ConsultationCancelledRequest as _CReq,
+            ConsultationCancelledResponse as _CResp,
+        )
+
+        if not isinstance(payload, _CReq):
+            return _CResp(thread_id=payload.thread_id, cancelled=False)
+
+        _log = structlog.get_logger(__name__)
+        _appointment_id = (payload.appointment_id or "").strip() or None
+        _MAX_RETRIES = 3
+
+        for _attempt in range(_MAX_RETRIES):
+            try:
+                if self.thread_repository is not None:
+                    _thread = await self.thread_repository.load_or_create(
+                        thread_id=payload.thread_id, customer_id=None,
+                    )
+                    _state = _thread.state
+                    _cleared = self._apply_external_consultation_cancellation(
+                        _state, _appointment_id
+                    )
+                    if _cleared:
+                        await self.thread_repository.save_state(
+                            thread_id=_thread.thread_id,
+                            state=_state,
+                            expected_version=_thread.version,
+                            language=getattr(_state, "detected_language", None) or "en",
+                        )
+                else:
+                    _mem = self.threads.setdefault(payload.thread_id, ThreadMemory())
+                    _cleared = self._apply_external_consultation_cancellation(
+                        _mem.state, _appointment_id
+                    )
+
+                _log.info(
+                    "external_consultation_cancelled",
+                    thread_id=str(payload.thread_id),
+                    appointment_id=_appointment_id,
+                    cleared=_cleared,
+                    attempt=_attempt,
+                )
+                return _CResp(thread_id=payload.thread_id, cancelled=_cleared)
+
+            except Exception as _exc:  # noqa: BLE001
+                _is_conflict = (
+                    "versionconflict" in type(_exc).__name__.lower()
+                    or "conflict" in str(_exc).lower()
+                )
+                if _is_conflict and _attempt < _MAX_RETRIES - 1:
+                    _log.warning(
+                        "consultation_cancelled_conflict_retry",
+                        thread_id=str(payload.thread_id), attempt=_attempt,
+                    )
+                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    continue
+                _log.warning(
+                    "consultation_cancelled_save_failed",
+                    thread_id=str(payload.thread_id),
+                    attempt=_attempt,
+                    exception_class=type(_exc).__name__,
+                )
+                return _CResp(thread_id=payload.thread_id, cancelled=False)
+
+        return _CResp(thread_id=payload.thread_id, cancelled=False)
+
+    @staticmethod
+    def _apply_external_consultation_cancellation(
+        state: Any, appointment_id: str | None
+    ) -> bool:
+        """Clear the booked-consultation gates. Returns True if state was cleared.
+
+        Reverses :meth:`_apply_external_consultation_confirmation`. When
+        ``appointment_id`` is provided it must match the booking currently on
+        record (``confirmed_appointment_id`` or ``consultation_handoff_action_id``);
+        otherwise the reset is skipped so a stale delete can't wipe a newer booking.
+        """
+        consult = state.sales_actions.consultation
+        if appointment_id:
+            current = (
+                consult.confirmed_appointment_id
+                or state.consultation_handoff_action_id
+            )
+            if current and current != appointment_id:
+                return False
+
+        consult.requested = False
+        consult.pending_confirmation = False
+        consult.pending_slot = None
+        consult.confirmed_appointment_id = None
+        consult.confirmed_display_time = None
+        consult.confirmed_customer_display_time = None
+        consult.csr_id = None
+        consult.csr_name = None
+        # Clear any stale pending confirmation.
+        state.sales_actions.pending_confirmation.type = None
+        state.sales_actions.pending_confirmation.payload = None
+        state.sales_actions.pending_confirmation.created_at = None
+        state.sales_actions.pending_confirmation.expires_at = None
+        # Top-level gates — unset so consultation_state.py leaves SCHEDULED and the
+        # call-time ask / booking button are eligible again.
+        state.consultation_handoff_created = False
+        state.consultation_handoff_action_id = None
+        state.consultation_stage = None
+        return True
+
     async def handle_handover(self, payload: Any) -> Any:
         """Signal a handover between bot and CSR.
 

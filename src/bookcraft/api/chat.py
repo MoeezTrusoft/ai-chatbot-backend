@@ -151,6 +151,30 @@ class ConsultationConfirmedResponse(BaseModel):
     confirmed: bool
 
 
+class ConsultationCancelledRequest(BaseModel):
+    """Signal that a consultation was DELETED / cancelled outside the bot.
+
+    Called by the Node backend when a CSR deletes a consultation from the CRM
+    calendar. It reverses exactly what ``ConsultationConfirmedRequest`` sets, so
+    the bot's ThreadState stops treating the (now non-existent) booking as active
+    and re-offers scheduling on the next turn. ``appointment_id`` — when supplied
+    — scopes the reset: state is only cleared if it still matches the booking on
+    record, so deleting a stale/duplicate row never wipes a newer active booking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    appointment_id: str | None = Field(default=None, max_length=128)
+
+
+class ConsultationCancelledResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    cancelled: bool
+
+
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
     settings: Settings = request.app.state.settings
@@ -293,6 +317,23 @@ async def chat_consultation_confirmed(
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
     return await service.handle_consultation_confirmed(payload)
+
+
+@router.post("/consultation-cancelled", response_model=ConsultationCancelledResponse)
+async def chat_consultation_cancelled(
+    payload: ConsultationCancelledRequest, request: Request
+) -> ConsultationCancelledResponse:
+    """Reset thread state after a CSR deletes/cancels a consultation in the CRM.
+
+    The inverse of ``/consultation-confirmed``: clears the booked-consultation
+    gates (``confirmed_appointment_id`` / ``consultation_handoff_created`` /
+    ``consultation_stage``) so the bot no longer claims a call is booked and will
+    re-offer scheduling. Idempotent and appointment-id scoped.
+    """
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    return await service.handle_consultation_cancelled(payload)
 
 
 @router.websocket("/ws/{thread_id}")
