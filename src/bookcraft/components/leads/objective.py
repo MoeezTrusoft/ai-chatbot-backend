@@ -187,8 +187,7 @@ class LeadObjectiveEngine:
                     stage="lead_created",
                     objective_move="request_second_contact_method",
                     reason=(
-                        "Lead created; politely asking once for the missing "
-                        "second contact method."
+                        "Lead created; politely asking once for the missing second contact method."
                     ),
                     stop_discovery=True,
                     recommended_primary_goal="lead_contact_capture",

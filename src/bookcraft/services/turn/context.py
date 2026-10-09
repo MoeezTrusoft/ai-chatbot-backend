@@ -6,6 +6,7 @@ rather than reading and writing locals inside a 4,000-line method. Fields are
 populated progressively as stages run; types are intentionally loose (``Any``)
 so this foundation module stays free of heavy/cyclic imports.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,15 +23,15 @@ class TurnContext:
     customer_id: UUID | None = None
 
     # ── Progressive pipeline state (filled by stages) ───────────────────────
-    state: Any = None          # ThreadState
+    state: Any = None  # ThreadState
     previous_state: Any = None  # ThreadState snapshot before this turn
-    processed: Any = None      # ProcessedMessage (tokens, embedding, spans)
-    intent: Any = None         # IntentVote
-    trimatch: Any = None       # TriMatch classification
-    extraction: Any = None     # CombinedExtraction
-    trg_context: Any = None    # TRGContext
+    processed: Any = None  # ProcessedMessage (tokens, embedding, spans)
+    intent: Any = None  # IntentVote
+    trimatch: Any = None  # TriMatch classification
+    extraction: Any = None  # CombinedExtraction
+    trg_context: Any = None  # TRGContext
     context_pack: Any = None
-    plan: Any = None           # ResponsePlan
+    plan: Any = None  # ResponsePlan
     response_text: str | None = None
 
     # ── Outputs / side-channels ─────────────────────────────────────────────

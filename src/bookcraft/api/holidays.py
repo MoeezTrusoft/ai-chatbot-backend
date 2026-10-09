@@ -4,16 +4,17 @@ CRUD over the ``consultation_holidays`` table, consumed by the CSR consultation
 calendar (via the Node bridge). Mutations write through to the in-process cache
 so the scheduling engine honors a new/removed holiday immediately in this worker;
 other workers converge on the next periodic refresh. Auth mirrors the other
-bridge endpoints (``require_http_auth``).
+bridge endpoints, with calendar administration scopes.
 """
 
 import re
 from datetime import date
+from typing import cast
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from bookcraft.api.auth import require_http_auth
+from bookcraft.api.auth import require_scope
 from bookcraft.components.consultations import HolidayRepository
 from bookcraft.components.consultations.holidays import add_to_cache, remove_from_cache
 from bookcraft.infra.config import Settings
@@ -68,13 +69,13 @@ def _repository(request: Request) -> HolidayRepository:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"error": "holiday store is not available"},
         )
-    return repo
+    return cast(HolidayRepository, repo)
 
 
 @router.get("", response_model=HolidayListResponse)
 async def list_holidays(request: Request) -> HolidayListResponse:
     settings: Settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "calendar:manage", "chat:manage")
     repo = _repository(request)
     records = await repo.list_all()
     return HolidayListResponse(
@@ -92,7 +93,7 @@ async def list_holidays(request: Request) -> HolidayListResponse:
 @router.post("", response_model=HolidayItem)
 async def create_holiday(payload: HolidayCreateRequest, request: Request) -> HolidayItem:
     settings: Settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "calendar:manage", "chat:manage")
     repo = _repository(request)
     holiday_date = _parse_iso_date(payload.date)
     record = await repo.add(
@@ -112,7 +113,7 @@ async def create_holiday(payload: HolidayCreateRequest, request: Request) -> Hol
 @router.delete("/{holiday_date}", response_model=HolidayDeleteResponse)
 async def delete_holiday(holiday_date: str, request: Request) -> HolidayDeleteResponse:
     settings: Settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "calendar:manage", "chat:manage")
     repo = _repository(request)
     parsed = _parse_iso_date(holiday_date)
     removed = await repo.remove(holiday_date=parsed)

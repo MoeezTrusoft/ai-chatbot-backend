@@ -20,13 +20,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlmodel import select
+from sqlmodel import col, select
 
 
 class _InProcessFallback:
@@ -37,6 +38,7 @@ class _InProcessFallback:
     """
 
     def __init__(self) -> None:
+        self._results: dict[str, dict[str, Any]] = {}
         self._keys: dict[str, str] = {}  # key → status
 
     async def claim(
@@ -48,7 +50,7 @@ class _InProcessFallback:
         slots_hash: str,
         expires_at: datetime | None,
     ) -> bool:
-        if idempotency_key in self._keys:
+        if self._keys.get(idempotency_key) in {"processing", "completed", "needs_reconciliation"}:
             return False
         self._keys[idempotency_key] = "processing"
         return True
@@ -108,7 +110,7 @@ class ActionIdempotencyRepository:
             status="processing",
             slots_hash=slots_hash,
             created_at=utc_now(),
-            expires_at=expires_at,
+            expires_at=expires_at or utc_now() + timedelta(minutes=5),
         )
         try:
             async with self.session_factory() as session:
@@ -116,16 +118,36 @@ class ActionIdempotencyRepository:
                 await session.commit()
             return True
         except IntegrityError:
-            # Duplicate idempotency_key — another worker already claimed it.
-            return False
+            # Only a known failed attempt is eligible for automatic retry. An
+            # interrupted processing attempt can have completed its side effect;
+            # never rerun it solely because a lease/time interval elapsed.
+            async with self.session_factory() as session:
+                statement = (
+                    update(SalesActionRecord)
+                    .where(col(SalesActionRecord.idempotency_key) == idempotency_key)
+                    .where(col(SalesActionRecord.status) == "failed")
+                    .values(
+                        status="processing",
+                        error_code=None,
+                        completed_at=None,
+                        expires_at=utc_now() + timedelta(minutes=5),
+                    )
+                    .returning(col(SalesActionRecord.id))
+                )
+                claimed = (await session.execute(statement)).scalar_one_or_none()
+                await session.commit()
+                return claimed is not None
 
     async def mark_completed(
         self,
         *,
         idempotency_key: str,
         result_summary: str | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         if self.session_factory is None:
+            if result is not None:
+                self._fallback._results[idempotency_key] = result
             await self._fallback.mark_completed(
                 idempotency_key=idempotency_key,
                 result_summary=result_summary,
@@ -135,13 +157,14 @@ class ActionIdempotencyRepository:
         from bookcraft.components.storage.models import SalesActionRecord, utc_now
 
         async with self.session_factory() as session:
-            result = await session.execute(
+            query_result = await session.execute(
                 select(SalesActionRecord).where(
                     SalesActionRecord.idempotency_key == idempotency_key
                 )
             )
-            record = result.scalar_one_or_none()
+            record = query_result.scalar_one_or_none()
             if record is not None:
+                record.result_payload = result
                 record.status = "completed"
                 record.completed_at = utc_now()
                 record.result_summary = (result_summary or "")[:512]
@@ -152,11 +175,11 @@ class ActionIdempotencyRepository:
         *,
         idempotency_key: str,
         error_code: str,
+        retryable: bool = True,
     ) -> None:
         if self.session_factory is None:
-            await self._fallback.mark_failed(
-                idempotency_key=idempotency_key,
-                error_code=error_code,
+            self._fallback._keys[idempotency_key] = (
+                "failed" if retryable else "needs_reconciliation"
             )
             return
 
@@ -170,7 +193,7 @@ class ActionIdempotencyRepository:
             )
             record = result.scalar_one_or_none()
             if record is not None:
-                record.status = "failed"
+                record.status = "failed" if retryable else "needs_reconciliation"
                 record.completed_at = utc_now()
                 record.error_code = error_code[:64]
                 await session.commit()
@@ -189,6 +212,52 @@ class ActionIdempotencyRepository:
             )
             row = result.scalar_one_or_none()
             return str(row) if row is not None else None
+
+    async def get_result(self, *, idempotency_key: str) -> dict[str, Any] | None:
+        if self.session_factory is None:
+            return self._fallback._results.get(idempotency_key)
+        from bookcraft.components.storage.models import SalesActionRecord
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(SalesActionRecord).where(
+                    col(SalesActionRecord.idempotency_key) == idempotency_key,
+                    col(SalesActionRecord.status) == "completed",
+                )
+            )
+            record = result.scalar_one_or_none()
+            return record.result_payload if record is not None else None
+
+    async def release_abandoned(
+        self, *, idempotency_key: str, confirmed_no_side_effect: bool
+    ) -> bool:
+        """Operator recovery only, after checking the downstream system/audit log."""
+        if not confirmed_no_side_effect:
+            raise ValueError("Reconciliation must confirm no side effect before retry")
+        if self.session_factory is None:
+            if self._fallback._keys.get(idempotency_key) not in {
+                "processing",
+                "needs_reconciliation",
+            }:
+                return False
+            self._fallback._keys[idempotency_key] = "failed"
+            return True
+        from bookcraft.components.storage.models import SalesActionRecord, utc_now
+
+        async with self.session_factory() as session:
+            statement = (
+                update(SalesActionRecord)
+                .where(
+                    col(SalesActionRecord.idempotency_key) == idempotency_key,
+                    col(SalesActionRecord.status).in_(["processing", "needs_reconciliation"]),
+                    col(SalesActionRecord.expires_at) < utc_now(),
+                )
+                .values(status="failed", error_code="reconciled_no_side_effect")
+                .returning(col(SalesActionRecord.id))
+            )
+            changed = (await session.execute(statement)).scalar_one_or_none()
+            await session.commit()
+            return changed is not None
 
 
 def make_slots_hash(slots: dict[str, Any]) -> str:

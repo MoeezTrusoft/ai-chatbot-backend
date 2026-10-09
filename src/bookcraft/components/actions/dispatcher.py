@@ -4,10 +4,9 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import structlog
-
 from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
@@ -34,7 +33,6 @@ from bookcraft.components.storage.action_idempotency_repository import (
     ActionIdempotencyRepository,
     make_slots_hash,
 )
-
 
 logger = structlog.get_logger(__name__)
 
@@ -93,8 +91,8 @@ class SalesActionDispatcher:
             slots_hash=make_slots_hash(plan.collected_slots),
         )
         if not claimed:
-            # Another worker or process already dispatched this action.
-            return None
+            cached = await self.action_idempotency_repository.get_result(idempotency_key=idem_key)
+            return ActionResult.model_validate(cached) if cached is not None else None
 
         started = time.perf_counter()
         result: ActionResult | None = None
@@ -159,11 +157,29 @@ class SalesActionDispatcher:
             await self.action_idempotency_repository.mark_completed(
                 idempotency_key=idem_key,
                 result_summary=(result.customer_safe_summary or "")[:512],
+                result=result.model_dump(mode="json"),
             )
         else:
             await self.action_idempotency_repository.mark_failed(
                 idempotency_key=idem_key,
                 error_code=result.error_code or "unknown",
+                # A generic execution failure can follow a committed side effect.
+                # Only failures known to precede execution are safe to retry.
+                retryable=result.error_code
+                in {
+                    "not_implemented",
+                    "missing_contact",
+                    "requested_time_in_past",
+                    "ambiguous_requested_date",
+                    "requested_date_is_holiday",
+                    "service_unavailable",
+                    "consultation_action_service_unavailable",
+                    "agreement_action_service_unavailable",
+                    "nda_action_service_unavailable",
+                    "portfolio_action_service_unavailable",
+                    "missing_portfolio_service",
+                    "pricing_action_service_unavailable",
+                },
             )
         return result
 
@@ -236,6 +252,7 @@ class SalesActionDispatcher:
             return ActionResult(
                 success=False,
                 action_type=ActionType.SCHEDULE_CONSULTATION,
+                customer_safe_summary="Please provide your name before booking.",
                 error_code="missing_contact",
                 internal_summary="Customer name is missing — cannot schedule consultation",
                 duration_ms=_elapsed_ms(started),

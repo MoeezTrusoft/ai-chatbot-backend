@@ -20,7 +20,7 @@ from bookcraft.tools.schemas import ToolContext
 async def test_pricing_tool_audit_persists_to_db(tmp_path: pytest.TempPathFactory) -> None:
     database_url = f"sqlite+aiosqlite:///{tmp_path}/audit.db"
     settings = Settings(
-        app_env="integration",
+        app_env="test",
         database_url=database_url,
         pricing_v2_values_approved=False,
     )

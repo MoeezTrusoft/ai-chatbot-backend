@@ -13,14 +13,13 @@ import re
 import pytest
 
 from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
+from bookcraft.components.trg.schemas import ServiceShiftEvent, TRGContext
 from bookcraft.components.trimatch import (
     RulePack,
     TriMatchEngine,
     TriMatchMode,
 )
-from bookcraft.components.trg.schemas import ServiceShiftEvent, TRGContext
 from bookcraft.domain.enums import ServiceCategory
-
 
 # ---------------------------------------------------------------------------
 # Shared helper — mirrors the _processed() helper in test_trimatch_engine.py
@@ -131,9 +130,7 @@ class TestConfidenceAggregation:
         engine = TriMatchEngine(rule_pack=self._two_service_pack(), mode=TriMatchMode.SHADOW)
         result = engine.classify(_processed("I need ghostwriting and editing"))
 
-        assert 0.0 <= result.confidence <= 1.0, (
-            f"Confidence out of range: {result.confidence}"
-        )
+        assert 0.0 <= result.confidence <= 1.0, f"Confidence out of range: {result.confidence}"
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +197,14 @@ class TestTRGArbitration:
         )
         trg_context = TRGContext(service_shifts=[declined_shift])
 
-        result = engine.classify(_processed("I need ghostwriting and editing"), trg_context=trg_context)
+        result = engine.classify(
+            _processed("I need ghostwriting and editing"), trg_context=trg_context
+        )
 
         # Ghostwriting was declined — no evidence or primary result for it.
-        assert all(
-            item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence
-        ), "Declined ghostwriting evidence must be suppressed by TRG arbitration."
+        assert all(item.target != ServiceCategory.GHOSTWRITING.value for item in result.evidence), (
+            "Declined ghostwriting evidence must be suppressed by TRG arbitration."
+        )
         assert result.service_primary != ServiceCategory.GHOSTWRITING, (
             "Declined service must not be selected as service_primary."
         )

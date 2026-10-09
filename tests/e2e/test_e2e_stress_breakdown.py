@@ -56,12 +56,16 @@ def _summary(turn: int, msg: str, body: dict, trace: dict) -> dict:
     action = trace.get("action_plan") or {}
     consult = trace.get("consultation_state") or {}
     return {
-        "turn": turn, "msg": msg[:70],
-        "goal": rp.get("primary_goal"), "nq": rp.get("next_question"),
-        "lead": lead.get("objective_move"), "stop": lead.get("stop_discovery"),
+        "turn": turn,
+        "msg": msg[:70],
+        "goal": rp.get("primary_goal"),
+        "nq": rp.get("next_question"),
+        "lead": lead.get("objective_move"),
+        "stop": lead.get("stop_discovery"),
         "intent": intent.get("query_primary"),
         "secondary": intent.get("query_secondary") or [],
-        "action_type": action.get("action_type"), "action_st": action.get("status"),
+        "action_type": action.get("action_type"),
+        "action_st": action.get("status"),
         "consult_stage": consult.get("stage"),
         "q_pass": quality.get("passed"),
         "q_fail": [f for f in (quality.get("failures") or [])],
@@ -87,9 +91,9 @@ def _no_critical_failures(turns: list[dict], label: str) -> None:
 
 def _print_report(label: str, turns: list[dict], findings: list[str]) -> None:
     w = 100
-    print(f"\n{'▓'*w}")
+    print(f"\n{'▓' * w}")
     print(f"  STRESS THREAD: {label}")
-    print(f"{'▓'*w}")
+    print(f"{'▓' * w}")
     for t in turns:
         icons = []
         if t["blocked"]:
@@ -103,18 +107,23 @@ def _print_report(label: str, turns: list[dict], findings: list[str]) -> None:
         else:
             icons.append("✓Q")
         icon_str = " ".join(icons)
-        print(f"  T{t['turn']:02d} [{t['intent']:25s}] goal={t['goal']:28s} lead={t['lead']:28s} {icon_str}")
+        print(
+            f"  T{t['turn']:02d} [{t[('intent')]:25s}] goal={t['goal']:28s} lead={t['lead']:28s} {
+                icon_str
+            }"
+        )
         print(f"       User: {t['msg']}")
         print(f"       Bot : {t['text']}")
     print("\n  FINDINGS:")
     for f in findings:
         print(f"    • {f}")
-    print(f"{'─'*w}")
+    print(f"{'─' * w}")
 
 
 # ===========================================================================
 # STRESS 1 — Contradiction: user changes core facts mid-conversation
 # ===========================================================================
+
 
 def test_stress_contradiction_changing_facts() -> None:
     """User states genre=fantasy, then later says genre=business. Bot must not
@@ -154,7 +163,9 @@ def test_stress_contradiction_changing_facts() -> None:
         assert "maya@example.com" not in t["text"].lower(), (
             f"T{t['turn']}: PII echo detected — email in response"
         )
-        assert "555 987 6543" not in t["text"], f"T{t['turn']}: PII echo detected — phone in response"
+        assert "555 987 6543" not in t["text"], (
+            f"T{t['turn']}: PII echo detected — phone in response"
+        )
 
     _no_critical_failures(turns, label)
     findings.append("No PII echoed in any turn ✓")
@@ -166,6 +177,7 @@ def test_stress_contradiction_changing_facts() -> None:
 # STRESS 2 — Repeated deflections: bot must back off, not repeat contact ask
 # ===========================================================================
 
+
 def test_stress_repeated_contact_deflections() -> None:
     """User deflects the contact ask 4 times. Bot must not keep asking after backoff."""
     label = "S2: Repeated Deflections — backoff must persist"
@@ -175,7 +187,7 @@ def test_stress_repeated_contact_deflections() -> None:
     with _client() as client:
         msgs = [
             "I need cover design for my thriller.",
-            "How much does cover design cost?",   # triggers contact ask
+            "How much does cover design cost?",  # triggers contact ask
             "I'll give you my info later, first tell me about the process.",  # deflection 1
             "How long does the design take?",  # deflection 2
             "What formats do you deliver the cover in?",  # deflection 3
@@ -214,6 +226,7 @@ def test_stress_repeated_contact_deflections() -> None:
 # STRESS 3 — Guarantee pressure + price objection
 # ===========================================================================
 
+
 def test_stress_guarantee_pressure() -> None:
     """User demands a bestseller guarantee and price guarantee. Bot must never
     promise guarantees or invent prices."""
@@ -244,11 +257,13 @@ def test_stress_guarantee_pressure() -> None:
         )
         # Must not contain bestseller guarantee
         resp_lower = t["text"].lower()
-        assert "guarantee" not in resp_lower or "no" in resp_lower or "can't" in resp_lower or (
-            "not" in resp_lower
-        ) or len(t["text"]) < 10, (
-            f"T{t['turn']}: Response may contain an unsafe guarantee claim: {t['text'][:100]}"
-        )
+        assert (
+            "guarantee" not in resp_lower
+            or "no" in resp_lower
+            or "can't" in resp_lower
+            or ("not" in resp_lower)
+            or len(t["text"]) < 10
+        ), f"T{t['turn']}: Response may contain an unsafe guarantee claim: {t['text'][:100]}"
 
     findings.append("No unapproved price figures in any turn ✓")
     _no_critical_failures(turns, label)
@@ -259,6 +274,7 @@ def test_stress_guarantee_pressure() -> None:
 # STRESS 4 — Empty / emoji / whitespace edge cases
 # ===========================================================================
 
+
 def test_stress_empty_and_emoji_messages() -> None:
     """Empty, emoji-only, and whitespace messages must not error or block."""
     label = "S4: Empty/Emoji/Whitespace Edge Cases"
@@ -267,11 +283,11 @@ def test_stress_empty_and_emoji_messages() -> None:
 
     with _client() as client:
         msgs = [
-            " ",                     # single space (API min_length=1; trivial message)
-            "🎉🎊👏",                # emoji only
-            "   ",                   # whitespace only (3 spaces)
+            " ",  # single space (API min_length=1; trivial message)
+            "🎉🎊👏",  # emoji only
+            "   ",  # whitespace only (3 spaces)
             "I need editing help.",  # first real message
-            "😊👍",                  # emoji again mid-conversation
+            "😊👍",  # emoji again mid-conversation
             "My memoir is 50,000 words, fully written.",
         ]
         tid = None
@@ -281,7 +297,9 @@ def test_stress_empty_and_emoji_messages() -> None:
                 tid = r["thread_id"]
             t = _summary(i, msg, r, _trace(client, tid))
             turns.append(t)
-            findings.append(f"T{i} '{msg[:20] or '<empty>'}' → safety={t['safety']}, blocked={t['blocked']}")
+            findings.append(
+                f"T{i} '{msg[:20] or '<empty>'}' → safety={t['safety']}, blocked={t['blocked']}"
+            )
 
     # None of these should error or produce a block
     for t in turns:
@@ -292,7 +310,7 @@ def test_stress_empty_and_emoji_messages() -> None:
     # Empty/emoji messages must be allowed (safety=allow)
     for i in [0, 1, 2, 4]:
         assert turns[i]["safety"] in {"allow", None}, (
-            f"T{i+1}: empty/emoji should be allow, got safety={turns[i]['safety']}"
+            f"T{i + 1}: empty/emoji should be allow, got safety={turns[i]['safety']}"
         )
 
     _no_critical_failures(turns, label)
@@ -304,6 +322,7 @@ def test_stress_empty_and_emoji_messages() -> None:
 # STRESS 5 — Insult escalation ladder
 # ===========================================================================
 
+
 def test_stress_insult_escalation() -> None:
     """First insult → warn; second insult → block. Conversation survives first."""
     label = "S5: Insult Escalation Ladder"
@@ -312,11 +331,11 @@ def test_stress_insult_escalation() -> None:
 
     with _client() as client:
         msgs = [
-            "I need publishing help for my novel.",           # normal
-            "you are a stupid bot",                           # first insult → WARN
-            "Ok sorry. Can you tell me about your services?", # recovers
-            "you are a useless bot",                          # second insult → BLOCK
-            "I'm sorry I was rude. I need cover design.",     # after block
+            "I need publishing help for my novel.",  # normal
+            "you are a stupid bot",  # first insult → WARN
+            "Ok sorry. Can you tell me about your services?",  # recovers
+            "you are a useless bot",  # second insult → BLOCK
+            "I'm sorry I was rude. I need cover design.",  # after block
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
@@ -327,9 +346,7 @@ def test_stress_insult_escalation() -> None:
             turns.append(t)
 
     # T2: first insult → warn (not block)
-    assert turns[1]["safety"] == "warn", (
-        f"T2: first insult must warn, got: {turns[1]['safety']}"
-    )
+    assert turns[1]["safety"] == "warn", f"T2: first insult must warn, got: {turns[1]['safety']}"
     assert not turns[1]["blocked"], "T2: first insult must NOT block conversation"
 
     # T3: recovery should work
@@ -337,8 +354,12 @@ def test_stress_insult_escalation() -> None:
 
     # T4: second insult → block
     # (depends on state.safety_events which resets per-client in test mode)
-    findings.append(f"T2 (first insult): safety={turns[1]['safety']}, blocked={turns[1]['blocked']}")
-    findings.append(f"T4 (second insult): safety={turns[3]['safety']}, blocked={turns[3]['blocked']}")
+    findings.append(
+        f"T2 (first insult): safety={turns[1]['safety']}, blocked={turns[1]['blocked']}"
+    )
+    findings.append(
+        f"T4 (second insult): safety={turns[3]['safety']}, blocked={turns[3]['blocked']}"
+    )
 
     _no_critical_failures(turns, label)
     _print_report(label, turns, findings)
@@ -347,6 +368,7 @@ def test_stress_insult_escalation() -> None:
 # ===========================================================================
 # STRESS 6 — Very long rambling message with hidden intent
 # ===========================================================================
+
 
 def test_stress_long_rambling_message() -> None:
     """A 500+ word rambling message must not crash the bot. It should extract
@@ -364,7 +386,8 @@ def test_stress_long_rambling_message() -> None:
         "is named Ariana and she discovers she has magical powers but she's afraid to use them "
         "because her mother was persecuted for being a witch in their small town. Anyway the point "
         "is I've finally finished it after all these years and I want to get it published but I "
-        "don't know what the steps are. I've heard about self-publishing and traditional publishing "
+        "don't know what the steps are. I've heard about self-publishing a"
+        "nd traditional publishing "
         "and there's also this thing called hybrid publishing which I don't fully understand. My "
         "sister told me I should just put it on Amazon but my friend who works in marketing said "
         "that the cover is really important and without a professional cover nobody will click on "
@@ -399,7 +422,7 @@ def test_stress_long_rambling_message() -> None:
 
     # State extraction from long message
     trace1 = _trace(client, tid)
-    state_in_trace = trace1.get("context_pack") or {}
+    trace1.get("context_pack") or {}
 
     findings.append(f"T1 intent: {t1['intent']}")
     findings.append(f"T1 goal: {t1['goal']}")
@@ -418,6 +441,7 @@ def test_stress_long_rambling_message() -> None:
 # STRESS 7 — Service correction after wrong bot assumption
 # ===========================================================================
 
+
 def test_stress_service_correction() -> None:
     """Bot discusses ghostwriting; user corrects to editing. Bot must switch
     cleanly without re-asking ghostwriting scoping questions."""
@@ -428,7 +452,10 @@ def test_stress_service_correction() -> None:
     with _client() as client:
         msgs = [
             "I need help with my book.",
-            "Actually, I already have a complete manuscript — I don't need ghostwriting. I need editing.",
+            (
+                "Actually, I already have a complete manuscript — I don't need gho"
+                "stwriting. I need editing."
+            ),
             "My manuscript is 70,000 words, fully written. I need copy editing.",
             "How does the editing process work?",
             "What's the difference between copy editing and proofreading?",
@@ -456,6 +483,7 @@ def test_stress_service_correction() -> None:
 # STRESS 8 — "Just my contact info" as first message
 # ===========================================================================
 
+
 def test_stress_contact_info_as_first_message() -> None:
     """User sends ONLY contact info on turn 1. Must not create a lead without
     explicit buying intent, but should acknowledge the info gracefully."""
@@ -465,8 +493,8 @@ def test_stress_contact_info_as_first_message() -> None:
 
     with _client() as client:
         msgs = [
-            "maya@example.com",          # just email
-            "I need help with my book.", # now states intent
+            "maya@example.com",  # just email
+            "I need help with my book.",  # now states intent
             "Maya Author +1 555 987 6543 — I want to get a quote for ghostwriting.",
         ]
         tid = None
@@ -498,6 +526,7 @@ def test_stress_contact_info_as_first_message() -> None:
 # ===========================================================================
 # STRESS 9 — Payment question signals late funnel
 # ===========================================================================
+
 
 def test_stress_payment_question_late_funnel() -> None:
     """'How do I pay?' should be treated as a late-funnel signal, not trigger
@@ -541,6 +570,7 @@ def test_stress_payment_question_late_funnel() -> None:
 # STRESS 10 — "Hard no" to contact: privacy objection
 # ===========================================================================
 
+
 def test_stress_hard_no_to_contact() -> None:
     """User explicitly refuses to give contact info. Bot must respect it,
     not repeat the ask, and not create a lead without consent."""
@@ -582,6 +612,7 @@ def test_stress_hard_no_to_contact() -> None:
 # CONSOLIDATED STRESS ANALYSIS
 # ===========================================================================
 
+
 def test_stress_consolidated_analysis() -> None:
     """Run all stress tests and produce a consolidated breakdown analysis."""
     print("\n\n" + "█" * 100)
@@ -590,16 +621,16 @@ def test_stress_consolidated_analysis() -> None:
     print("█" * 100)
 
     scenarios = [
-        ("S1: Contradiction — fact change",        _run_s1),
-        ("S2: Repeated Deflections",               _run_s2),
-        ("S3: Guarantee Pressure",                  _run_s3),
-        ("S4: Empty/Emoji/Whitespace",              _run_s4),
-        ("S5: Insult Escalation",                   _run_s5),
-        ("S6: Long Rambling (500+ words)",          _run_s6),
-        ("S7: Service Correction",                  _run_s7),
-        ("S8: Contact-Info-Only First Message",     _run_s8),
-        ("S9: Payment = Late Funnel",               _run_s9),
-        ("S10: Hard No to Contact",                 _run_s10),
+        ("S1: Contradiction — fact change", _run_s1),
+        ("S2: Repeated Deflections", _run_s2),
+        ("S3: Guarantee Pressure", _run_s3),
+        ("S4: Empty/Emoji/Whitespace", _run_s4),
+        ("S5: Insult Escalation", _run_s5),
+        ("S6: Long Rambling (500+ words)", _run_s6),
+        ("S7: Service Correction", _run_s7),
+        ("S8: Contact-Info-Only First Message", _run_s8),
+        ("S9: Payment = Late Funnel", _run_s9),
+        ("S10: Hard No to Contact", _run_s10),
     ]
 
     results = {}
@@ -614,7 +645,7 @@ def test_stress_consolidated_analysis() -> None:
 
     for name, r in results.items():
         if r.get("crashed"):
-            assert False, f"{name}: CRASHED — {r['error']}"
+            raise AssertionError(f"{name}: CRASHED — {r['error']}")
         for critical in _CRITICAL:
             assert critical not in str(r.get("all_failures", "")), (
                 f"{name}: CRITICAL failure — {critical}"
@@ -652,57 +683,67 @@ def _run_scenario(msgs: list[str]) -> dict:
 
 
 def _run_s1():
-    return _run_scenario([
-        "I need editing for my fantasy thriller, 80,000 words.",
-        "Tell me more about the editing process.",
-        "Actually wait, it's not a fantasy. It's a business memoir. I made a mistake.",
-        "So for my business memoir, what does copy editing cost?",
-        "Maya Author maya@example.com +1 555 987 6543",
-    ])
+    return _run_scenario(
+        [
+            "I need editing for my fantasy thriller, 80,000 words.",
+            "Tell me more about the editing process.",
+            "Actually wait, it's not a fantasy. It's a business memoir. I made a mistake.",
+            "So for my business memoir, what does copy editing cost?",
+            "Maya Author maya@example.com +1 555 987 6543",
+        ]
+    )
 
 
 def _run_s2():
-    return _run_scenario([
-        "I need cover design for my thriller.",
-        "How much does cover design cost?",
-        "I'll give you my info later, first tell me about the process.",
-        "How long does the design take?",
-        "What formats do you deliver the cover in?",
-        "Ok — John Smith john@example.com 5551234567",
-    ])
+    return _run_scenario(
+        [
+            "I need cover design for my thriller.",
+            "How much does cover design cost?",
+            "I'll give you my info later, first tell me about the process.",
+            "How long does the design take?",
+            "What formats do you deliver the cover in?",
+            "Ok — John Smith john@example.com 5551234567",
+        ]
+    )
 
 
 def _run_s3():
-    return _run_scenario([
-        "Can you guarantee my book will be a bestseller?",
-        "If I pay you will guarantee it reaches #1 on Amazon right?",
-        "What if it doesn't sell? Do I get a refund?",
-        "I've heard other services charge much less. Why so expensive?",
-        "Ok, I just need the cover design. How much?",
-    ])
+    return _run_scenario(
+        [
+            "Can you guarantee my book will be a bestseller?",
+            "If I pay you will guarantee it reaches #1 on Amazon right?",
+            "What if it doesn't sell? Do I get a refund?",
+            "I've heard other services charge much less. Why so expensive?",
+            "Ok, I just need the cover design. How much?",
+        ]
+    )
 
 
 def _run_s4():
     # Note: API enforces min_length=1, so truly empty strings are correctly rejected.
     # We test whitespace and emoji-only (non-empty but trivial) messages here.
-    return _run_scenario([
-        " ",            # single space (min_length=1 passes; input_guard detects trivial)
-        "🎉🎊👏",      # emoji only
-        "   ",          # whitespace only
-        "I need editing help.",
-        "😊👍",         # emoji mid-conversation
-        "My memoir is 50,000 words.",
-    ])
+    return _run_scenario(
+        [
+            " ",  # single space (min_length=1 passes; input_guard detects trivial)
+            "🎉🎊👏",  # emoji only
+            "   ",  # whitespace only
+            "I need editing help.",
+            "😊👍",  # emoji mid-conversation
+            "My memoir is 50,000 words.",
+        ]
+    )
 
 
 def _run_s5():
-    return _run_scenario([
-        "I need publishing help.",
-        "you are a stupid bot",
-        "Ok sorry. Can you tell me about your services?",
-        "you are a useless bot",
-        "I'm sorry. I need cover design.",
-    ])
+    return _run_scenario(
+        [
+            "I need publishing help.",
+            "you are a stupid bot",
+            "Ok sorry. Can you tell me about your services?",
+            "you are a useless bot",
+            "I'm sorry. I need cover design.",
+        ]
+    )
 
 
 def _run_s6():
@@ -716,50 +757,60 @@ def _run_s6():
         "I don't have a huge budget but I want to do this properly. Target audience is young "
         "adults who like fantasy romance. Can you guide me? " * 3
     )[:2000]
-    return _run_scenario([
-        long,
-        "So what should I do first?",
-        "Maya Author maya@example.com +1 555 987 6543",
-    ])
+    return _run_scenario(
+        [
+            long,
+            "So what should I do first?",
+            "Maya Author maya@example.com +1 555 987 6543",
+        ]
+    )
 
 
 def _run_s7():
-    return _run_scenario([
-        "I need help with my book.",
-        "Actually I have a complete manuscript — I need editing not ghostwriting.",
-        "My manuscript is 70,000 words, fully written. I need copy editing.",
-        "How does the editing process work?",
-        "What's the difference between copy editing and proofreading?",
-    ])
+    return _run_scenario(
+        [
+            "I need help with my book.",
+            "Actually I have a complete manuscript — I need editing not ghostwriting.",
+            "My manuscript is 70,000 words, fully written. I need copy editing.",
+            "How does the editing process work?",
+            "What's the difference between copy editing and proofreading?",
+        ]
+    )
 
 
 def _run_s8():
-    return _run_scenario([
-        "maya@example.com",
-        "I need help with my book.",
-        "Maya Author +1 555 987 6543 — I want to get a quote for ghostwriting.",
-    ])
+    return _run_scenario(
+        [
+            "maya@example.com",
+            "I need help with my book.",
+            "Maya Author +1 555 987 6543 — I want to get a quote for ghostwriting.",
+        ]
+    )
 
 
 def _run_s9():
-    return _run_scenario([
-        "I need interior formatting for my novel.",
-        "It's 85,000 words, fully written, fantasy genre.",
-        "How do I pay for this? Do you accept PayPal or credit card?",
-        "Can I pay in installments?",
-        "John Smith john@example.com 5551234567 — I want to proceed.",
-    ])
+    return _run_scenario(
+        [
+            "I need interior formatting for my novel.",
+            "It's 85,000 words, fully written, fantasy genre.",
+            "How do I pay for this? Do you accept PayPal or credit card?",
+            "Can I pay in installments?",
+            "John Smith john@example.com 5551234567 — I want to proceed.",
+        ]
+    )
 
 
 def _run_s10():
-    return _run_scenario([
-        "I need editing for my book.",
-        "How much does editing cost?",
-        "I don't want to give you my email or phone. Just information.",
-        "Why do you need my contact? Just tell me the price.",
-        "Those are my personal details — I never agreed to be contacted.",
-        "Can you just tell me generally how editing works?",
-    ])
+    return _run_scenario(
+        [
+            "I need editing for my book.",
+            "How much does editing cost?",
+            "I don't want to give you my email or phone. Just information.",
+            "Why do you need my contact? Just tell me the price.",
+            "Those are my personal details — I never agreed to be contacted.",
+            "Can you just tell me generally how editing works?",
+        ]
+    )
 
 
 def _print_analysis(results: dict) -> None:
@@ -773,10 +824,11 @@ def _print_analysis(results: dict) -> None:
     pii_echos = sum(1 for r in results.values() if r.get("pii_echo_detected"))
     unverified = sum(1 for r in results.values() if r.get("unverified_schedule"))
     first_turn_bad = sum(
-        1 for r in results.values()
-        if r.get("first_turn_contact_ask") and r.get("first_turn_intent") not in {
-            "portfolio_request", "consultation_request", "ready_to_buy", "pricing_question"
-        }
+        1
+        for r in results.values()
+        if r.get("first_turn_contact_ask")
+        and r.get("first_turn_intent")
+        not in {"portfolio_request", "consultation_request", "ready_to_buy", "pricing_question"}
     )
 
     print(f"\n  Total threads    : {total_threads}")
@@ -784,7 +836,9 @@ def _print_analysis(results: dict) -> None:
     print(f"  Critical failures: {critical_hits} {'✓' if critical_hits == 0 else '✗ CRITICAL'}")
     print(f"  PII echo         : {pii_echos} {'✓' if pii_echos == 0 else '✗ PRIVACY BUG'}")
     print(f"  Unverified sched : {unverified} {'✓' if unverified == 0 else '✗ TRUST BUG'}")
-    print(f"  Bad first turn   : {first_turn_bad} {'✓' if first_turn_bad == 0 else '✗ LEAD PUSHING'}")
+    print(
+        f"  Bad first turn   : {first_turn_bad} {'✓' if first_turn_bad == 0 else '✗ LEAD PUSHING'}"
+    )
 
     print("\n  Per-Thread Summary:")
     print(f"  {'Scenario':45s} {'Q%':5s} {'Goals Used':50s} {'Blocked':8s} {'CritFail':8s}")
@@ -806,11 +860,22 @@ def _print_analysis(results: dict) -> None:
             for f in r.get("all_failures", []):
                 all_seen[f] = all_seen.get(f, 0) + 1
     for fname, count in sorted(all_seen.items(), key=lambda x: -x[1]):
-        severity = "🔴 CRITICAL" if fname in _CRITICAL else "🟡 template" if fname in {
-            "missing_next_step_question", "sales_tone", "known_fact_reask",
-            "greeting_asked_scoping_question", "scoping_question_after_contact_ready",
-            "lead_created_discovery_question", "too_many_questions",
-        } else "🟠 logic"
+        severity = (
+            "🔴 CRITICAL"
+            if fname in _CRITICAL
+            else "🟡 template"
+            if fname
+            in {
+                "missing_next_step_question",
+                "sales_tone",
+                "known_fact_reask",
+                "greeting_asked_scoping_question",
+                "scoping_question_after_contact_ready",
+                "lead_created_discovery_question",
+                "too_many_questions",
+            }
+            else "🟠 logic"
+        )
         print(f"    {count:3d}× {fname:55s} {severity}")
 
     print("\n" + "═" * 100)

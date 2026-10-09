@@ -92,9 +92,7 @@ def test_formatting_blocked_until_editing_and_cover_done() -> None:
 def test_formatting_can_start_when_all_done() -> None:
     advice = wf.advise(
         requested_service="interior_formatting",
-        completed_services=[
-            "ghostwriting", "editing_proofreading", "cover_design_illustration"
-        ],
+        completed_services=["ghostwriting", "editing_proofreading", "cover_design_illustration"],
     )
     assert advice is not None
     assert advice.can_start_now is True
@@ -104,8 +102,10 @@ def test_publishing_successors_include_marketing() -> None:
     advice = wf.advise(
         requested_service="publishing_distribution",
         completed_services=[
-            "ghostwriting", "editing_proofreading",
-            "cover_design_illustration", "interior_formatting",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
         ],
     )
     assert advice is not None
@@ -116,8 +116,10 @@ def test_publishing_parallel_with_marketing_and_website() -> None:
     advice = wf.advise(
         requested_service="publishing_distribution",
         completed_services=[
-            "ghostwriting", "editing_proofreading",
-            "cover_design_illustration", "interior_formatting",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
         ],
     )
     assert advice is not None
@@ -156,8 +158,10 @@ def test_detect_violation_none_when_all_done() -> None:
     missing = wf.detect_violation(
         "publishing_distribution",
         completed_services=[
-            "ghostwriting", "editing_proofreading",
-            "cover_design_illustration", "interior_formatting",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
         ],
     )
     assert missing == []
@@ -334,9 +338,7 @@ def test_prompt_facts_ghostwriting_no_prerequisites_note() -> None:
 
 
 def test_multi_service_prompt_facts_contains_sequence() -> None:
-    advice = wf.advise_multi(
-        ["ghostwriting", "editing_proofreading", "interior_formatting"]
-    )
+    advice = wf.advise_multi(["ghostwriting", "editing_proofreading", "interior_formatting"])
     facts = advice.as_prompt_facts()
     assert "sequence" in facts.lower() or "→" in facts
     assert "Ghostwriting" in facts
@@ -345,8 +347,15 @@ def test_multi_service_prompt_facts_contains_sequence() -> None:
 def test_full_pipeline_text_contains_all_services() -> None:
     pipeline = wf.full_pipeline_text()
     for svc_name in [
-        "Ghostwriting", "Editing", "Cover Design", "Interior Layout",
-        "Publishing", "Marketing", "Audiobook", "Video Trailer", "Author",
+        "Ghostwriting",
+        "Editing",
+        "Cover Design",
+        "Interior Layout",
+        "Publishing",
+        "Marketing",
+        "Audiobook",
+        "Video Trailer",
+        "Author",
     ]:
         assert svc_name in pipeline, f"Pipeline missing: {svc_name}"
 

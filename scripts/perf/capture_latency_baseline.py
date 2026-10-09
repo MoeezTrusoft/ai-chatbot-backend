@@ -14,13 +14,16 @@ require:
 
     cd ai_chatbot
     .venv/bin/python scripts/perf/capture_latency_baseline.py                       # mock, flags ON
-    .venv/bin/python scripts/perf/capture_latency_baseline.py --no-optimize         # mock, flags OFF
-    .venv/bin/python scripts/perf/capture_latency_baseline.py --mode live --turns 25 --label staging-on
+    .venv/bin/python scripts/perf/capture_latency_baseline.py --no-optimize         # mock, flags
+    OFF
+    .venv/bin/python scripts/perf/capture_latency_baseline.py --mode live --turns 25 --label
+    staging-on
 
 Sequential by design: per-stage attribution from a process-global histogram is
 only clean when one turn runs at a time. Use ``e2e_concurrent_validation.py`` for
 the concurrency/throughput dimension.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,10 +50,15 @@ from bookcraft.infra.config import Settings  # noqa: E402
 
 # The optimization flags whose latency impact P0-T2 measures (offline-safe set).
 OPTIMIZE_FLAGS = [
-    "llm_bounded_timeouts_enabled", "prompt_cache_enabled", "event_log_batching_enabled",
-    "trg_background_persist_enabled", "llm_extraction_overlap_enabled",
-    "trimatch_event_evidence_summary", "trg_event_rebuild_enabled",
-    "project_fact_partitioning_enabled", "trimatch_compiled_index_enabled",
+    "llm_bounded_timeouts_enabled",
+    "prompt_cache_enabled",
+    "event_log_batching_enabled",
+    "trg_background_persist_enabled",
+    "llm_extraction_overlap_enabled",
+    "trimatch_event_evidence_summary",
+    "trg_event_rebuild_enabled",
+    "project_fact_partitioning_enabled",
+    "trimatch_compiled_index_enabled",
 ]
 
 WORKLOAD = [
@@ -134,9 +142,16 @@ def run(*, mode: str, optimize: bool, turns: int, warmup: int) -> dict:
                     per_stage.setdefault(stage_name, []).append(delta_ms)
 
     return {
-        "mode": mode, "optimize": optimize, "turns": turns, "warmup": warmup,
-        "e2e": {"p50": _pct(end_to_end, 50), "p95": _pct(end_to_end, 95),
-                "p99": _pct(end_to_end, 99), "max": max(end_to_end) if end_to_end else 0.0},
+        "mode": mode,
+        "optimize": optimize,
+        "turns": turns,
+        "warmup": warmup,
+        "e2e": {
+            "p50": _pct(end_to_end, 50),
+            "p95": _pct(end_to_end, 95),
+            "p99": _pct(end_to_end, 99),
+            "max": max(end_to_end) if end_to_end else 0.0,
+        },
         "stages": {
             name: {"p50": _pct(v, 50), "p95": _pct(v, 95), "n": len(v)}
             for name, v in sorted(per_stage.items())
@@ -182,8 +197,11 @@ def main() -> int:
     ap.add_argument("--no-optimize", action="store_true", help="run with upgrade flags OFF")
     ap.add_argument("--label", default=None)
     ap.add_argument("--out", default=None, help="output markdown path (default docs/perf/…)")
-    ap.add_argument("--generated-at", default="unspecified",
-                    help="timestamp string to stamp into the doc (env can't call time here)")
+    ap.add_argument(
+        "--generated-at",
+        default="unspecified",
+        help="timestamp string to stamp into the doc (env can't call time here)",
+    )
     args = ap.parse_args()
 
     optimize = not args.no_optimize

@@ -12,8 +12,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from bookcraft.components.persona.representative import (
-    BookCraftPersona,
     _IDENTITY_QUESTION_RE,
+    BookCraftPersona,
 )
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 from bookcraft.domain.state import ThreadState
@@ -22,7 +22,6 @@ from bookcraft.services.chat import (
     _RAG_TOP_K_NARROW,
     _rag_top_k_for_intent,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Persona identity detection
@@ -57,9 +56,7 @@ def test_identity_regex_ignores_normal_questions() -> None:
 def test_identity_question_assigns_and_persists_a_name() -> None:
     persona = BookCraftPersona()
     state = ThreadState()
-    decision = persona.evaluate(
-        message="is this an artificial intelligence?", state=state
-    )
+    decision = persona.evaluate(message="is this an artificial intelligence?", state=state)
     assert decision.is_identity_question is True
     assert decision.representative_name is not None
     # Name persists on state and is reused on the next identity question.

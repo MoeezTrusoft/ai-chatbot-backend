@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lingua import LanguageDetector
+
 import re
 import time
 from dataclasses import dataclass
@@ -24,34 +31,186 @@ from bookcraft.components.language_guard.pii_masking import is_predominantly_pii
 _ROMAN_URDU_MARKERS = frozenset(
     {
         # to-be / questions
-        "hai", "hain", "hoo", "hun", "kya", "kia", "kyun", "kyu", "kaisa", "kaise",
-        "kaisi", "kahan", "kahaan", "kaun", "kon", "kitna", "kitni", "kitne",
+        "hai",
+        "hain",
+        "hoo",
+        "hun",
+        "kya",
+        "kia",
+        "kyun",
+        "kyu",
+        "kaisa",
+        "kaise",
+        "kaisi",
+        "kahan",
+        "kahaan",
+        "kaun",
+        "kon",
+        "kitna",
+        "kitni",
+        "kitne",
         # pronouns / possessives
-        "mera", "meri", "mere", "tera", "teri", "tere", "tum", "tumhe", "tumhein",
-        "tumhara", "tumhari", "aap", "apka", "apki", "apko", "hum", "humein",
-        "hamara", "hamari", "mein", "mujhe", "mujhko", "usko", "unko",
+        "mera",
+        "meri",
+        "mere",
+        "tera",
+        "teri",
+        "tere",
+        "tum",
+        "tumhe",
+        "tumhein",
+        "tumhara",
+        "tumhari",
+        "aap",
+        "apka",
+        "apki",
+        "apko",
+        "hum",
+        "humein",
+        "hamara",
+        "hamari",
+        "mein",
+        "mujhe",
+        "mujhko",
+        "usko",
+        "unko",
         # negation / affirmation
-        "nahi", "nahin", "nai", "acha", "accha", "achi", "achha", "theek", "bilkul",
+        "nahi",
+        "nahin",
+        "nai",
+        "acha",
+        "accha",
+        "achi",
+        "achha",
+        "theek",
+        "bilkul",
         # verbs
-        "chalo", "chaliye", "karo", "karna", "karni", "karein", "karta", "karti",
-        "karte", "kar", "raha", "rahe", "rahi", "rha", "rhe", "rahay", "kehrahay",
-        "keh", "kaha", "bol", "bolo", "batao", "bata", "batayein", "likha", "likhli",
-        "likhi", "dena", "denan", "chahiye", "chahiyay", "karwani", "karwana",
+        "chalo",
+        "chaliye",
+        "karo",
+        "karna",
+        "karni",
+        "karein",
+        "karta",
+        "karti",
+        "karte",
+        "kar",
+        "raha",
+        "rahe",
+        "rahi",
+        "rha",
+        "rhe",
+        "rahay",
+        "kehrahay",
+        "keh",
+        "kaha",
+        "bol",
+        "bolo",
+        "batao",
+        "bata",
+        "batayein",
+        "likha",
+        "likhli",
+        "likhi",
+        "dena",
+        "denan",
+        "chahiye",
+        "chahiyay",
+        "karwani",
+        "karwana",
         # common adverbs / connectors / nouns
-        "kuch", "kuchh", "sab", "phir", "phr", "wapas", "abhi", "filhaal", "yaar",
-        "bhai", "behen", "sahab", "sahib", "saheb", "matlab", "wala", "wali",
-        "waisay", "waise", "thoda", "zyada", "ziada", "bohat", "bahut", "buhat",
-        "yeh", "woh", "wohi", "kyunki", "magar", "lekin", "agar", "warna", "aur",
-        "naam", "daftar", "kitab", "kitaab", "baat", "baray", "pagal", "insaan",
-        "hee", "urdu", "angrezi", "angerezi", "jawab", "baap", "pehle",
-        "choro", "chhoro", "karlo", "ghora", "ghoray", "masnoi", "zahanat",
+        "kuch",
+        "kuchh",
+        "sab",
+        "phir",
+        "phr",
+        "wapas",
+        "abhi",
+        "filhaal",
+        "yaar",
+        "bhai",
+        "behen",
+        "sahab",
+        "sahib",
+        "saheb",
+        "matlab",
+        "wala",
+        "wali",
+        "waisay",
+        "waise",
+        "thoda",
+        "zyada",
+        "ziada",
+        "bohat",
+        "bahut",
+        "buhat",
+        "yeh",
+        "woh",
+        "wohi",
+        "kyunki",
+        "magar",
+        "lekin",
+        "agar",
+        "warna",
+        "aur",
+        "naam",
+        "daftar",
+        "kitab",
+        "kitaab",
+        "baat",
+        "baray",
+        "pagal",
+        "insaan",
+        "hee",
+        "urdu",
+        "angrezi",
+        "angerezi",
+        "jawab",
+        "baap",
+        "pehle",
+        "choro",
+        "chhoro",
+        "karlo",
+        "ghora",
+        "ghoray",
+        "masnoi",
+        "zahanat",
         # Transliteration variants that leaked through (chat: "kia haal he kese ho?").
         # Roman Urdu has no fixed spelling, so common respellings must be covered.
-        "kese", "kesay", "kaisay", "kesa", "kesi", "kesy", "kese", "haal",
-        "hou", "houn", "kro", "krna", "krni", "kren", "krein", "krlo",
-        "kyunke", "kyunkay", "kripya", "shukriya", "shukria", "meharbani",
-        "thek", "thik", "kaha", "kahan", "kaisay", "batana", "samajh", "samjha",
-        "chahye", "chahiya", "hoga", "hogi", "hoge", "tha", "thi", "thay",
+        "kese",
+        "kesay",
+        "kaisay",
+        "kesa",
+        "kesi",
+        "kesy",
+        "haal",
+        "hou",
+        "houn",
+        "kro",
+        "krna",
+        "krni",
+        "kren",
+        "krein",
+        "krlo",
+        "kyunke",
+        "kyunkay",
+        "kripya",
+        "shukriya",
+        "shukria",
+        "meharbani",
+        "thek",
+        "thik",
+        "batana",
+        "samajh",
+        "samjha",
+        "chahye",
+        "chahiya",
+        "hoga",
+        "hogi",
+        "hoge",
+        "tha",
+        "thi",
+        "thay",
     }
 )
 
@@ -73,32 +232,132 @@ NON_ENGLISH_REDIRECTS = Counter(
 
 ENGLISH_HINTS = {
     # BookCraft service words
-    "a", "about", "and", "book", "cover", "editing", "for",
-    "ghostwriting", "hello", "help", "hi", "marketing", "my",
-    "need", "price", "pricing", "publish", "the", "want", "website", "writing",
+    "a",
+    "about",
+    "and",
+    "book",
+    "cover",
+    "editing",
+    "for",
+    "ghostwriting",
+    "hello",
+    "help",
+    "hi",
+    "marketing",
+    "my",
+    "need",
+    "price",
+    "pricing",
+    "publish",
+    "the",
+    "want",
+    "website",
+    "writing",
     # Common English function words that appear in short messages.
     # Prevents lingua from misclassifying short all-ASCII sentences like
     # "I'm in EST timezone." or "Yes please book it."
-    "i", "i'm", "i've", "i'll", "i'd", "in", "is", "it", "it's",
-    "am", "are", "at", "be", "been", "by", "can", "could",
-    "do", "does", "from", "get", "have", "how", "if",
-    "just", "like", "me", "more", "not", "of", "on", "or",
-    "out", "please", "so", "that", "this", "to", "up",
-    "was", "we", "what", "when", "will", "with", "would",
-    "yes", "you", "your",
+    "i",
+    "i'm",
+    "i've",
+    "i'll",
+    "i'd",
+    "in",
+    "is",
+    "it",
+    "it's",
+    "am",
+    "are",
+    "at",
+    "be",
+    "been",
+    "by",
+    "can",
+    "could",
+    "do",
+    "does",
+    "from",
+    "get",
+    "have",
+    "how",
+    "if",
+    "just",
+    "like",
+    "me",
+    "more",
+    "not",
+    "of",
+    "on",
+    "or",
+    "out",
+    "please",
+    "so",
+    "that",
+    "this",
+    "to",
+    "up",
+    "was",
+    "we",
+    "what",
+    "when",
+    "will",
+    "with",
+    "would",
+    "yes",
+    "you",
+    "your",
     # Common timezone/scheduling words to prevent misclassification
-    "timezone", "est", "cst", "pst", "gmt", "utc", "morning",
-    "afternoon", "evening", "friday", "monday", "tuesday", "wednesday",
-    "thursday", "saturday", "sunday",
+    "timezone",
+    "est",
+    "cst",
+    "pst",
+    "gmt",
+    "utc",
+    "morning",
+    "afternoon",
+    "evening",
+    "friday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "saturday",
+    "sunday",
     # Domain-specific single-word queries that Lingua misclassifies because
     # the word exists in multiple Romance languages ("Consultation" = French,
     # "Schedule" = common to several languages, etc.)
-    "consultation", "schedule", "scheduled", "scheduling",
-    "available", "appointment", "specialist", "formatting",
-    "sure", "okay", "ok", "thanks", "great", "perfect", "sounds",
-    "tomorrow", "today", "now", "later", "soon", "anytime", "flexible",
-    "correct", "exactly", "absolutely", "definitely", "certainly",
-    "no", "nope", "yep", "yeah", "alright", "right",
+    "consultation",
+    "schedule",
+    "scheduled",
+    "scheduling",
+    "available",
+    "appointment",
+    "specialist",
+    "formatting",
+    "sure",
+    "okay",
+    "ok",
+    "thanks",
+    "great",
+    "perfect",
+    "sounds",
+    "tomorrow",
+    "today",
+    "now",
+    "later",
+    "soon",
+    "anytime",
+    "flexible",
+    "correct",
+    "exactly",
+    "absolutely",
+    "definitely",
+    "certainly",
+    "no",
+    "nope",
+    "yep",
+    "yeah",
+    "alright",
+    "right",
 }
 
 
@@ -109,14 +368,75 @@ ENGLISH_HINTS = {
 # still gets the clean English-only redirect rather than being treated as "mixed".
 _ENGLISH_STRUCTURAL = frozenset(
     {
-        "i", "i'm", "i've", "i'll", "i'd", "me", "my", "we", "our", "you", "your",
-        "he", "she", "they", "it", "this", "that", "these", "those",
-        "can", "could", "would", "will", "should", "do", "does", "did", "is", "are",
-        "am", "be", "been", "was", "were", "have", "has", "had", "want", "need",
-        "help", "get", "make", "tell", "give", "know", "like", "looking",
-        "what", "how", "when", "where", "why", "who", "which",
-        "the", "a", "an", "to", "with", "for", "from", "of", "in", "on",
-        "and", "or", "if", "please", "about",
+        "i",
+        "i'm",
+        "i've",
+        "i'll",
+        "i'd",
+        "me",
+        "my",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "she",
+        "they",
+        "it",
+        "this",
+        "that",
+        "these",
+        "those",
+        "can",
+        "could",
+        "would",
+        "will",
+        "should",
+        "do",
+        "does",
+        "did",
+        "is",
+        "are",
+        "am",
+        "be",
+        "been",
+        "was",
+        "were",
+        "have",
+        "has",
+        "had",
+        "want",
+        "need",
+        "help",
+        "get",
+        "make",
+        "tell",
+        "give",
+        "know",
+        "like",
+        "looking",
+        "what",
+        "how",
+        "when",
+        "where",
+        "why",
+        "who",
+        "which",
+        "the",
+        "a",
+        "an",
+        "to",
+        "with",
+        "for",
+        "from",
+        "of",
+        "in",
+        "on",
+        "and",
+        "or",
+        "if",
+        "please",
+        "about",
     }
 )
 
@@ -127,27 +447,27 @@ _ENGLISH_STRUCTURAL = frozenset(
 # Unicode block FIRST, independent of lingua and independent of message length. Each
 # entry is (iso, low_codepoint, high_codepoint).
 _NON_LATIN_SCRIPT_RANGES = (
-    ("gu", 0x0A80, 0x0AFF),   # Gujarati
-    ("hi", 0x0900, 0x097F),   # Devanagari (Hindi/Marathi/Nepali)
-    ("bn", 0x0980, 0x09FF),   # Bengali/Assamese
-    ("pa", 0x0A00, 0x0A7F),   # Gurmukhi (Punjabi)
-    ("or", 0x0B00, 0x0B7F),   # Odia
-    ("ta", 0x0B80, 0x0BFF),   # Tamil
-    ("te", 0x0C00, 0x0C7F),   # Telugu
-    ("kn", 0x0C80, 0x0CFF),   # Kannada
-    ("ml", 0x0D00, 0x0D7F),   # Malayalam
-    ("si", 0x0D80, 0x0DFF),   # Sinhala
-    ("th", 0x0E00, 0x0E7F),   # Thai
-    ("ar", 0x0600, 0x06FF),   # Arabic
-    ("fa", 0x0750, 0x077F),   # Arabic Supplement (Persian/Urdu extras)
-    ("he", 0x0590, 0x05FF),   # Hebrew
-    ("ru", 0x0400, 0x04FF),   # Cyrillic
-    ("el", 0x0370, 0x03FF),   # Greek
-    ("hy", 0x0530, 0x058F),   # Armenian
-    ("ka", 0x10A0, 0x10FF),   # Georgian
-    ("ko", 0xAC00, 0xD7A3),   # Hangul syllables (Korean)
-    ("ja", 0x3040, 0x30FF),   # Hiragana + Katakana (Japanese)
-    ("zh", 0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    ("gu", 0x0A80, 0x0AFF),  # Gujarati
+    ("hi", 0x0900, 0x097F),  # Devanagari (Hindi/Marathi/Nepali)
+    ("bn", 0x0980, 0x09FF),  # Bengali/Assamese
+    ("pa", 0x0A00, 0x0A7F),  # Gurmukhi (Punjabi)
+    ("or", 0x0B00, 0x0B7F),  # Odia
+    ("ta", 0x0B80, 0x0BFF),  # Tamil
+    ("te", 0x0C00, 0x0C7F),  # Telugu
+    ("kn", 0x0C80, 0x0CFF),  # Kannada
+    ("ml", 0x0D00, 0x0D7F),  # Malayalam
+    ("si", 0x0D80, 0x0DFF),  # Sinhala
+    ("th", 0x0E00, 0x0E7F),  # Thai
+    ("ar", 0x0600, 0x06FF),  # Arabic
+    ("fa", 0x0750, 0x077F),  # Arabic Supplement (Persian/Urdu extras)
+    ("he", 0x0590, 0x05FF),  # Hebrew
+    ("ru", 0x0400, 0x04FF),  # Cyrillic
+    ("el", 0x0370, 0x03FF),  # Greek
+    ("hy", 0x0530, 0x058F),  # Armenian
+    ("ka", 0x10A0, 0x10FF),  # Georgian
+    ("ko", 0xAC00, 0xD7A3),  # Hangul syllables (Korean)
+    ("ja", 0x3040, 0x30FF),  # Hiragana + Katakana (Japanese)
+    ("zh", 0x4E00, 0x9FFF),  # CJK Unified Ideographs
 )
 
 
@@ -163,7 +483,7 @@ _NON_LATIN_SCRIPT_RANGES = (
 _LINGUA_DETECTOR = None
 
 
-def _get_lingua_detector():
+def _get_lingua_detector() -> LanguageDetector:
     global _LINGUA_DETECTOR
     if _LINGUA_DETECTOR is None:
         from lingua import LanguageDetectorBuilder

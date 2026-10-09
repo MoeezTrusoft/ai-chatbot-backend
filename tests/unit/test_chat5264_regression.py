@@ -13,19 +13,18 @@ Issue map:
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from bookcraft.components.context import ContextPackBuilder
-from bookcraft.components.context.schemas import ContextPack, KnownFact
-from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM
+from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM, _facts_to_deltas
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
-from bookcraft.components.extraction.llm_extractor import _facts_to_deltas
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.extraction.state_applier import StateApplier
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.response.generator import _response_system_prompt as _build_response_system_prompt
+from bookcraft.components.response.generator import (
+    _response_system_prompt as _build_response_system_prompt,
+)
 from bookcraft.components.response.quality_gate import ResponseQualityGate
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
@@ -37,6 +36,7 @@ gate = ResponseQualityGate()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _intent(query: QueryIntentType = QueryIntentType.SERVICE_QUESTION) -> IntentVote:
     return IntentVote(
@@ -66,6 +66,7 @@ def _evaluate(text: str, query: QueryIntentType = QueryIntentType.SERVICE_QUESTI
 # Issue 1 — "Very much human" and identity phrasing
 # ---------------------------------------------------------------------------
 
+
 class TestPersonaPhrasing:
     def test_system_prompt_forbids_very_much_human(self):
         """The system prompt must FORBID 'very much human' phrasing, not use it as output."""
@@ -74,8 +75,9 @@ class TestPersonaPhrasing:
         # The phrase appears ONLY inside a prohibition ("never", "do not", "avoid").
         idx = lowered.find("very much human")
         if idx != -1:
-            # Look in a wider window (80 chars) to catch "never describe yourself as ... 'very much human'"
-            surrounding = lowered[max(0, idx - 80): idx + 40]
+            # Look in a wider window (80 chars) to catch "never describe yourself as ... 'very much
+            # human'"
+            surrounding = lowered[max(0, idx - 80) : idx + 40]
             assert any(kw in surrounding for kw in ("never", "not", "avoid", "do not")), (
                 f"'very much human' appears outside a prohibition context: {surrounding!r}"
             )
@@ -92,7 +94,9 @@ class TestPersonaPhrasing:
 
     def test_identity_forbidden_phrases_documented_in_generator_source(self):
         import inspect
+
         from bookcraft.components.response import generator as gen
+
         src = inspect.getsource(gen)
         # The source must forbid "very much human" phrasing
         assert "very much human" in src
@@ -106,6 +110,7 @@ class TestPersonaPhrasing:
 # ---------------------------------------------------------------------------
 # Issue 2 — RAG document-body bleed detection (no asterisks)
 # ---------------------------------------------------------------------------
+
 
 class TestRagDocumentBodyBleed:
     """The specific RAG text from Chat 5264 must now fail the quality gate."""
@@ -138,7 +143,8 @@ class TestRagDocumentBodyBleed:
     def test_normal_pricing_prose_passes(self):
         """Legitimate pricing-related prose must not be flagged."""
         result = _evaluate(
-            "Pricing depends on scope and service — a free consultation gives you an accurate quote."
+            "Pricing depends on scope and service — a free consultation gives "
+            "you an accurate quote."
         )
         assert result.passed
 
@@ -158,6 +164,7 @@ class TestRagDocumentBodyBleed:
 # Issue 3 — Manuscript status: lore docs / chapter summary / partially outlined
 # ---------------------------------------------------------------------------
 
+
 class TestManuscriptStatusExtraction5264:
     """Phrases from Chat 5264 that previously failed to extract manuscript_status."""
 
@@ -168,7 +175,10 @@ class TestManuscriptStatusExtraction5264:
         assert "lore" in _EXTRACTION_SYSTEM.lower()
 
     def test_rule8_contains_chapter_summary(self):
-        assert "chapter summary" in _EXTRACTION_SYSTEM.lower() or "summary" in _EXTRACTION_SYSTEM.lower()
+        assert (
+            "chapter summary" in _EXTRACTION_SYSTEM.lower()
+            or "summary" in _EXTRACTION_SYSTEM.lower()
+        )
 
     def test_rule8_contains_just_ideas(self):
         assert "ideas" in _EXTRACTION_SYSTEM.lower()
@@ -224,6 +234,7 @@ class TestManuscriptStatusExtraction5264:
 # Issue 4 — Word count: hedged estimates and corrections
 # ---------------------------------------------------------------------------
 
+
 class TestWordCountExtraction5264:
     def test_rule10_present_in_extraction_prompt(self):
         assert "around 130,000" in _EXTRACTION_SYSTEM or "hedged" in _EXTRACTION_SYSTEM.lower()
@@ -243,17 +254,28 @@ class TestWordCountExtraction5264:
         applier = StateApplier()
         state = ThreadState()
         # Apply initial hedged value (confidence 0.3 fill-only)
-        state = applier.apply(state, CombinedExtraction(state_deltas=[
-            StateDelta(path="project.word_count", value=130000, confidence=0.3,
-                       source=Source.AI_EXTRACTED, extracted_by="test")
-        ]))
+        state = applier.apply(
+            state,
+            CombinedExtraction(
+                state_deltas=[
+                    StateDelta(
+                        path="project.word_count",
+                        value=130000,
+                        confidence=0.3,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="test",
+                    )
+                ]
+            ),
+        )
         assert state.project.word_count.value == 130000
         assert state.project.word_count.confidence == 0.3
 
         # Apply correction (confidence 0.90 → above 0.3 → overwrites)
         facts = LLMExtractedFacts(
-            word_count=ExtractedValue(value=100000, confidence=0.90,
-                                      source_quote="100,000 sounds more reasonable")
+            word_count=ExtractedValue(
+                value=100000, confidence=0.90, source_quote="100,000 sounds more reasonable"
+            )
         )
         deltas = _facts_to_deltas(facts)
         state = applier.apply(state, CombinedExtraction(state_deltas=deltas))
@@ -274,6 +296,7 @@ class TestWordCountExtraction5264:
 # ---------------------------------------------------------------------------
 # Issue 8 — Consultation CTA not re-asked after customer affirms interest
 # ---------------------------------------------------------------------------
+
 
 class TestConsultationCtaSuppression:
     def _pack_with_stage(self, stage: str) -> ContextPack:
@@ -328,10 +351,13 @@ class TestConsultationCtaSuppression:
 # Issue 9 — Preferred contact method extraction
 # ---------------------------------------------------------------------------
 
+
 class TestPreferredContactExtraction:
     def test_rule11_present_in_extraction_prompt(self):
         assert "preferred_contact_method" in _EXTRACTION_SYSTEM.lower()
-        assert "prefer email" in _EXTRACTION_SYSTEM.lower() or "prefer" in _EXTRACTION_SYSTEM.lower()
+        assert (
+            "prefer email" in _EXTRACTION_SYSTEM.lower() or "prefer" in _EXTRACTION_SYSTEM.lower()
+        )
 
     def test_email_preference_extracted(self):
         facts = LLMExtractedFacts(
@@ -369,6 +395,7 @@ class TestPreferredContactExtraction:
 # Customer-message burst model (replaces the old idle-debounce + sequential queue)
 # ---------------------------------------------------------------------------
 
+
 class TestBurstModel:
     """The realtime layer now consolidates a burst of rapid customer messages into
     ONE reply anchored to the first message, aborting+regenerating on each new
@@ -377,7 +404,7 @@ class TestBurstModel:
 
     def _socket_src(self):
         import os
-        import pytest
+
         for path in (
             "/var/www/server.trusoft.pk/src/config/socket.js",
             os.path.expanduser("~/server.trusoft.pk/src/config/socket.js"),
@@ -408,6 +435,7 @@ class TestBurstModel:
 # ---------------------------------------------------------------------------
 # Full integration: Solarian Chronicles scenario simulation
 # ---------------------------------------------------------------------------
+
 
 class TestSolarianChroniclesScenario:
     """High-level integration checks simulating Chat 5264 state progression."""

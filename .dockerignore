@@ -1,0 +1,17 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!README.md
+!alembic.ini
+!src/
+!src/**
+!migrations/
+!migrations/**
+!data/
+!data/**
+!docs/
+!docs/**
+**/__pycache__/
+data/generated/
+data/rag-corpus/build/

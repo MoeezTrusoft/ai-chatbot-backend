@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
     elasticsearch_user: str | None = None
     elasticsearch_password: str | None = None
     elasticsearch_index_prefix: str = "bookcraft_"
+    rag_vector_search_mode: Literal["exact", "knn"] = "exact"
+    rag_knn_num_candidates: int = Field(default=100, ge=1, le=10000)
+    llm_price_per_million_tokens: dict[str, dict[str, float]] = {}
 
     tei_url: str = "http://localhost:8080"
     tei_timeout_seconds: float = 10.0
@@ -59,10 +63,11 @@ class Settings(BaseSettings):
     deepseek_intent_enabled: bool = False
     llm_provider_mode: Literal["mock", "live"] = "mock"
     llm_request_timeout_seconds: float = 60.0  # raised: let LLM take its time; no timeout fallback
-    llm_bounded_timeouts_enabled: bool = False
-    llm_read_timeout_generation_seconds: float = 20.0
-    llm_read_timeout_extraction_seconds: float = 8.0
-    prompt_cache_enabled: bool = False
+    llm_bounded_timeouts_enabled: bool = True
+    chat_turn_timeout_seconds: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+    llm_read_timeout_generation_seconds: float = Field(default=20.0, gt=0, allow_inf_nan=False)
+    llm_read_timeout_extraction_seconds: float = Field(default=8.0, gt=0, allow_inf_nan=False)
+    prompt_cache_enabled: bool = True
     event_log_batching_enabled: bool = False
     trg_background_persist_enabled: bool = False
     llm_extraction_overlap_enabled: bool = False
@@ -99,6 +104,7 @@ class Settings(BaseSettings):
     # appointment always appears on the CSR dashboard regardless of action-event sync.
     # Both services run on the same server → use localhost + CSR Node port (5050).
     csr_node_api_url: str = "http://localhost:5050"
+    csr_node_api_token: str | None = None
     csr_node_consultation_timeout_seconds: float = 10.0
 
     nda_mode: Literal["manual", "verifier_gated", "autonomous"] = "manual"
@@ -199,6 +205,8 @@ class Settings(BaseSettings):
 
     api_auth_mode: Literal["off", "jwt"] = "off"
     jwt_signing_key: str | None = None
+    jwt_issuer: str | None = None
+    jwt_audience: str | None = None
     jwt_ttl_hours: int = 24
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     rate_limit_per_ip_per_minute: int = 30

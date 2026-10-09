@@ -1,10 +1,12 @@
 """Tests for shared chat schemas — circular import fix."""
+
 from __future__ import annotations
 
 from uuid import uuid4
 
+from bookcraft.api.chat import ChatTurnRequest as ApiRequest
+from bookcraft.api.chat import ChatTurnResponse as ApiResponse
 from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
-from bookcraft.api.chat import ChatTurnRequest as ApiRequest, ChatTurnResponse as ApiResponse
 
 
 class TestChatSchemasShared:
@@ -59,6 +61,7 @@ class TestChatSchemasShared:
         """A turn with neither text nor attachment must raise."""
         import pytest
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             ChatTurnRequest()  # type: ignore[call-arg]
 
@@ -66,6 +69,7 @@ class TestChatSchemasShared:
         """An empty message and no attachment is not a valid turn."""
         import pytest
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             ChatTurnRequest(message="")
         with pytest.raises(ValidationError):

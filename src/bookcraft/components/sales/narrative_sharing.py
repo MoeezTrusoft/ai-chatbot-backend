@@ -110,17 +110,13 @@ class NarrativeSharingDetector:
         if has_cue or has_narration:
             confidence = 0.9 if (has_cue and has_narration) else 0.75
             audit.append(f"narrative_cue:cue={has_cue}:narration={has_narration}")
-            return NarrativeSharingResult(
-                is_narrative=True, confidence=confidence, audit=audit
-            )
+            return NarrativeSharingResult(is_narrative=True, confidence=confidence, audit=audit)
 
         # Softer path: a substantial declarative statement with no transactional
         # ask reads as the author elaborating on their project.
         if word_count >= _MIN_DECLARATIVE_WORDS:
             audit.append(f"declarative_elaboration:{word_count}")
-            return NarrativeSharingResult(
-                is_narrative=True, confidence=0.6, audit=audit
-            )
+            return NarrativeSharingResult(is_narrative=True, confidence=0.6, audit=audit)
 
         audit.append("no_narrative_signal")
         return NarrativeSharingResult(audit=audit)

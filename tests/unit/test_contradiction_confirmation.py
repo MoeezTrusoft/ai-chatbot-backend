@@ -1,4 +1,5 @@
 """Tests for contradiction-confirmation flow in ResponsePlanner."""
+
 from __future__ import annotations
 
 from bookcraft.components.context.schemas import ContextPack

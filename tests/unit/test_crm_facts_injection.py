@@ -24,10 +24,10 @@ from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _field(value, *, confidence: float = 0.92):
     return FieldMeta(value=value, confidence=confidence, source=Source.AI_EXTRACTED)
@@ -55,13 +55,15 @@ def _apply_facts(state: ThreadState, *, name=None, email=None, phone=None) -> Th
         ("personal.phone", phone),
     ]:
         if value and isinstance(value, str) and value.strip():
-            deltas.append(StateDelta(
-                path=path,
-                value=value.strip(),
-                confidence=0.98,
-                source=Source.AI_EXTRACTED,
-                extracted_by="crm_sync.signup_form",
-            ))
+            deltas.append(
+                StateDelta(
+                    path=path,
+                    value=value.strip(),
+                    confidence=0.98,
+                    source=Source.AI_EXTRACTED,
+                    extracted_by="crm_sync.signup_form",
+                )
+            )
     if deltas:
         state = applier.apply(state, CombinedExtraction(state_deltas=deltas))
     return state
@@ -71,9 +73,11 @@ def _apply_facts(state: ThreadState, *, name=None, email=None, phone=None) -> Th
 # Schema validation
 # ---------------------------------------------------------------------------
 
+
 class TestChatFactsRequestSchema:
     def test_requires_thread_id(self):
         import pydantic
+
         with pytest.raises((ValueError, pydantic.ValidationError)):
             ChatFactsRequest(thread_id=None, name="Alice")  # type: ignore[arg-type]
 
@@ -112,6 +116,7 @@ class TestChatFactsRequestSchema:
 # ---------------------------------------------------------------------------
 # Confidence gating: fill-only and overwrite logic
 # ---------------------------------------------------------------------------
+
 
 class TestConfidenceGating:
     """Verify that the 0.98 confidence correctly fills empty fields and overwrites
@@ -172,6 +177,7 @@ class TestConfidenceGating:
 # ---------------------------------------------------------------------------
 # pack_builder: injected facts surface in known_facts and forbidden_reasks
 # ---------------------------------------------------------------------------
+
 
 class TestPackBuilderAfterInjection:
     """After injecting CRM facts, the context pack must include them in known_facts
@@ -234,6 +240,7 @@ class TestPackBuilderAfterInjection:
 # Bridge URL constant is defined
 # ---------------------------------------------------------------------------
 
+
 def _bridge_source() -> str:
     """Source of the Node bridge that calls /chat/facts, or skip if not checked out.
 
@@ -282,9 +289,7 @@ class TestBridgeNeverInjectsOnBlurCapture:
         body = src[start : start + 2500]
         # Strip line comments — the handler documents *why* the sync was removed, so a
         # bare substring search would match the explanation rather than a real call.
-        code = "\n".join(
-            line for line in body.splitlines() if not line.lstrip().startswith("//")
-        )
+        code = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith("//"))
         assert "_syncCustomerFactsToBot(" not in code, (
             "on-blur handler must never push passively-captured contact data to the bot"
         )

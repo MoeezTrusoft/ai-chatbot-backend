@@ -7,6 +7,7 @@ Bug (chat 5767): the customer answered the title prompt with
 the wrong name downstream. These tests lock the deterministic guard in
 ``_facts_to_deltas`` (testable without a live LLM) plus the title cleanup.
 """
+
 from __future__ import annotations
 
 from bookcraft.components.extraction.llm_extractor import (
@@ -19,9 +20,12 @@ from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtra
 
 class TestNameIsBookAuthorship:
     def test_written_by_quote_is_authorship(self) -> None:
-        assert _name_is_book_authorship(
-            "Thomas Ray", "the past & the future written by Thomas ray", None
-        ) is True
+        assert (
+            _name_is_book_authorship(
+                "Thomas Ray", "the past & the future written by Thomas ray", None
+            )
+            is True
+        )
 
     def test_bare_by_name_quote_is_authorship(self) -> None:
         assert _name_is_book_authorship("Thomas Ray", "a memoir by Thomas Ray", None) is True
@@ -30,9 +34,12 @@ class TestNameIsBookAuthorship:
         assert _name_is_book_authorship("Jane Doe", "authored by Jane Doe", None) is True
 
     def test_name_inside_book_title_is_authorship(self) -> None:
-        assert _name_is_book_authorship(
-            "Thomas Ray", None, "The Past & The Future written by Thomas Ray"
-        ) is True
+        assert (
+            _name_is_book_authorship(
+                "Thomas Ray", None, "The Past & The Future written by Thomas Ray"
+            )
+            is True
+        )
 
     def test_genuine_self_identification_is_not_authorship(self) -> None:
         assert _name_is_book_authorship("Gina", "my name is Gina", None) is False
@@ -81,11 +88,13 @@ class TestFactsToDeltasGuard:
     def test_author_name_dropped_and_title_cleaned(self) -> None:
         facts = LLMExtractedFacts(
             name=ExtractedValue(
-                value="Thomas Ray", confidence=0.92,
+                value="Thomas Ray",
+                confidence=0.92,
                 source_quote="the past & the future written by Thomas ray",
             ),
             book_title=ExtractedValue(
-                value="The Past & The Future written by Thomas Ray", confidence=0.92,
+                value="The Past & The Future written by Thomas Ray",
+                confidence=0.92,
                 source_quote="the past & the future written by Thomas ray",
             ),
         )
@@ -108,7 +117,8 @@ class TestFactsToDeltasGuard:
         facts = LLMExtractedFacts(
             name=ExtractedValue(value="Thomas Ray", confidence=0.92, source_quote="Thomas Ray"),
             book_title=ExtractedValue(
-                value="The Past & The Future written by Thomas Ray", confidence=0.92,
+                value="The Past & The Future written by Thomas Ray",
+                confidence=0.92,
             ),
         )
         deltas = _facts_to_deltas(facts)

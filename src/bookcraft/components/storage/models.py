@@ -193,6 +193,7 @@ class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_subject: str | None = Field(default=None, max_length=255, index=True)
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
     sales_stage: SalesStage = Field(
         default=SalesStage.NEW,
@@ -331,7 +332,21 @@ class SalesActionRecord(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None)
     expires_at: datetime | None = Field(default=None)
     result_summary: str | None = Field(default=None, max_length=512)
+    result_payload: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     error_code: str | None = Field(default=None, max_length=64)
+
+
+class DeliveryOutboxRecord(SQLModel, table=True):
+    __tablename__ = "delivery_outbox"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    aggregate_id: UUID = Field(index=True)
+    topic: str = Field(max_length=64)
+    payload: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    attempts: int = 0
+    available_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    last_error: str | None = Field(default=None, max_length=64)
 
 
 class GraphEdgeRecord(SQLModel, table=True):

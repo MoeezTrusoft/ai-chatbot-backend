@@ -36,13 +36,14 @@ from bookcraft.components.context.project_manager import (
     ProjectContextSnapshot,
 )
 from bookcraft.components.context.slot_tracker import SlotTracker
+from bookcraft.components.csr.commitment_detector import detect_commitments
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.intent import EnsembleIntentClassifier
 from bookcraft.components.intent.context_arbiter import ContextArbiter
 from bookcraft.components.intent.flexible_router import FlexibleIntentDecision, FlexibleIntentRouter
-from bookcraft.components.intent.hardening import harden_intent_from_message
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.leads import (
@@ -51,9 +52,6 @@ from bookcraft.components.leads import (
     LeadObjectiveEngine,
 )
 from bookcraft.components.leads.contact_availability import ContactAvailabilityDetector
-from bookcraft.components.sales.consultation_preferences import (
-    ConsultationPreferenceDetector,
-)
 from bookcraft.components.leads.contact_recovery import (
     user_claims_already_shared,
     user_has_complaint_or_privacy_concern,
@@ -93,6 +91,9 @@ from bookcraft.components.sales import (
     CurrentQuestionPriorityDetector,
     NarrativeSharingDetector,
 )
+from bookcraft.components.sales.consultation_preferences import (
+    ConsultationPreferenceDetector,
+)
 from bookcraft.components.sales.consultation_state import (
     ConsultationStage,
     ConsultationStateDecision,
@@ -107,11 +108,8 @@ from bookcraft.components.storage.events import calculate_event_hash
 from bookcraft.components.storage.thread_repository import (
     LoadedThread,
     ThreadRepository,
-    ThreadVersionConflictError,
 )
 from bookcraft.components.tools.governance import ToolGovernanceGate
-from bookcraft.components.csr.commitment_detector import detect_commitments
-from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trg.checkpointer import ConversationCheckpointer
 from bookcraft.components.trg.fact_store import TRGFactStore
@@ -139,6 +137,12 @@ from bookcraft.infra.trace_sanitizer import (
     safe_lead_intake,
     sanitize_event_payload,
 )
+from bookcraft.services.turn.execution import (
+    register_event_flush,
+    serialized_mutation,
+    spawn_turn_task,
+)
+from bookcraft.services.turn.intent_stage import classify_and_audit
 from bookcraft.tools import ToolContext, ToolDispatcher
 
 if TYPE_CHECKING:
@@ -159,24 +163,28 @@ _IMMEDIATE_EVENT_TYPES: frozenset[str] = frozenset({"user.message"})
 # Contact facts pushed in from the CRM are only usable when the customer DELIBERATELY
 # submitted them (a signup form, a consultation booking, or a profile built from one),
 # or when a CSR keyed them in. Those are the labels below.
-EXTERNAL_VERIFIED_SOURCE_LABELS: frozenset[str] = frozenset({
-    "signup_form",        # visitor submitted the landing-page signup form
-    "consultation_form",  # visitor submitted the consultation booking form
-    "crm_session_sync",   # profile hydrated at session start from a past submission
-    "crm_sync",           # legacy default label — kept so older callers keep working
-    "csr_entered",        # a CSR typed it into the dashboard
-})
+EXTERNAL_VERIFIED_SOURCE_LABELS: frozenset[str] = frozenset(
+    {
+        "signup_form",  # visitor submitted the landing-page signup form
+        "consultation_form",  # visitor submitted the consultation booking form
+        "crm_session_sync",  # profile hydrated at session start from a past submission
+        "crm_sync",  # legacy default label — kept so older callers keep working
+        "csr_entered",  # a CSR typed it into the dashboard
+    }
+)
 
 # Passive capture: keystrokes harvested by on-blur handlers as the visitor tabs
 # between form fields WITHOUT ever submitting. The visitor never consented to hand
 # this to the bot, so it must never reach thread state. Named explicitly (rather than
 # just relying on the fail-closed default) so the rejection is self-documenting and
 # shows up in logs with an accurate reason.
-EXTERNAL_PASSIVE_SOURCE_LABELS: frozenset[str] = frozenset({
-    "onblur_capture",
-    "partial_form",
-    "keystroke_capture",
-})
+EXTERNAL_PASSIVE_SOURCE_LABELS: frozenset[str] = frozenset(
+    {
+        "onblur_capture",
+        "partial_form",
+        "keystroke_capture",
+    }
+)
 
 # Deliberately below every chat-stated confidence (deterministic email 0.98, phone
 # 0.92, contact_capture_sync name 0.92) so a fact the customer states in THIS
@@ -217,6 +225,7 @@ class _EventBuffer:
         previous_hash: str | None,
     ) -> tuple[str, int, str]:
         from bookcraft.components.storage.events import calculate_event_hash
+
         event_hash = calculate_event_hash(
             thread_id=thread_id,
             sequence=sequence + 1,
@@ -224,13 +233,15 @@ class _EventBuffer:
             payload=payload,
             previous_hash=previous_hash,
         )
-        self.events.append({
-            "sequence": sequence + 1,
-            "event_type": event_type,
-            "payload": payload,
-            "previous_hash": previous_hash,
-            "event_hash": event_hash,
-        })
+        self.events.append(
+            {
+                "sequence": sequence + 1,
+                "event_type": event_type,
+                "payload": payload,
+                "previous_hash": previous_hash,
+                "event_hash": event_hash,
+            }
+        )
         return event_hash, sequence + 1, event_hash
 
 
@@ -242,6 +253,8 @@ class ThreadMemory:
 
 @dataclass(slots=True)
 class ChatService:
+    turn_timeout_seconds: float = field(default=60.0, kw_only=True)
+    thread_owners: dict[UUID, str] = field(default_factory=dict, init=False)
     language_guard: LanguageGuard
     preprocessor: SharedPreprocessor
     intent_classifier: EnsembleIntentClassifier
@@ -338,6 +351,7 @@ class ChatService:
     trg_background_persist_enabled: bool = False
     llm_extraction_overlap_enabled: bool = False
     trimatch_event_evidence_summary: bool = False
+
     @staticmethod
     def _token_superseded(token: int | None, persisted_latest: int | None) -> bool:
         """True if `token` is below the thread's persisted latest turn token — i.e.
@@ -350,6 +364,7 @@ class ChatService:
             return False
         return token < (persisted_latest or 0)
 
+    @serialized_mutation
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
@@ -362,7 +377,11 @@ class ChatService:
                 a.filename for a in payload.attachments if getattr(a, "filename", None)
             )
             payload = payload.model_copy(
-                update={"message": f"Attachment received: {_att_names}" if _att_names else "Attachment received"}
+                update={
+                    "message": f"Attachment received: {_att_names}"
+                    if _att_names
+                    else "Attachment received"
+                }
             )
 
         CHAT_TURNS_TOTAL.inc()
@@ -395,7 +414,22 @@ class ChatService:
             )
             if _landing_service is not None and _active_service_from_state(state) is None:
                 _append_service_focus(state, _landing_service)
-            _evt_buf: _EventBuffer | None = _EventBuffer() if self.event_log_batching_enabled and self.thread_repository is not None else None
+            _evt_buf: _EventBuffer | None = (
+                _EventBuffer()
+                if self.event_log_batching_enabled and self.thread_repository is not None
+                else None
+            )
+            if _evt_buf is not None:
+
+                async def flush_events() -> None:
+                    assert _evt_buf is not None and self.thread_repository is not None
+                    if _evt_buf.events:
+                        await self.thread_repository.append_events_batch(
+                            thread_id=thread_id, events=_evt_buf.events
+                        )
+                        _evt_buf.events.clear()
+
+                register_event_flush(flush_events)
             _preloaded_trg_graph: TemporalRelationGraph | None = None
 
             # PR 4: run input safety guard before any processing.
@@ -499,15 +533,13 @@ class ChatService:
                 # (which otherwise never saves state) so the next short follow-up
                 # inherits it via cached_language above.
                 if self.thread_repository is not None:
-                    try:
-                        await self.thread_repository.save_state(
-                            thread_id=thread_id,
-                            state=state,
-                            expected_version=thread.version,
-                            language=language.language,
-                        )
-                    except Exception:  # noqa: BLE001 - best-effort; a conflict just skips stickiness
-                        pass
+                    await self.thread_repository.save_state(
+                        thread_id=thread_id,
+                        state=state,
+                        expected_version=thread.version,
+                        language=language.language,
+                        pending_events=_evt_buf.events if _evt_buf else None,
+                    )
                 elif thread_id in self.threads:
                     self.threads[thread_id].state = state
                 self._record_live_trace(
@@ -545,176 +577,25 @@ class ChatService:
             state.msgs_since_language_redirect = _since_redirect
 
             processed = await self.preprocessor.process(payload.message, language=language.language)
-            trimatch_result = None
-            trimatch_shadow_result = None
-            if self.trimatch_engine is not None:
-                trimatch_result = self.trimatch_engine.classify(processed)
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trimatch.voted",
-                    payload=_summarize_trimatch_payload(trimatch_result) if self.trimatch_event_evidence_summary else trimatch_result.model_dump(mode="json"),
-                    _buf=_evt_buf,
-                )
-                event_ids.append(event_id)
-
-            if self.trimatch_shadow_engine is not None:
-                try:
-                    trimatch_shadow_result = self.trimatch_shadow_engine.classify(processed)
-                    if self.trimatch_extra_mode == "shadow":
-                        (
-                            event_id,
-                            event_sequence,
-                            previous_event_hash,
-                        ) = await self._append_thread_event(
-                            thread_id=thread_id,
-                            sequence=event_sequence,
-                            previous_hash=previous_event_hash,
-                            event_type="trimatch.extra_shadow_voted",
-                            payload=_summarize_trimatch_payload(trimatch_shadow_result) if self.trimatch_event_evidence_summary else trimatch_shadow_result.model_dump(mode="json"),
-                            _buf=_evt_buf,
-                        )
-                        event_ids.append(event_id)
-                except Exception as exc:
-                    if self.trimatch_extra_mode == "advisory":
-                        failure_event_type = "trimatch.extra_advisory_failed"
-                    elif self.trimatch_extra_mode == "tiebreaker_candidate":
-                        failure_event_type = "trimatch.extra_tiebreaker_failed"
-                    elif self.trimatch_extra_mode == "shortcut_candidate":
-                        failure_event_type = "trimatch.extra_shortcut_failed"
-                    else:
-                        failure_event_type = "trimatch.extra_shadow_failed"
-                    structlog.get_logger(__name__).warning(
-                        failure_event_type,
-                        thread_id=str(thread_id),
-                        exception_class=exc.__class__.__name__,
-                    )
-                    event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                        thread_id=thread_id,
-                        sequence=event_sequence,
-                        previous_hash=previous_event_hash,
-                        event_type=failure_event_type,
-                        payload={"exception_class": exc.__class__.__name__},
-                        _buf=_evt_buf,
-                    )
-                    event_ids.append(event_id)
-
-            with STAGE_LATENCY.labels(stage="intent_classification").time():
-                intent = await self.intent_classifier.classify(
-                    processed,
-                    state,
-                    trimatch_result=trimatch_result,
-                )
-            ensemble_intent = intent
-            intent = harden_intent_from_message(intent, processed)
-            arbiter_result = self.context_arbiter.arbitrate(
-                intent=intent,
+            (
+                trimatch_result,
+                trimatch_shadow_result,
+                intent,
+                ensemble_intent,
+                arbiter_result,
+                decision,
+                event_sequence,
+                previous_event_hash,
+            ) = await classify_and_audit(
+                self,
                 processed=processed,
                 state=state,
-            )
-            intent = arbiter_result.intent
-            decision = self.intent_classifier.last_decision
-
-            if self.trimatch_extra_mode == "advisory" and trimatch_shadow_result is not None:
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trimatch.extra_advisory_recommended",
-                    payload=_trimatch_advisory_payload(
-                        extra_advisory=trimatch_shadow_result,
-                        final_intent=intent,
-                    ),
-                    _buf=_evt_buf,
-                )
-                event_ids.append(event_id)
-
-            if (
-                self.trimatch_extra_mode == "tiebreaker_candidate"
-                and trimatch_shadow_result is not None
-            ):
-                tiebreaker_payload = _trimatch_tiebreaker_considered_payload(
-                    active_trimatch=trimatch_result,
-                    extra_tiebreaker=trimatch_shadow_result,
-                    ensemble_intent=ensemble_intent,
-                    final_intent=intent,
-                )
-                intent = _apply_tiebreaker_to_intent(
-                    intent=intent,
-                    decision=tiebreaker_payload["decision"],
-                )
-                tiebreaker_payload["after"] = {
-                    "final_after_tiebreaker": _intent_snapshot(intent),
-                }
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trimatch.extra_tiebreaker_considered",
-                    payload=tiebreaker_payload,
-                    _buf=_evt_buf,
-                )
-                event_ids.append(event_id)
-
-            if (
-                self.trimatch_extra_mode == "shortcut_candidate"
-                and trimatch_shadow_result is not None
-            ):
-                shortcut_payload = _trimatch_shortcut_considered_payload(
-                    extra_shortcut=trimatch_shadow_result,
-                    final_intent=intent,
-                )
-                intent = _apply_shortcut_to_intent(
-                    intent=intent,
-                    shortcut=shortcut_payload["shortcut"],
-                )
-                shortcut_payload["after"] = {
-                    "final_after_shortcut": _intent_snapshot(intent),
-                }
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trimatch.extra_shortcut_considered",
-                    payload=shortcut_payload,
-                    _buf=_evt_buf,
-                )
-                event_ids.append(event_id)
-
-            extra_shadow_for_disagreement = (
-                trimatch_shadow_result if self.trimatch_extra_mode == "shadow" else None
-            )
-
-            disagreement_payload = _trimatch_disagreement_payload(
-                active_trimatch=trimatch_result,
-                extra_shadow=extra_shadow_for_disagreement,
-                ensemble_intent=ensemble_intent,
-                final_intent=intent,
-            )
-            if disagreement_payload["should_log"]:
-                event_id, event_sequence, previous_event_hash = await self._append_thread_event(
-                    thread_id=thread_id,
-                    sequence=event_sequence,
-                    previous_hash=previous_event_hash,
-                    event_type="trimatch.disagreement_observed",
-                    payload=disagreement_payload,
-                    _buf=_evt_buf,
-                )
-                event_ids.append(event_id)
-
-            event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
-                sequence=event_sequence,
-                previous_hash=previous_event_hash,
-                event_type="intent.classified",
-                payload={
-                    "intent": intent.model_dump(mode="json"),
-                    "decision": decision.model_dump(mode="json") if decision else None,
-                },
-                _buf=_evt_buf,
+                event_sequence=event_sequence,
+                previous_event_hash=previous_event_hash,
+                event_ids=event_ids,
+                _evt_buf=_evt_buf,
             )
-            event_ids.append(event_id)
             # Phase 13: attachment intake.
             _raw_attachments = list(getattr(payload, "attachments", None) or [])
             _attachment_parse_error: str | None = None
@@ -750,10 +631,10 @@ class ChatService:
             # current response already benefits from richer facts (book title, cover preferences,
             # section structure, page dimensions, etc.) that regex cannot capture.
             _llm_extraction_delta_count = 0
-            _llm_extraction_task: asyncio.Task | None = None
+            _llm_extraction_task: asyncio.Task[Any] | None = None
             _llm_active_svc = getattr(_active_service_from_state(state), "value", None)
             if self.llm_metadata_extractor is not None and self.llm_extraction_overlap_enabled:
-                _llm_extraction_task = asyncio.create_task(
+                _llm_extraction_task = spawn_turn_task(
                     self.llm_metadata_extractor.extract(
                         user_text=payload.message,
                         assistant_text=state.last_assistant_text or "",
@@ -771,9 +652,7 @@ class ChatService:
                     )
                     if _llm_result.state_deltas:
                         _llm_extraction_delta_count = len(_llm_result.state_deltas)
-                        _llm_combined = CombinedExtraction(
-                            state_deltas=_llm_result.state_deltas
-                        )
+                        _llm_combined = CombinedExtraction(state_deltas=_llm_result.state_deltas)
                         state = self.state_applier.apply(
                             state, _llm_combined, rejected_paths=_rejected_delta_paths
                         )
@@ -971,9 +850,7 @@ class ChatService:
             )
             # Narrative-sharing: is the author telling their story rather than asking
             # to transact? Feeds the planner's listening-mode goal (chat 6688).
-            narrative_sharing_decision = self.narrative_sharing_detector.detect(
-                payload.message
-            )
+            narrative_sharing_decision = self.narrative_sharing_detector.detect(payload.message)
             # Contact availability: did the customer say a channel is unavailable
             # ("my phone is unable to be used, email only" — chat 6759)? Persist a
             # sticky per-field status so the bot stops re-asking a channel it can't
@@ -1072,9 +949,7 @@ class ChatService:
             # Batch 4: structured complaint classification.
             complaint_classification = self.complaint_classifier.classify(payload.message)
             # Persona: evaluate identity question and persist name to state.
-            persona_decision = self.persona.evaluate(
-                message=payload.message, state=state
-            )
+            persona_decision = self.persona.evaluate(message=payload.message, state=state)
             # Persist chosen name into state so it survives across turns.
             if persona_decision.representative_name and not state.representative_name:
                 state.representative_name = persona_decision.representative_name
@@ -1315,7 +1190,9 @@ class ChatService:
                     if _llm_result.state_deltas:
                         _llm_extraction_delta_count = len(_llm_result.state_deltas)
                         _llm_combined = CombinedExtraction(state_deltas=_llm_result.state_deltas)
-                        state = self.state_applier.apply(state, _llm_combined, rejected_paths=_rejected_delta_paths)
+                        state = self.state_applier.apply(
+                            state, _llm_combined, rejected_paths=_rejected_delta_paths
+                        )
                         extraction.state_deltas.extend(_llm_result.state_deltas)
                     if _llm_result.rich_metadata:
                         if "book_specs" not in state.service_metadata:
@@ -1340,7 +1217,11 @@ class ChatService:
                         for _rk, _rv in _llm_result.rich_metadata.items():
                             try:
                                 await self.entity_index.upsert_free_text_fact(
-                                    thread_id=thread_id, key=_rk, value=_rv, confidence=0.9, turn_index=event_sequence,
+                                    thread_id=thread_id,
+                                    key=_rk,
+                                    value=_rv,
+                                    confidence=0.9,
+                                    turn_index=event_sequence,
                                 )
                             except Exception:
                                 ENTITY_INDEX_FAILURES.labels(kind="free_text_fact").inc()
@@ -1395,7 +1276,9 @@ class ChatService:
                 )
             response_hint = context_pack.response_hint or trg_response_hint
             if _entity_hint:
-                response_hint = f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
+                response_hint = (
+                    f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
+                )
 
             # CSR context injection: if a CSR conversation has been ingested, give the bot
             # the abstract + recent verbatim turns + commitment list as read-only context.
@@ -1566,9 +1449,12 @@ class ChatService:
                     update={"normalized": rag_query.query_text}
                 )
                 try:
-                    _questions = [
-                        str(item) for item in (processed.deterministic_atoms.get("questions") or [])
-                    ]
+                    question_values = processed.deterministic_atoms.get("questions")
+                    _questions = (
+                        [str(item) for item in question_values]
+                        if isinstance(question_values, list)
+                        else []
+                    )
                     if len(_questions) >= 2:
                         # One 400-char query cannot represent a dozen distinct questions:
                         # the truncation alone drops most of them, so the model was asked
@@ -1622,7 +1508,7 @@ class ChatService:
             # back to the single prior pair for old threads that predate the ring.
             _recent_turns: list[tuple[str, str]] | None = None
             if state.recent_turns:
-                _recent_turns = [tuple(pair) for pair in state.recent_turns[-5:]]
+                _recent_turns = [(pair[0], pair[1]) for pair in state.recent_turns[-5:]]
             elif state.last_user_message and state.last_assistant_text:
                 _recent_turns = [(state.last_user_message, state.last_assistant_text)]
             with STAGE_LATENCY.labels(stage="response_generation").time():
@@ -1640,7 +1526,9 @@ class ChatService:
                         "reply in the other language."
                     )
                     response_hint = (
-                        f"{response_hint}\n{_mixed_directive}" if response_hint else _mixed_directive
+                        f"{response_hint}\n{_mixed_directive}"
+                        if response_hint
+                        else _mixed_directive
                     )
 
                 # Consultation button: when a "Book a consultation" button will be shown
@@ -1825,6 +1713,7 @@ class ChatService:
                 and not _is_proof_copy_request(payload.message)
             )
             from bookcraft.components.portfolio.schemas import PortfolioStatus as _PortfolioStatus
+
             _portfolio_found = (
                 portfolio_response is not None
                 and portfolio_response.status == _PortfolioStatus.FOUND
@@ -1836,16 +1725,18 @@ class ChatService:
             trg_context_for_trace: TRGContext | None = trg_context
             if self.trg_background_persist_enabled:
                 trg_context_for_trace = None
-                asyncio.create_task(self._bg_trg_update_and_persist(
-                    thread_id=thread_id,
-                    turn_sequence=event_sequence + 1,
-                    user_text=payload.message,
-                    assistant_text=final_text,
-                    previous_state=previous_state,
-                    state_deltas=list(extraction.state_deltas),
-                    arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
-                    preloaded_graph=_preloaded_trg_graph,
-                ))
+                spawn_turn_task(
+                    self._bg_trg_update_and_persist(
+                        thread_id=thread_id,
+                        turn_sequence=event_sequence + 1,
+                        user_text=payload.message,
+                        assistant_text=final_text,
+                        previous_state=previous_state,
+                        state_deltas=list(extraction.state_deltas),
+                        arbiter_signals=arbiter_result.corrections + arbiter_result.audit,
+                        preloaded_graph=_preloaded_trg_graph,
+                    )
+                )
             elif self.trg_engine is not None:
                 try:
                     with STAGE_LATENCY.labels(stage="trg_update").time():
@@ -1945,54 +1836,23 @@ class ChatService:
                 # superseded (lower-token) turn must not overwrite a newer turn.
                 if _turn_token is not None:
                     state.latest_turn_token = max(_loaded_latest_token, _turn_token)
-                _save_attempts = 0
-                while True:
-                    try:
-                        with STAGE_LATENCY.labels(stage="state_persist").time():
-                            await self.thread_repository.save_state(
-                                thread_id=thread_id,
-                                state=state,
-                                expected_version=thread.version,
-                                language=language.language,
-                            )
-                        break
-                    except ThreadVersionConflictError:
-                        _save_attempts += 1
-                        if _save_attempts >= 3:
-                            structlog.get_logger(__name__).warning(
-                                "thread_version_conflict_save_skipped",
-                                thread_id=str(thread_id),
-                                attempts=_save_attempts,
-                            )
-                            break
-                        # Reload to get the latest committed version + token.
-                        _fresh = await self.thread_repository.load_or_create(
-                            thread_id=thread_id, customer_id=None
-                        )
-                        # Hard superseded-turn guard: a newer turn already persisted a
-                        # higher token while we were generating — abandon this save so
-                        # the newer (concatenated-burst) turn owns the thread.
-                        if self._token_superseded(
-                            _turn_token, getattr(_fresh.state, "latest_turn_token", 0)
-                        ):
-                            structlog.get_logger(__name__).info(
-                                "turn_superseded_state_save_skipped",
-                                thread_id=str(thread_id),
-                                turn_token=_turn_token,
-                                latest_token=getattr(_fresh.state, "latest_turn_token", 0),
-                            )
-                            break
-                        thread = _fresh
-                        if _turn_token is not None:
-                            state.latest_turn_token = max(
-                                getattr(_fresh.state, "latest_turn_token", 0) or 0,
-                                _turn_token,
-                            )
+                with STAGE_LATENCY.labels(stage="state_persist").time():
+                    await self.thread_repository.save_state(
+                        thread_id=thread_id,
+                        state=state,
+                        expected_version=thread.version,
+                        language=language.language,
+                        pending_events=_evt_buf.events if _evt_buf else None,
+                    )
             else:
                 self.threads[thread_id].state = state
 
             # Persist TRG facts to PostgreSQL so cold-start reload works after Redis TTL.
-            if not self.trg_background_persist_enabled and self.trg_fact_store is not None and self.trg_engine is not None:
+            if (
+                not self.trg_background_persist_enabled
+                and self.trg_fact_store is not None
+                and self.trg_engine is not None
+            ):
                 try:
                     _pg_graph = await self.trg_engine.repository.load(thread_id)
                     if _pg_graph is not None and _pg_graph.semantic_facts:
@@ -2023,15 +1883,6 @@ class ChatService:
                         exception_class=_cp_exc.__class__.__name__,
                     )
 
-            if _evt_buf is not None and _evt_buf.events:
-                try:
-                    await self.thread_repository.append_events_batch(thread_id=thread_id, events=_evt_buf.events)
-                except Exception as _buf_exc:
-                    structlog.get_logger(__name__).warning(
-                        "event_buffer_flush_failed",
-                        thread_id=str(thread_id),
-                        exception_class=_buf_exc.__class__.__name__,
-                    )
             self._record_live_trace(
                 {
                     "thread_id": str(thread_id),
@@ -2212,9 +2063,8 @@ class ChatService:
             # point the author to the button rather than collect contact in chat).
             _show_form_event: list[dict[str, object]] = []
             _pg = response_plan.primary_goal if response_plan is not None else None
-            if (
-                _pg in _CONSULTATION_FORM_GOALS
-                and not any(e.get("type") == "show_consultation_form" for e in base_action_events)
+            if _pg in _CONSULTATION_FORM_GOALS and not any(
+                e.get("type") == "show_consultation_form" for e in base_action_events
             ):
                 _show_form_event = [{"type": "show_consultation_form"}]
 
@@ -2227,6 +2077,7 @@ class ChatService:
                 action_events=base_action_events + _show_form_event,
             )
 
+    @serialized_mutation
     async def handle_greet(self, payload: Any) -> Any:
         """Generate a personalised proactive first message when the chat widget opens.
 
@@ -2243,9 +2094,7 @@ class ChatService:
         # landing signal is lost after the greeting, and an ambiguous first message
         # (a genre/story description on the cover page) gets mis-classified as a
         # different service. An explicit service in a later message still overrides.
-        _landing_service = _service_from_landing(
-            payload.landing_page, payload.landing_keyword
-        )
+        _landing_service = _service_from_landing(payload.landing_page, payload.landing_keyword)
         if _landing_service is not None and _active_service_from_state(thread.state) is None:
             _append_service_focus(thread.state, _landing_service)
             if self.thread_repository is not None:
@@ -2299,6 +2148,7 @@ class ChatService:
             action_events=[],
         )
 
+    @serialized_mutation
     async def handle_csr_turn(self, payload: Any) -> None:
         """Ingest a CSR message for context — no bot response is generated.
 
@@ -2364,7 +2214,9 @@ class ChatService:
                 if _llm_result.state_deltas:
                     from bookcraft.components.extraction.schemas import CombinedExtraction as _CE
 
-                    state = self.state_applier.apply(state, _CE(state_deltas=_llm_result.state_deltas))
+                    state = self.state_applier.apply(
+                        state, _CE(state_deltas=_llm_result.state_deltas)
+                    )
                 self._apply_llm_service_metadata(state, _llm_result)
             except Exception as _exc:  # noqa: BLE001
                 structlog.get_logger(__name__).warning(
@@ -2386,7 +2238,7 @@ class ChatService:
         else:
             self.threads[thread.thread_id].state = state
 
-    async def get_thread_debug_state(self, thread_id: Any) -> dict:
+    async def get_thread_debug_state(self, thread_id: Any) -> dict[str, Any]:
         """Return a structured debug snapshot of a thread's current state.
 
         Used by the CSR dashboard to show the AI chatbot's extracted facts,
@@ -2415,7 +2267,7 @@ class ChatService:
             state = memory.state
             turn_count = 0
 
-        def _fv(field_obj: object) -> dict | None:
+        def _fv(field_obj: object) -> dict[str, Any] | None:
             val = getattr(field_obj, "value", None)
             if val is None:
                 return None
@@ -2509,6 +2361,7 @@ class ChatService:
 
         async def _retrieve_one(question: str) -> list[RetrievedChunk]:
             try:
+                assert self.rag_retriever is not None
                 return await self.rag_retriever.retrieve(
                     processed.model_copy(update={"normalized": question}),
                     intent,
@@ -2533,6 +2386,7 @@ class ChatService:
         merged = sorted(best_by_chunk.values(), key=lambda c: c.score, reverse=True)
         return merged[:_RAG_MULTI_QUESTION_MAX_CHUNKS]
 
+    @serialized_mutation
     async def handle_inject_facts(self, payload: Any) -> Any:
         """Inject externally-submitted facts (name/email/phone) into a thread's state.
 
@@ -2548,7 +2402,8 @@ class ChatService:
 
         Returns a ``ChatFactsResponse`` listing which fields were actually updated.
         """
-        from bookcraft.api.chat import ChatFactsRequest as _FR, ChatFactsResponse as _FResp
+        from bookcraft.api.chat import ChatFactsRequest as _FR
+        from bookcraft.api.chat import ChatFactsResponse as _FResp
         from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
         from bookcraft.domain.enums import Source
 
@@ -2580,19 +2435,21 @@ class ChatService:
         # ("actually it's Mike") must win over a months-old signup record.
         deltas: list[StateDelta] = []
         for state_path, value in [
-            ("personal.name",  payload.name),
+            ("personal.name", payload.name),
             ("personal.email", payload.email),
             ("personal.phone", payload.phone),
         ]:
             if value and isinstance(value, str) and value.strip():
-                deltas.append(StateDelta(
-                    path=state_path,
-                    value=value.strip(),
-                    confidence=EXTERNAL_FORM_CONFIDENCE,
-                    source=Source.EXTERNAL_FORM,
-                    extracted_by=f"external_form.{_label}",
-                    raw_excerpt=None,
-                ))
+                deltas.append(
+                    StateDelta(
+                        path=state_path,
+                        value=value.strip(),
+                        confidence=EXTERNAL_FORM_CONFIDENCE,
+                        source=Source.EXTERNAL_FORM,
+                        extracted_by=f"external_form.{_label}",
+                        raw_excerpt=None,
+                    )
+                )
 
         # Nothing to do — return immediately without touching the thread.
         if not deltas:
@@ -2606,10 +2463,12 @@ class ChatService:
                 # Always reload fresh — this gets the latest version and avoids conflict.
                 if self.thread_repository is not None:
                     _thread = await self.thread_repository.load_or_create(
-                        thread_id=payload.thread_id, customer_id=None,
+                        thread_id=payload.thread_id,
+                        customer_id=None,
                     )
                     _state = self.state_applier.apply(
-                        _thread.state, CombinedExtraction(state_deltas=deltas),
+                        _thread.state,
+                        CombinedExtraction(state_deltas=deltas),
                     )
                     await self.thread_repository.save_state(
                         thread_id=_thread.thread_id,
@@ -2620,7 +2479,8 @@ class ChatService:
                 else:
                     _mem = self.threads.setdefault(payload.thread_id, ThreadMemory())
                     _state = self.state_applier.apply(
-                        _mem.state, CombinedExtraction(state_deltas=deltas),
+                        _mem.state,
+                        CombinedExtraction(state_deltas=deltas),
                     )
                     self.threads[payload.thread_id].state = _state
 
@@ -2630,12 +2490,15 @@ class ChatService:
                     for d in deltas
                     if getattr(
                         getattr(_state, d.path.split(".")[0], None),
-                        d.path.split(".")[1], None,
-                    ) is not None
+                        d.path.split(".")[1],
+                        None,
+                    )
+                    is not None
                     and getattr(
                         getattr(_state, d.path.split(".")[0], None),
                         d.path.split(".")[1],
-                    ).value == d.value
+                    ).value
+                    == d.value
                 ]
 
                 _log.info(
@@ -2655,18 +2518,24 @@ class ChatService:
                     or "conflict" in str(_exc).lower()
                 )
                 if _is_conflict and _attempt < _MAX_RETRIES - 1:
-                    _log.warning("inject_facts_conflict_retry",
-                                 thread_id=str(payload.thread_id), attempt=_attempt)
-                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    _log.warning(
+                        "inject_facts_conflict_retry",
+                        thread_id=str(payload.thread_id),
+                        attempt=_attempt,
+                    )
+                    await asyncio.sleep(0.05 * (2**_attempt))
                     continue
-                _log.warning("inject_facts_save_failed",
-                             thread_id=str(payload.thread_id),
-                             attempt=_attempt,
-                             exception_class=type(_exc).__name__)
+                _log.warning(
+                    "inject_facts_save_failed",
+                    thread_id=str(payload.thread_id),
+                    attempt=_attempt,
+                    exception_class=type(_exc).__name__,
+                )
                 return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
         return _FResp(thread_id=payload.thread_id, fields_applied=[])
 
+    @serialized_mutation
     async def handle_consultation_confirmed(self, payload: Any) -> Any:
         """Mark a consultation as booked from an external form submission.
 
@@ -2687,6 +2556,8 @@ class ChatService:
         """
         from bookcraft.api.chat import (
             ConsultationConfirmedRequest as _CReq,
+        )
+        from bookcraft.api.chat import (
             ConsultationConfirmedResponse as _CResp,
         )
 
@@ -2705,12 +2576,11 @@ class ChatService:
             try:
                 if self.thread_repository is not None:
                     _thread = await self.thread_repository.load_or_create(
-                        thread_id=payload.thread_id, customer_id=None,
+                        thread_id=payload.thread_id,
+                        customer_id=None,
                     )
                     _state = _thread.state
-                    self._apply_external_consultation_confirmation(
-                        _state, payload, _appointment_id
-                    )
+                    self._apply_external_consultation_confirmation(_state, payload, _appointment_id)
                     await self.thread_repository.save_state(
                         thread_id=_thread.thread_id,
                         state=_state,
@@ -2739,9 +2609,10 @@ class ChatService:
                 if _is_conflict and _attempt < _MAX_RETRIES - 1:
                     _log.warning(
                         "consultation_confirmed_conflict_retry",
-                        thread_id=str(payload.thread_id), attempt=_attempt,
+                        thread_id=str(payload.thread_id),
+                        attempt=_attempt,
                     )
-                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    await asyncio.sleep(0.05 * (2**_attempt))
                     continue
                 _log.warning(
                     "consultation_confirmed_save_failed",
@@ -2790,6 +2661,7 @@ class ChatService:
         if payload.preferred_call_time:
             state.preferred_call_time = payload.preferred_call_time
 
+    @serialized_mutation
     async def handle_consultation_cancelled(self, payload: Any) -> Any:
         """Reset thread state after a consultation is deleted/cancelled externally.
 
@@ -2807,6 +2679,8 @@ class ChatService:
         """
         from bookcraft.api.chat import (
             ConsultationCancelledRequest as _CReq,
+        )
+        from bookcraft.api.chat import (
             ConsultationCancelledResponse as _CResp,
         )
 
@@ -2821,7 +2695,8 @@ class ChatService:
             try:
                 if self.thread_repository is not None:
                     _thread = await self.thread_repository.load_or_create(
-                        thread_id=payload.thread_id, customer_id=None,
+                        thread_id=payload.thread_id,
+                        customer_id=None,
                     )
                     _state = _thread.state
                     _cleared = self._apply_external_consultation_cancellation(
@@ -2857,9 +2732,10 @@ class ChatService:
                 if _is_conflict and _attempt < _MAX_RETRIES - 1:
                     _log.warning(
                         "consultation_cancelled_conflict_retry",
-                        thread_id=str(payload.thread_id), attempt=_attempt,
+                        thread_id=str(payload.thread_id),
+                        attempt=_attempt,
                     )
-                    await asyncio.sleep(0.05 * (2 ** _attempt))
+                    await asyncio.sleep(0.05 * (2**_attempt))
                     continue
                 _log.warning(
                     "consultation_cancelled_save_failed",
@@ -2872,9 +2748,7 @@ class ChatService:
         return _CResp(thread_id=payload.thread_id, cancelled=False)
 
     @staticmethod
-    def _apply_external_consultation_cancellation(
-        state: Any, appointment_id: str | None
-    ) -> bool:
+    def _apply_external_consultation_cancellation(state: Any, appointment_id: str | None) -> bool:
         """Clear the booked-consultation gates. Returns True if state was cleared.
 
         Reverses :meth:`_apply_external_consultation_confirmation`. When
@@ -2884,10 +2758,7 @@ class ChatService:
         """
         consult = state.sales_actions.consultation
         if appointment_id:
-            current = (
-                consult.confirmed_appointment_id
-                or state.consultation_handoff_action_id
-            )
+            current = consult.confirmed_appointment_id or state.consultation_handoff_action_id
             if current and current != appointment_id:
                 return False
 
@@ -2911,6 +2782,7 @@ class ChatService:
         state.consultation_stage = None
         return True
 
+    @serialized_mutation
     async def handle_handover(self, payload: Any) -> Any:
         """Signal a handover between bot and CSR.
 
@@ -3469,10 +3341,10 @@ class ChatService:
         turn_sequence: int,
         user_text: str,
         assistant_text: str,
-        previous_state: "ThreadState | None",
-        state_deltas: list,
+        previous_state: ThreadState | None,
+        state_deltas: list[Any],
         arbiter_signals: list[str],
-        preloaded_graph: "TemporalRelationGraph | None",
+        preloaded_graph: TemporalRelationGraph | None,
     ) -> None:
         if self.trg_engine is None:
             return
@@ -3487,7 +3359,11 @@ class ChatService:
                 arbiter_signals=arbiter_signals,
                 preloaded_graph=preloaded_graph,
             )
-            if self.trg_fact_store is not None and trg_result.graph is not None and trg_result.graph.semantic_facts:
+            if (
+                self.trg_fact_store is not None
+                and trg_result.graph is not None
+                and trg_result.graph.semantic_facts
+            ):
                 await self.trg_fact_store.upsert_facts(
                     thread_id=thread_id,
                     facts=trg_result.graph.semantic_facts,
@@ -3514,7 +3390,9 @@ class ChatService:
             trg_context=trg_context,
         )
 
-    async def _build_trg_context(self, thread_id: UUID) -> tuple[TRGContext | None, TemporalRelationGraph | None]:
+    async def _build_trg_context(
+        self, thread_id: UUID
+    ) -> tuple[TRGContext | None, TemporalRelationGraph | None]:
         if self.trg_engine is None:
             return None, None
 
@@ -3523,10 +3401,7 @@ class ChatService:
         # Cold-start reload: if the hot graph is absent or has no semantic facts,
         # restore persisted facts from PostgreSQL so the bot retains context after
         # Redis TTL expiry.
-        if (
-            self.trg_fact_store is not None
-            and (graph is None or not graph.semantic_facts)
-        ):
+        if self.trg_fact_store is not None and (graph is None or not graph.semantic_facts):
             try:
                 persisted_facts = await self.trg_fact_store.load_active_facts(thread_id)
                 if persisted_facts:
@@ -3617,7 +3492,7 @@ class ChatService:
         previous_hash: str | None,
         event_type: str,
         payload: dict[str, object],
-        _buf: "_EventBuffer | None" = None,
+        _buf: _EventBuffer | None = None,
     ) -> tuple[str, int, str]:
         safe_payload = redact_mapping(payload) or {}
         if self.thread_repository is None:
@@ -3635,6 +3510,12 @@ class ChatService:
                 previous_hash=previous_hash,
             )
 
+        # Flush older buffered events before an immediate event references their hashes.
+        if _buf is not None and _buf.events:
+            await self.thread_repository.append_events_batch(
+                thread_id=thread_id, events=_buf.events
+            )
+            _buf.events.clear()
         event_hash = await self.thread_repository.append_event(
             thread_id=thread_id,
             sequence=sequence + 1,
@@ -4917,7 +4798,7 @@ def _is_proof_copy_request(text: str) -> bool:
     return bool(_PROOF_COPY_RE.search(text))
 
 
-def _summarize_trimatch_payload(result: "TriMatchResult") -> dict[str, object]:
+def _summarize_trimatch_payload(result: TriMatchResult) -> dict[str, object]:
     return {
         "service_primary": result.service_primary.value if result.service_primary else None,
         "query_primary": result.query_primary.value if result.query_primary else None,
@@ -5355,7 +5236,7 @@ def _build_csr_context_hint(state: ThreadState) -> str | None:
         for c in state.csr_commitments[:5]:
             ctype = c.get("type", "commitment")
             text = c.get("text", "")
-            parts.append(f"  • {ctype.replace('_', ' ').title()}: \"{text}\"")
+            parts.append(f'  • {ctype.replace("_", " ").title()}: "{text}"')
 
     return "\n".join(parts)
 
@@ -5517,6 +5398,7 @@ def _normalise_page_slug(page: str | None) -> str | None:
     if not page:
         return None
     import re as _re
+
     slug = _re.sub(r"^https?://[^/]+", "", page.strip().lower())
     slug = slug.strip("/").split("?")[0].split("#")[0]
     return slug.replace("_", "-") or None
@@ -5529,14 +5411,26 @@ def _normalise_page_slug(page: str | None) -> str | None:
 _LANDING_SERVICE_PATTERNS: list[tuple[tuple[str, ...], ServiceCategory]] = [
     (("ghostwrit", "ghost-writ", "book-writing", "write-my-book"), ServiceCategory.GHOSTWRITING),
     (("cover", "illustration", "jacket", "book-cover"), ServiceCategory.COVER_DESIGN_ILLUSTRATION),
-    (("proofread", "editing", "editor", "line-edit", "copy-edit"), ServiceCategory.EDITING_PROOFREADING),
+    (
+        ("proofread", "editing", "editor", "line-edit", "copy-edit"),
+        ServiceCategory.EDITING_PROOFREADING,
+    ),
     (("interior", "formatting", "typeset", "layout"), ServiceCategory.INTERIOR_FORMATTING),
     (("audiobook", "narration", "audio-book"), ServiceCategory.AUDIOBOOK_PRODUCTION),
-    (("translation", "foreign-rights", "foreign-right"), ServiceCategory.TRANSLATION_FOREIGN_RIGHTS),
+    (
+        ("translation", "foreign-rights", "foreign-right"),
+        ServiceCategory.TRANSLATION_FOREIGN_RIGHTS,
+    ),
     (("video-trailer", "book-trailer", "trailer"), ServiceCategory.VIDEO_TRAILER),
     (("author-website", "website"), ServiceCategory.AUTHOR_WEBSITE),
-    (("marketing", "promotion", "book-launch", "book-marketing"), ServiceCategory.MARKETING_PROMOTION),
-    (("publishing", "distribution", "self-publish", "publish"), ServiceCategory.PUBLISHING_DISTRIBUTION),
+    (
+        ("marketing", "promotion", "book-launch", "book-marketing"),
+        ServiceCategory.MARKETING_PROMOTION,
+    ),
+    (
+        ("publishing", "distribution", "self-publish", "publish"),
+        ServiceCategory.PUBLISHING_DISTRIBUTION,
+    ),
 ]
 
 
@@ -5578,9 +5472,7 @@ async def _llm_proactive_greeting(
     page_label = _normalise_page_slug(landing_page) or "homepage"
     _landing_service = _service_from_landing(landing_page, landing_keyword)
     keyword_line = (
-        f"\nSearch keyword that brought them here: {landing_keyword}"
-        if landing_keyword
-        else ""
+        f"\nSearch keyword that brought them here: {landing_keyword}" if landing_keyword else ""
     )
 
     if variant == "followup":
@@ -5591,7 +5483,7 @@ async def _llm_proactive_greeting(
             "Context: the visitor opened the chat about a minute ago and already saw a warm "
             "opening message, but has not replied yet. Your task: write ONE brief, low-pressure "
             "follow-up nudge that gently re-invites them to share what they're working on. "
-            "Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+            'Return a JSON object with a single key: {"text": "<your message>"}.\n\n'
             "Rules:\n"
             "- 1–2 sentences, 30 words maximum.\n"
             "- Do NOT greet again ('Hello', 'Welcome', 'Hi there') — they were already greeted.\n"
@@ -5601,18 +5493,17 @@ async def _llm_proactive_greeting(
             "- End with one light, open question inviting them to share what they need.\n"
             "- Do not start with 'I'."
         )
-        user = (
-            f"Landing page: {page_label}{keyword_line}\n\n"
-            "Return the JSON follow-up nudge now."
-        )
+        user = f"Landing page: {page_label}{keyword_line}\n\nReturn the JSON follow-up nudge now."
         purpose = "proactive_followup"
     else:
         system = (
             "You are a BookCraft AI chat assistant. "
-            "BookCraft is a full-service publishing company that helps authors write, edit, design, "
+            "BookCraft is a full-service publishing company that helps authors"
+            " write, edit, design, "
             "format, and publish their books.\n\n"
             "Your task: write ONE warm, professional opening message for a visitor who just opened "
-            "the chat widget. Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+            'the chat widget. Return a JSON object with a single key: {"text":'
+            ' "<your message>"}.\n\n'
             "Rules:\n"
             "- 1–2 sentences, 30 words maximum.\n"
             "- Never quote a price or make a commitment.\n"
@@ -5621,10 +5512,7 @@ async def _llm_proactive_greeting(
             "- End with one open question inviting the visitor to share what they need.\n"
             "- Do not start with 'I'."
         )
-        user = (
-            f"Landing page: {page_label}{keyword_line}\n\n"
-            "Return the JSON greeting now."
-        )
+        user = f"Landing page: {page_label}{keyword_line}\n\nReturn the JSON greeting now."
         purpose = "proactive_greeting"
 
     try:
@@ -5638,6 +5526,6 @@ async def _llm_proactive_greeting(
         if text and len(text) > 10:
             return text
     except Exception:
-        pass
+        structlog.get_logger(__name__).warning("greeting_generation_failed")
 
     return _FOLLOWUP_FALLBACK if variant == "followup" else _greet_fallback(_landing_service)

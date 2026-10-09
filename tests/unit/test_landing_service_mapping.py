@@ -13,8 +13,16 @@ from bookcraft.services.chat import _service_from_landing
 @pytest.mark.parametrize(
     ("page", "keyword", "expected"),
     [
-        ("/book-cover-design/", "hire a book cover designer", ServiceCategory.COVER_DESIGN_ILLUSTRATION),
-        ("https://bookcraft.com/book-cover-design/", None, ServiceCategory.COVER_DESIGN_ILLUSTRATION),
+        (
+            "/book-cover-design/",
+            "hire a book cover designer",
+            ServiceCategory.COVER_DESIGN_ILLUSTRATION,
+        ),
+        (
+            "https://bookcraft.com/book-cover-design/",
+            None,
+            ServiceCategory.COVER_DESIGN_ILLUSTRATION,
+        ),
         ("/ghostwriting-services/", None, ServiceCategory.GHOSTWRITING),
         ("/editing-proofreading/", None, ServiceCategory.EDITING_PROOFREADING),
         ("/audiobook-production/", None, ServiceCategory.AUDIOBOOK_PRODUCTION),

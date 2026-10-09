@@ -1,4 +1,5 @@
 """Tests for the unified field registry."""
+
 from __future__ import annotations
 
 import pytest
@@ -6,7 +7,6 @@ import pytest
 from bookcraft.domain.field_registry import (
     FIELD_REGISTRY,
     FieldDef,
-    FieldType,
     get_forbidden_reasks,
     get_required_for_quote,
 )

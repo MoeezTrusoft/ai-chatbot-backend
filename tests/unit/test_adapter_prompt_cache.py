@@ -43,18 +43,14 @@ def test_cache_enabled_system_is_single_cached_block_suffix_uncached() -> None:
 def test_cache_enabled_without_suffix_is_lone_cached_block() -> None:
     payload = _anthropic_system_payload(SYSTEM, None, cache_enabled=True)
 
-    assert payload == [
-        {"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}
-    ]
+    assert payload == [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
 
 
 def test_cache_enabled_ignores_empty_suffix() -> None:
     # A falsy suffix must not add an empty uncached block.
     payload = _anthropic_system_payload(SYSTEM, "", cache_enabled=True)
 
-    assert payload == [
-        {"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}
-    ]
+    assert payload == [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
 
 
 def test_cache_disabled_returns_plain_concatenated_string() -> None:

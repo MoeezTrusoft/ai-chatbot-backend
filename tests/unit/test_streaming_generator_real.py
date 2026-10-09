@@ -10,6 +10,7 @@ Covers both paths of P4-T1:
 
 These run fully offline (no live API).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -95,7 +96,9 @@ class _FakeStreamingAdapter:
         for delta in self._deltas:
             yield delta
 
-    async def structured(self, *, system, user, output_model, purpose, system_cache_suffix=None):  # pragma: no cover
+    async def structured(
+        self, *, system, user, output_model, purpose, system_cache_suffix=None
+    ):  # pragma: no cover
         del system, user, purpose, system_cache_suffix
         return output_model.model_validate({})
 
@@ -119,7 +122,9 @@ class _FakeRaisingAdapter:
         yield "partial "
         raise RuntimeError("stream blew up mid-flight")
 
-    async def structured(self, *, system, user, output_model, purpose, system_cache_suffix=None):  # pragma: no cover
+    async def structured(
+        self, *, system, user, output_model, purpose, system_cache_suffix=None
+    ):  # pragma: no cover
         del system, user, purpose, system_cache_suffix
         return output_model.model_validate({})
 

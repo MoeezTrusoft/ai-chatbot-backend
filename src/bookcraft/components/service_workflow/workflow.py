@@ -24,51 +24,51 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 _SERVICE_NAMES: dict[str, str] = {
-    "ghostwriting":              "Ghostwriting",
-    "editing_proofreading":      "Editing & Proofreading",
+    "ghostwriting": "Ghostwriting",
+    "editing_proofreading": "Editing & Proofreading",
     "cover_design_illustration": "Cover Design & Illustrations",
-    "interior_formatting":       "Interior Layout & Formatting",
-    "publishing_distribution":   "Publishing & Distribution",
-    "marketing_promotion":       "Marketing & Promotion",
-    "audiobook_production":      "Audiobook Production",
-    "video_trailer":             "Video Trailer",
-    "author_website":            "Author's Website",
+    "interior_formatting": "Interior Layout & Formatting",
+    "publishing_distribution": "Publishing & Distribution",
+    "marketing_promotion": "Marketing & Promotion",
+    "audiobook_production": "Audiobook Production",
+    "video_trailer": "Video Trailer",
+    "author_website": "Author's Website",
 }
 
 # Aliases: common user phrasings → canonical service key
 _SERVICE_ALIASES: dict[str, str] = {
-    "ghostwriting":          "ghostwriting",
-    "ghost writing":         "ghostwriting",
-    "ghost write":           "ghostwriting",
-    "editing":               "editing_proofreading",
-    "proofreading":          "editing_proofreading",
-    "copy editing":          "editing_proofreading",
-    "copyediting":           "editing_proofreading",
+    "ghostwriting": "ghostwriting",
+    "ghost writing": "ghostwriting",
+    "ghost write": "ghostwriting",
+    "editing": "editing_proofreading",
+    "proofreading": "editing_proofreading",
+    "copy editing": "editing_proofreading",
+    "copyediting": "editing_proofreading",
     "developmental editing": "editing_proofreading",
-    "cover design":          "cover_design_illustration",
-    "cover illustration":    "cover_design_illustration",
-    "book cover":            "cover_design_illustration",
-    "formatting":            "interior_formatting",
-    "interior formatting":   "interior_formatting",
-    "layout":                "interior_formatting",
-    "interior layout":       "interior_formatting",
-    "publishing":            "publishing_distribution",
-    "distribution":          "publishing_distribution",
-    "publish":               "publishing_distribution",
-    "marketing":             "marketing_promotion",
-    "promotion":             "marketing_promotion",
-    "launch marketing":      "marketing_promotion",
-    "pre-launch":            "marketing_promotion",
-    "after launch":          "marketing_promotion",
-    "audiobook":             "audiobook_production",
-    "audio book":            "audiobook_production",
-    "narration":             "audiobook_production",
-    "video trailer":         "video_trailer",
-    "book trailer":          "video_trailer",
-    "trailer":               "video_trailer",
-    "author website":        "author_website",
-    "website":               "author_website",
-    "author site":           "author_website",
+    "cover design": "cover_design_illustration",
+    "cover illustration": "cover_design_illustration",
+    "book cover": "cover_design_illustration",
+    "formatting": "interior_formatting",
+    "interior formatting": "interior_formatting",
+    "layout": "interior_formatting",
+    "interior layout": "interior_formatting",
+    "publishing": "publishing_distribution",
+    "distribution": "publishing_distribution",
+    "publish": "publishing_distribution",
+    "marketing": "marketing_promotion",
+    "promotion": "marketing_promotion",
+    "launch marketing": "marketing_promotion",
+    "pre-launch": "marketing_promotion",
+    "after launch": "marketing_promotion",
+    "audiobook": "audiobook_production",
+    "audio book": "audiobook_production",
+    "narration": "audiobook_production",
+    "video trailer": "video_trailer",
+    "book trailer": "video_trailer",
+    "trailer": "video_trailer",
+    "author website": "author_website",
+    "website": "author_website",
+    "author site": "author_website",
 }
 
 # ---------------------------------------------------------------------------
@@ -86,23 +86,21 @@ _WORKFLOW: dict[str, dict[str, object]] = {
         "predecessors": ["ghostwriting"],
         "successors": ["interior_formatting", "audiobook_production"],
         "parallel": ["cover_design_illustration"],
-        "timing_note": (
-            "Cover Design can run simultaneously — start both to save time."
-        ),
+        "timing_note": ("Cover Design can run simultaneously — start both to save time."),
     },
     "cover_design_illustration": {
         "predecessors": ["ghostwriting"],
         "successors": ["interior_formatting", "audiobook_production"],
         "parallel": ["editing_proofreading"],
-        "timing_note": (
-            "Editing & Proofreading can run simultaneously — start both to save time."
-        ),
+        "timing_note": ("Editing & Proofreading can run simultaneously — start both to save time."),
     },
     "interior_formatting": {
         "predecessors": ["ghostwriting", "editing_proofreading", "cover_design_illustration"],
         "successors": [
-            "publishing_distribution", "marketing_promotion",
-            "video_trailer", "author_website",
+            "publishing_distribution",
+            "marketing_promotion",
+            "video_trailer",
+            "author_website",
         ],
         "parallel": [],
         "timing_note": (
@@ -113,8 +111,10 @@ _WORKFLOW: dict[str, dict[str, object]] = {
     },
     "publishing_distribution": {
         "predecessors": [
-            "ghostwriting", "editing_proofreading",
-            "cover_design_illustration", "interior_formatting",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
         ],
         "successors": ["marketing_promotion"],
         "parallel": ["marketing_promotion", "author_website", "video_trailer"],
@@ -125,8 +125,11 @@ _WORKFLOW: dict[str, dict[str, object]] = {
     },
     "marketing_promotion": {
         "predecessors": [
-            "ghostwriting", "editing_proofreading", "cover_design_illustration",
-            "interior_formatting", "publishing_distribution",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
+            "publishing_distribution",
         ],
         "successors": [],
         "parallel": [],
@@ -138,8 +141,11 @@ _WORKFLOW: dict[str, dict[str, object]] = {
     },
     "audiobook_production": {
         "predecessors": [
-            "ghostwriting", "editing_proofreading", "cover_design_illustration",
-            "interior_formatting", "publishing_distribution",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
+            "publishing_distribution",
         ],
         "successors": [],
         "parallel": [],
@@ -147,8 +153,11 @@ _WORKFLOW: dict[str, dict[str, object]] = {
     },
     "video_trailer": {
         "predecessors": [
-            "ghostwriting", "editing_proofreading", "cover_design_illustration",
-            "interior_formatting", "publishing_distribution",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
+            "publishing_distribution",
         ],
         "successors": [],
         "parallel": [],
@@ -156,14 +165,18 @@ _WORKFLOW: dict[str, dict[str, object]] = {
     },
     "author_website": {
         "predecessors": [
-            "ghostwriting", "editing_proofreading", "cover_design_illustration",
-            "interior_formatting", "publishing_distribution",
+            "ghostwriting",
+            "editing_proofreading",
+            "cover_design_illustration",
+            "interior_formatting",
+            "publishing_distribution",
         ],
         "successors": [],
         "parallel": [],
         "timing_note": "Can be built after Formatting and alongside Publishing.",
     },
 }
+
 
 def _get_preds(service: str) -> list[str]:
     """Helper to get typed predecessor list from the workflow graph."""
@@ -253,9 +266,7 @@ class WorkflowAdvice:
         if self.timing_note:
             lines.append(f"  • Timing: {self.timing_note}")
 
-        lines.append(
-            "Use these facts to advise naturally — do not expose the structured format."
-        )
+        lines.append("Use these facts to advise naturally — do not expose the structured format.")
         return "\n".join(lines)
 
 
@@ -410,13 +421,7 @@ class ServiceWorkflow:
                         seen.add(pair)
                         parallel_pairs.append((svc, par))
 
-        can_start_now = [
-            s for s in ordered
-            if not any(
-                p in valid
-                for p in _get_preds(s)
-            )
-        ]
+        can_start_now = [s for s in ordered if not any(p in valid for p in _get_preds(s))]
 
         if len(ordered) == 1:
             summary = f"Start with {_SERVICE_NAMES.get(ordered[0], ordered[0])}."
@@ -444,9 +449,7 @@ class ServiceWorkflow:
             return []
         return _get_succs(completed_service)
 
-    def detect_violation(
-        self, requested_service: str, completed_services: list[str]
-    ) -> list[str]:
+    def detect_violation(self, requested_service: str, completed_services: list[str]) -> list[str]:
         """Return missing prerequisites. Empty = can start now."""
         if requested_service not in _WORKFLOW:
             return []

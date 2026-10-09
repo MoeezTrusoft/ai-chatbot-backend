@@ -121,7 +121,9 @@ class TestReducerHonoursPreferences:
 
     def test_deferral_stops_every_booking_ask(self) -> None:
         state = _ready_state()
-        decision = _reduce(state, "but I'm not doing it until next month", consultation_deferred=True)
+        decision = _reduce(
+            state, "but I'm not doing it until next month", consultation_deferred=True
+        )
         assert decision.stage is ConsultationStage.DEFERRED
         assert decision.next_question is None
         assert decision.can_schedule is False

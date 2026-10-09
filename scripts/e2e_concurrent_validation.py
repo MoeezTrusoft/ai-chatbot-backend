@@ -38,6 +38,7 @@ runs end to end under load without deadlock, cross-session state bleed, or excep
 Production latency deltas from the Phase-1 work (shared HTTP client, bounded timeouts,
 prompt cache, background persist) require P0-T2: the live-keys staging baseline.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,10 +49,11 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Any, Callable
+from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bootstrap: make the package importable and run from the repo root so the app's
@@ -67,6 +69,7 @@ for _name in ("httpx", "httpcore", "opentelemetry", "bookcraft", "uvicorn"):
 logging.basicConfig(level=logging.ERROR)
 
 from fastapi.testclient import TestClient  # noqa: E402
+
 from bookcraft.api.main import create_app  # noqa: E402
 from bookcraft.infra.config import Settings  # noqa: E402
 
@@ -78,20 +81,20 @@ from bookcraft.infra.config import Settings  # noqa: E402
 # streaming scaffold, validated separately in `validate_websocket`.
 # ─────────────────────────────────────────────────────────────────────────────
 UPGRADE_FLAGS: dict[str, bool] = {
-    "llm_bounded_timeouts_enabled": True,      # P1-T2
-    "prompt_cache_enabled": True,              # P1-T6
-    "event_log_batching_enabled": True,        # P1-T4
-    "trg_background_persist_enabled": True,    # P1-T5
-    "llm_extraction_overlap_enabled": True,    # P1-T7
-    "trimatch_event_evidence_summary": True,   # P1-T8
-    "trg_event_rebuild_enabled": True,         # P2-T5
-    "project_fact_partitioning_enabled": True, # P2-T6
-    "trimatch_compiled_index_enabled": True,   # P3-T1
-    "contradiction_confirmation_enabled": True,# P4-T4
-    "extraction_value_types_enabled": True,    # P4-T5
-    "trg_question_matching_enabled": True,     # P2-T1
-    "trg_repetition_edges_v2": True,           # P2-T7
-    "context_pack_budget_enabled": True,       # P4-T3
+    "llm_bounded_timeouts_enabled": True,  # P1-T2
+    "prompt_cache_enabled": True,  # P1-T6
+    "event_log_batching_enabled": True,  # P1-T4
+    "trg_background_persist_enabled": True,  # P1-T5
+    "llm_extraction_overlap_enabled": True,  # P1-T7
+    "trimatch_event_evidence_summary": True,  # P1-T8
+    "trg_event_rebuild_enabled": True,  # P2-T5
+    "project_fact_partitioning_enabled": True,  # P2-T6
+    "trimatch_compiled_index_enabled": True,  # P3-T1
+    "contradiction_confirmation_enabled": True,  # P4-T4
+    "extraction_value_types_enabled": True,  # P4-T5
+    "trg_question_matching_enabled": True,  # P2-T1
+    "trg_repetition_edges_v2": True,  # P2-T7
+    "context_pack_budget_enabled": True,  # P4-T3
 }
 
 
@@ -280,7 +283,9 @@ class LiveTracker:
 # ─────────────────────────────────────────────────────────────────────────────
 # Session driver
 # ─────────────────────────────────────────────────────────────────────────────
-def run_session(client: TestClient, tracker: LiveTracker, session_id: int, scenario: Scenario) -> str | None:
+def run_session(
+    client: TestClient, tracker: LiveTracker, session_id: int, scenario: Scenario
+) -> str | None:
     """Run one multi-turn session sequentially; return its thread_id (or None)."""
     thread_id: str | None = None
     for i, message in enumerate(scenario.turns, start=1):
@@ -313,10 +318,18 @@ def run_session(client: TestClient, tracker: LiveTracker, session_id: int, scena
             tracker.exit()
             tracker.record(
                 TurnRecord(
-                    session_id=session_id, scenario=scenario.name, kind=scenario.kind,
-                    turn_index=i, n_turns=len(scenario.turns), status=status,
-                    latency_ms=latency_ms, intent=intent, n_bubbles=n_bubbles,
-                    ok=ok, wall_t=time.perf_counter() - tracker._t0, error=err,
+                    session_id=session_id,
+                    scenario=scenario.name,
+                    kind=scenario.kind,
+                    turn_index=i,
+                    n_turns=len(scenario.turns),
+                    status=status,
+                    latency_ms=latency_ms,
+                    intent=intent,
+                    n_bubbles=n_bubbles,
+                    ok=ok,
+                    wall_t=time.perf_counter() - tracker._t0,
+                    error=err,
                 )
             )
     # Post-session behavioural verification (soft).
@@ -343,49 +356,67 @@ def _word_count(state: dict[str, Any]) -> str | None:
     return wc.get("value") if isinstance(wc, dict) else None
 
 
-def verify_multi_project(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_multi_project(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     """After A(80k) → B(45k) → back to A, the active word_count must not be the
     leaked 45k of book B if partitioning restored A — and must never be empty."""
     state = _debug_state(client, thread_id)
     wc = _word_count(state)
-    tracker.add_check(CheckResult(
-        scenario.name, "state_readable",
-        passed=("error" not in state),
-        detail=f"word_count={wc}",
-    ))
+    tracker.add_check(
+        CheckResult(
+            scenario.name,
+            "state_readable",
+            passed=("error" not in state),
+            detail=f"word_count={wc}",
+        )
+    )
     # A(80k) → B(45k) → back to A. With project-fact partitioning (P2-T6) the switch
     # to B clears the global word_count, B's 45k is stored against B, and switching
     # back to A re-hydrates A's snapshot (80k). WITHOUT partitioning the global value
     # would still read B's 45k. Observing 80k therefore proves no cross-project bleed.
-    tracker.add_check(CheckResult(
-        scenario.name, "no_cross_project_bleed",
-        passed=(wc == "80000"),
-        detail=f"after A→B→A active word_count={wc!r} (expect 80000=bookA, not 45000=bookB)",
-    ))
+    tracker.add_check(
+        CheckResult(
+            scenario.name,
+            "no_cross_project_bleed",
+            passed=(wc == "80000"),
+            detail=f"after A→B→A active word_count={wc!r} (expect 80000=bookA, not 45000=bookB)",
+        )
+    )
 
 
-def verify_contradiction(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_contradiction(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     state = _debug_state(client, thread_id)
     wc = _word_count(state)
     # After confirming 100000, the live word_count should reflect the corrected value
     # (deterministic extraction catches "100000 words"); soft check.
-    tracker.add_check(CheckResult(
-        scenario.name, "contradiction_resolved_value",
-        passed=(wc in {"100000", "100,000"} or wc is not None),
-        detail=f"word_count after correction = {wc!r}",
-    ))
+    tracker.add_check(
+        CheckResult(
+            scenario.name,
+            "contradiction_resolved_value",
+            passed=(wc in {"100000", "100,000"} or wc is not None),
+            detail=f"word_count after correction = {wc!r}",
+        )
+    )
 
 
-def verify_reask(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_reask(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     state = _debug_state(client, thread_id)
     wc = _word_count(state)
     # A fact captured on turn 1 must persist through later unrelated turns so the bot
     # holds the data needed to suppress re-asks (P2-T2 forbidden-reask surface).
-    tracker.add_check(CheckResult(
-        scenario.name, "fact_retained_for_reask_suppression",
-        passed=(wc == "72000"),
-        detail=f"word_count retained across 3 turns = {wc!r}",
-    ))
+    tracker.add_check(
+        CheckResult(
+            scenario.name,
+            "fact_retained_for_reask_suppression",
+            passed=(wc == "72000"),
+            detail=f"word_count retained across 3 turns = {wc!r}",
+        )
+    )
 
 
 VERIFIERS: dict[str, Callable[[TestClient, LiveTracker, Scenario, str], None]] = {
@@ -401,6 +432,7 @@ VERIFIERS: dict[str, Callable[[TestClient, LiveTracker, Scenario, str], None]] =
 # ─────────────────────────────────────────────────────────────────────────────
 def validate_websocket(client: TestClient, tracker: LiveTracker) -> None:
     from uuid import uuid4
+
     tid = str(uuid4())
     try:
         with client.websocket_connect(f"/api/v1/chat/ws/{tid}") as ws:
@@ -416,15 +448,23 @@ def validate_websocket(client: TestClient, tracker: LiveTracker) -> None:
                 if msg.get("type") == "turn_complete":
                     saw_complete = True
                     break
-        tracker.add_check(CheckResult(
-            "websocket", "ws_bubble_stream",
-            passed=saw_bubble and saw_complete,
-            detail=f"frames={frames}",
-        ))
+        tracker.add_check(
+            CheckResult(
+                "websocket",
+                "ws_bubble_stream",
+                passed=saw_bubble and saw_complete,
+                detail=f"frames={frames}",
+            )
+        )
     except Exception as exc:  # noqa: BLE001
-        tracker.add_check(CheckResult(
-            "websocket", "ws_bubble_stream", passed=False, detail=f"{type(exc).__name__}:{exc}"[:120],
-        ))
+        tracker.add_check(
+            CheckResult(
+                "websocket",
+                "ws_bubble_stream",
+                passed=False,
+                detail=f"{type(exc).__name__}:{exc}"[:120],
+            )
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -457,10 +497,15 @@ def analyze(records: list[TurnRecord], wall_seconds: float, max_in_flight: int) 
         "wall_s": wall_seconds,
         "throughput": len(records) / wall_seconds if wall_seconds else 0.0,
         "max_in_flight": max_in_flight,
-        "p50": _pct(lat, 50), "p90": _pct(lat, 90), "p95": _pct(lat, 95),
-        "p99": _pct(lat, 99), "max": lat[-1] if lat else 0.0,
+        "p50": _pct(lat, 50),
+        "p90": _pct(lat, 90),
+        "p95": _pct(lat, 95),
+        "p99": _pct(lat, 99),
+        "max": lat[-1] if lat else 0.0,
         "mean": mean(lat) if lat else 0.0,
-        "per_kind": {k: (_pct(sorted(v), 50), _pct(sorted(v), 95), len(v)) for k, v in per_kind.items()},
+        "per_kind": {
+            k: (_pct(sorted(v), 50), _pct(sorted(v), 95), len(v)) for k, v in per_kind.items()
+        },
     }
 
 
@@ -477,8 +522,10 @@ def print_report(stats: dict[str, Any], tracker: LiveTracker, *, label: str) -> 
     print(f"  Throughput ................ {stats['throughput']:.1f} turns/s")
     print(f"  Peak concurrent in-flight . {stats['max_in_flight']}")
     print("  Latency (mock-mode, CPU-bound — NOT a production network proxy):")
-    print(f"     P50={stats['p50']:.1f}ms  P90={stats['p90']:.1f}ms  "
-          f"P95={stats['p95']:.1f}ms  P99={stats['p99']:.1f}ms  max={stats['max']:.1f}ms")
+    print(
+        f"     P50={stats['p50']:.1f}ms  P90={stats['p90']:.1f}ms  "
+        f"P95={stats['p95']:.1f}ms  P99={stats['p99']:.1f}ms  max={stats['max']:.1f}ms"
+    )
     print("  Per-scenario latency (P50 / P95 / n):")
     for kind, (p50, p95, n) in sorted(stats["per_kind"].items()):
         print(f"     {kind:<16} {p50:7.1f} / {p95:7.1f} ms   n={n}")
@@ -494,8 +541,12 @@ def print_report(stats: dict[str, Any], tracker: LiveTracker, *, label: str) -> 
     hard_ok = stats["errors"] == 0 and stats["non200"] == 0 and stats["turns"] > 0
     verdict = "PASS" if hard_ok else "FAIL"
     print(line)
-    print(f"  VERDICT: {verdict}   "
-          f"(hard gate: 0 exceptions, 0 non-200 — got {stats['errors']} exc, {stats['non200']} non-200)")
+    print(
+        f"  VERDICT: {verdict}   "
+        f"(hard gate: 0 exceptions, 0 non-200 — got {stats[('errors')]} exc, {
+            stats['non200']
+        } non-200)"
+    )
     print(line)
     return hard_ok
 
@@ -519,9 +570,11 @@ def run_suite(*, optimized: bool, workers: int, replicate: int, quiet: bool, lab
             sid += 1
 
     enabled = [k for k, v in UPGRADE_FLAGS.items() if v] if optimized else []
-    print(f"\n▶ {label}: {len(plan)} sessions × multi-turn, "
-          f"{workers} worker threads, upgrade-flags={'ON' if optimized else 'OFF'} "
-          f"({len(enabled)} flags)")
+    print(
+        f"\n▶ {label}: {len(plan)} sessions × multi-turn, "
+        f"{workers} worker threads, upgrade-flags={'ON' if optimized else 'OFF'} "
+        f"({len(enabled)} flags)"
+    )
 
     t0 = time.perf_counter()
     tracker = LiveTracker(quiet=quiet, t0=t0)
@@ -545,28 +598,52 @@ def run_suite(*, optimized: bool, workers: int, replicate: int, quiet: bool, lab
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="BookCraft chatbot E2E concurrent validation harness")
-    ap.add_argument("--workers", type=int, default=16, help="concurrent worker threads (default 16)")
-    ap.add_argument("--replicate", type=int, default=3, help="times to replicate the scenario set (default 3)")
+    ap.add_argument(
+        "--workers", type=int, default=16, help="concurrent worker threads (default 16)"
+    )
+    ap.add_argument(
+        "--replicate", type=int, default=3, help="times to replicate the scenario set (default 3)"
+    )
     ap.add_argument("--quiet", action="store_true", help="suppress per-turn live lines")
-    ap.add_argument("--compare-flags", action="store_true",
-                    help="run the suite with upgrade flags OFF then ON and print both reports")
+    ap.add_argument(
+        "--compare-flags",
+        action="store_true",
+        help="run the suite with upgrade flags OFF then ON and print both reports",
+    )
     args = ap.parse_args()
 
     print("=" * 74)
     print(" BookCraft AI Chatbot — E2E Concurrent Validation Harness")
-    print(f" workers={args.workers}  replicate={args.replicate}  "
-          f"scenarios={len(SCENARIOS)}  mode={'A/B flags' if args.compare_flags else 'optimized'}")
+    print(
+        f" workers={args.workers}  replicate={args.replicate}  "
+        f"scenarios={len(SCENARIOS)}  mode={'A/B flags' if args.compare_flags else 'optimized'}"
+    )
     print("=" * 74)
 
     if args.compare_flags:
-        ok_off = run_suite(optimized=False, workers=args.workers, replicate=args.replicate,
-                           quiet=True, label="BASELINE (flags OFF)")
-        ok_on = run_suite(optimized=True, workers=args.workers, replicate=args.replicate,
-                          quiet=True, label="OPTIMIZED (flags ON)")
+        ok_off = run_suite(
+            optimized=False,
+            workers=args.workers,
+            replicate=args.replicate,
+            quiet=True,
+            label="BASELINE (flags OFF)",
+        )
+        ok_on = run_suite(
+            optimized=True,
+            workers=args.workers,
+            replicate=args.replicate,
+            quiet=True,
+            label="OPTIMIZED (flags ON)",
+        )
         ok = ok_off and ok_on
     else:
-        ok = run_suite(optimized=True, workers=args.workers, replicate=args.replicate,
-                       quiet=args.quiet, label="OPTIMIZED (all implemented flags ON)")
+        ok = run_suite(
+            optimized=True,
+            workers=args.workers,
+            replicate=args.replicate,
+            quiet=args.quiet,
+            label="OPTIMIZED (all implemented flags ON)",
+        )
 
     return 0 if ok else 1
 

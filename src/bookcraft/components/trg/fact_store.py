@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col, select
 
 from bookcraft.components.storage.models import TRGFactRecord
 from bookcraft.components.trg.schemas import TRGFactNode
@@ -42,14 +42,15 @@ class TRGFactStore:
                 async with session.begin():
                     for fact in facts:
                         fact_value_json = json.dumps(
-                            fact.value if isinstance(fact.value, str | int | float | bool)
+                            fact.value
+                            if isinstance(fact.value, str | int | float | bool)
                             else str(fact.value)
                         )
                         # Try to find existing row
                         result = await session.execute(
                             select(TRGFactRecord).where(
-                                TRGFactRecord.thread_id == thread_id,
-                                TRGFactRecord.fact_path == fact.fact_path,
+                                col(TRGFactRecord.thread_id) == thread_id,
+                                col(TRGFactRecord.fact_path) == fact.fact_path,
                             )
                         )
                         existing = result.scalar_one_or_none()
@@ -88,8 +89,8 @@ class TRGFactStore:
             async with self._session_factory() as session:
                 result = await session.execute(
                     select(TRGFactRecord).where(
-                        TRGFactRecord.thread_id == thread_id,
-                        TRGFactRecord.active.is_(True),
+                        col(TRGFactRecord.thread_id) == thread_id,
+                        col(TRGFactRecord.active).is_(True),
                     )
                 )
                 rows = result.scalars().all()

@@ -118,11 +118,25 @@ class LLMExtractedFacts(BaseModel):
         if not isinstance(data, dict):
             return data
         _EV_FIELDS = {
-            "name", "email", "phone", "preferred_contact_method", "timezone",
-            "book_title", "genre", "sub_genre", "word_count", "page_count",
-            "manuscript_status", "target_completion_date", "budget_range",
-            "timeline", "service_interest", "page_dimensions", "cover_preferences",
-            "section_structure", "target_audience",
+            "name",
+            "email",
+            "phone",
+            "preferred_contact_method",
+            "timezone",
+            "book_title",
+            "genre",
+            "sub_genre",
+            "word_count",
+            "page_count",
+            "manuscript_status",
+            "target_completion_date",
+            "budget_range",
+            "timeline",
+            "service_interest",
+            "page_dimensions",
+            "cover_preferences",
+            "section_structure",
+            "target_audience",
         }
         for key, value in list(data.items()):
             # Fix coreference_notes: Claude returns "" (string) instead of [] (list).
@@ -176,10 +190,10 @@ class LLMExtractedFacts(BaseModel):
     service_interest: ExtractedValue | None = None
 
     # Rich free-text metadata — no FieldMeta path, stored in service_metadata["book_specs"]
-    page_dimensions: ExtractedValue | None = None    # e.g. "5.5 x 8.5 inches"
+    page_dimensions: ExtractedValue | None = None  # e.g. "5.5 x 8.5 inches"
     cover_preferences: ExtractedValue | None = None  # e.g. "dark cover with forest imagery"
     section_structure: ExtractedValue | None = None  # e.g. "6 sections, ~50 poems total"
-    target_audience: ExtractedValue | None = None    # e.g. "young adults aged 14–18"
+    target_audience: ExtractedValue | None = None  # e.g. "young adults aged 14–18"
 
     # Service-specific metadata for the active service (cover visual_style, editing_level,
     # platforms, etc.). Validated against the service registry by the extractor.

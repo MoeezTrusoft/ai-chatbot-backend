@@ -1,11 +1,10 @@
 """Tests for context pack token budgeting — _trim_facts_by_priority and _MAX_TOTAL_FACTS."""
+
 from __future__ import annotations
 
-import pytest
-
 from bookcraft.components.context.pack_builder import (
-    ContextPackBuilder,
     _MAX_TOTAL_FACTS,
+    ContextPackBuilder,
     _trim_facts_by_priority,
 )
 from bookcraft.components.context.schemas import KnownFact

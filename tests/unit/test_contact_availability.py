@@ -15,7 +15,6 @@ from bookcraft.components.sales.current_question_priority import CurrentQuestion
 from bookcraft.domain.enums import QueryIntentType
 from bookcraft.domain.state import ThreadState
 
-
 # --------------------------------------------------------------------------- #
 # Detector
 # --------------------------------------------------------------------------- #

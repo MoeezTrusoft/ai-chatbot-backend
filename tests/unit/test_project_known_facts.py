@@ -1,7 +1,6 @@
 """Tests for ProjectContext.known_facts population and _snapshot_state_facts."""
-from __future__ import annotations
 
-from uuid import uuid4
+from __future__ import annotations
 
 from bookcraft.components.context.project_manager import (
     ProjectContextManager,

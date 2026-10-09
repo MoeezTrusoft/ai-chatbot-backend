@@ -131,9 +131,7 @@ _COVER_STYLE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bminimalist(?:\s+(?:cover|design|style))?\b", re.I), "minimalist"),
     (re.compile(r"\billustrated?\s+(?:cover|style)?\b", re.I), "illustrated"),
     (
-        re.compile(
-            r"\bphoto(?:graph(?:ic|y)?|[-\s]?composite|[-\s]?real(?:istic)?)?\b", re.I
-        ),
+        re.compile(r"\bphoto(?:graph(?:ic|y)?|[-\s]?composite|[-\s]?real(?:istic)?)?\b", re.I),
         "photographic",
     ),
     (re.compile(r"\bluxury\s+(?:cover|design|style)?\b", re.I), "luxury"),

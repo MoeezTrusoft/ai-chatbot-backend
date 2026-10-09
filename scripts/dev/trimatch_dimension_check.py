@@ -76,8 +76,8 @@ def main() -> int:
 
     engine = TriMatchEngine(rule_pack=pack, mode=TriMatchMode.SHADOW, shortcut_layers=_SHORTCUT)
 
-    prec = defaultdict(lambda: [0, 0])   # layer -> [correct, fired]
-    rec = defaultdict(lambda: [0, 0])    # layer -> [hit, total]
+    prec = defaultdict(lambda: [0, 0])  # layer -> [correct, fired]
+    rec = defaultdict(lambda: [0, 0])  # layer -> [hit, total]
     misfires: dict[str, list] = defaultdict(list)
     pattern_misses: dict[str, list] = defaultdict(list)
 
@@ -144,8 +144,10 @@ def main() -> int:
             print("     ", repr(t))
 
     ok_all = not structural and not prec_fail and not rec_fail
-    print(f"\nRESULT: {'PASS ✅' if ok_all else 'FAIL ❌'}"
-          f"  (structural={len(structural)}, prec_fail={prec_fail}, rec_fail={rec_fail})")
+    print(
+        f"\nRESULT: {'PASS ✅' if ok_all else 'FAIL ❌'}"
+        f"  (structural={len(structural)}, prec_fail={prec_fail}, rec_fail={rec_fail})"
+    )
     return 0 if ok_all else 1
 
 

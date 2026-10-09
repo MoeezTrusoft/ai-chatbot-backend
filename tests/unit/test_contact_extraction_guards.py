@@ -8,6 +8,7 @@ These tests use the verbatim customer messages from those transcripts plus the
 shared validators, on both the deterministic ContactCaptureDetector and the LLM
 extractor's delta guard.
 """
+
 from __future__ import annotations
 
 from bookcraft.components.extraction.llm_extractor import _facts_to_deltas
@@ -40,7 +41,7 @@ class TestSharedValidators:
         assert is_timezone_token("Ann") is False
 
     def test_non_name_token(self) -> None:
-        assert is_non_name_token("EST") is True          # timezone
+        assert is_non_name_token("EST") is True  # timezone
         assert is_non_name_token("looking for") is True  # filler verb
         assert is_non_name_token("in central time") is True  # leading preposition
         assert is_non_name_token("Ann") is False
@@ -52,11 +53,11 @@ class TestSharedValidators:
         assert looks_like_year_or_date_range("317-413-4221") is False
 
     def test_is_valid_phone(self) -> None:
-        assert is_valid_phone("317-413-4221") is True       # 10 digits
-        assert is_valid_phone("+1 555 123 4567") is True     # 11 digits
-        assert is_valid_phone("1770-1810") is False          # year range, 8 digits
-        assert is_valid_phone("6-12") is False               # age range
-        assert is_valid_phone("12345") is False              # too short
+        assert is_valid_phone("317-413-4221") is True  # 10 digits
+        assert is_valid_phone("+1 555 123 4567") is True  # 11 digits
+        assert is_valid_phone("1770-1810") is False  # year range, 8 digits
+        assert is_valid_phone("6-12") is False  # age range
+        assert is_valid_phone("12345") is False  # too short
         assert is_valid_phone("12345678901234567") is False  # too long (>15)
 
 
@@ -126,16 +127,24 @@ class TestDeterministicPreextractorPhone:
     from the preprocessor atoms (the (1770-1810) production bug entered here)."""
 
     def _msg(self, raw: str, phones: list[str]):
-        import pytest as _pytest
 
         from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
 
-        toks = [TokenInfo(text=w, lemma=w.lower(), start=i, end=i + len(w))
-                for i, w in enumerate(raw.split())]
+        toks = [
+            TokenInfo(text=w, lemma=w.lower(), start=i, end=i + len(w))
+            for i, w in enumerate(raw.split())
+        ]
         return ProcessedMessage(
-            raw=raw, normalized=raw, tokens=toks, negation_spans=[], hedge_spans=[],
-            counterfactual_spans=[], deterministic_atoms={"phones": phones}, embedding=[1.0],
-            language="en", char_count=len(raw),
+            raw=raw,
+            normalized=raw,
+            tokens=toks,
+            negation_spans=[],
+            hedge_spans=[],
+            counterfactual_spans=[],
+            deterministic_atoms={"phones": phones},
+            embedding=[1.0],
+            language="en",
+            char_count=len(raw),
         )
 
     def test_range_atom_rejected(self) -> None:
@@ -178,7 +187,9 @@ class TestLLMExtractorGuards:
         assert "personal.phone" not in {d.path for d in _facts_to_deltas(facts)}
 
     def test_age_range_phone_dropped(self) -> None:
-        facts = LLMExtractedFacts(phone=ExtractedValue(value="6-12", source_quote="children (6-12)"))
+        facts = LLMExtractedFacts(
+            phone=ExtractedValue(value="6-12", source_quote="children (6-12)")
+        )
         assert "personal.phone" not in {d.path for d in _facts_to_deltas(facts)}
 
     def test_valid_name_and_phone_pass(self) -> None:

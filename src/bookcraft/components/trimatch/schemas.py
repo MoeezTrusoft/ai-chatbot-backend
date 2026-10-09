@@ -116,21 +116,21 @@ class CompiledRulePack:
     rule_pack: RulePack
 
     # EXACT layer: single compiled union regex per rule_id -> set of phrase triggers
-    exact_union_pattern: "_re.Pattern[str] | None" = _field(default=None)
+    exact_union_pattern: _re.Pattern[str] | None = _field(default=None)
     # Map from rule_id to the rule itself for fast lookup after regex match
-    exact_rule_by_id: "dict[str, TriMatchRule]" = _field(default_factory=dict)
+    exact_rule_by_id: dict[str, TriMatchRule] = _field(default_factory=dict)
 
     # REGEX layer: pre-compiled patterns per rule
-    compiled_regex: "dict[str, _re.Pattern[str]]" = _field(default_factory=dict)
+    compiled_regex: dict[str, _re.Pattern[str]] = _field(default_factory=dict)
 
     # PATTERN layer: first-token -> list[rule_id] for fast candidate pruning
-    pattern_first_token_index: "dict[str, list[str]]" = _field(default_factory=dict)
+    pattern_first_token_index: dict[str, list[str]] = _field(default_factory=dict)
 
     # SEMANTIC layer: per-rule embeddings, shape (n_rules, embedding_dim)
     # List of (rule_id, embedding_vector) tuples
-    semantic_embeddings: "list[tuple[str, list[float]]]" = _field(default_factory=list)
+    semantic_embeddings: list[tuple[str, list[float]]] = _field(default_factory=list)
     # Map from rule_id -> embedding index
-    semantic_rule_index: "dict[str, int]" = _field(default_factory=dict)
+    semantic_rule_index: dict[str, int] = _field(default_factory=dict)
 
 
 class TriMatchEvidence(BaseModel):

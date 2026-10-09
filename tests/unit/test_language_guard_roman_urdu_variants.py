@@ -74,7 +74,7 @@ def test_mixed_language_proceeds_not_redirected(message: str) -> None:
 @pytest.mark.parametrize(
     "message",
     [
-        "Price kya hai editing ka?",   # Urdu sentence with English loanwords -> redirect
+        "Price kya hai editing ka?",  # Urdu sentence with English loanwords -> redirect
         "mujhe editing chahiye",
     ],
 )

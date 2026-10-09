@@ -17,7 +17,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-
 # ---------------------------------------------------------------------------
 # Step 2: Event payload sanitization
 # ---------------------------------------------------------------------------
@@ -409,5 +408,3 @@ def test_approved_urls_from_final_draft_not_original():
 
     assert _original_url not in approved
     assert "https://safe.bookcraft.com" in approved
-
-

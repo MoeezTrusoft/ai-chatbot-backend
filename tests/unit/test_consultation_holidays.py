@@ -110,9 +110,7 @@ def test_no_holiday_configured_allows_the_day() -> None:
 def test_normalize_rolls_off_holiday_to_next_open_day() -> None:
     set_holiday_cache({AUG_4})
     on_holiday = datetime(2026, 8, 4, 14, 0, tzinfo=CT)  # Tue 2 PM, a holiday
-    rolled = _normalize_to_business_window(
-        on_holiday, business_start_hour=10, business_end_hour=19
-    )
+    rolled = _normalize_to_business_window(on_holiday, business_start_hour=10, business_end_hour=19)
     assert (rolled.year, rolled.month, rolled.day) == (2026, 8, 5)  # Wednesday
     assert rolled.hour == 10 and rolled.minute == 0
 
@@ -121,9 +119,7 @@ def test_normalize_rolls_off_holiday_bridged_to_weekend() -> None:
     # Friday holiday → Saturday/Sunday skipped → next open day is Monday.
     set_holiday_cache({"2026-08-07"})  # Friday
     on_holiday = datetime(2026, 8, 7, 11, 0, tzinfo=CT)
-    rolled = _normalize_to_business_window(
-        on_holiday, business_start_hour=10, business_end_hour=19
-    )
+    rolled = _normalize_to_business_window(on_holiday, business_start_hour=10, business_end_hour=19)
     assert rolled.weekday() == 0  # Monday
     assert (rolled.year, rolled.month, rolled.day) == (2026, 8, 10)
 
@@ -139,9 +135,7 @@ def test_offered_slots_skip_holiday() -> None:
     slots = suggest_consultation_slots(now=now, count=8)
     assert slots, "expected some slots"
     for slot in slots:
-        assert slot.start.date() != date(2026, 8, 4), (
-            f"slot fell on the holiday: {slot.label}"
-        )
+        assert slot.start.date() != date(2026, 8, 4), f"slot fell on the holiday: {slot.label}"
         assert slot.start.weekday() < 5
 
 
@@ -170,9 +164,7 @@ class _FakeHolidayRepo:
     async def add(self, *, holiday_date, label=None, created_by=None):
         row = self._rows.get(holiday_date)
         if row is None:
-            row = SimpleNamespace(
-                holiday_date=holiday_date, label=label, created_by=created_by
-            )
+            row = SimpleNamespace(holiday_date=holiday_date, label=label, created_by=created_by)
             self._rows[holiday_date] = row
         elif label is not None:
             row.label = label
@@ -190,7 +182,7 @@ def _client(monkeypatch):
 
     # The auth path (JWT/settings) is exercised elsewhere; stub it here so the
     # test focuses on CRUD + cache behavior.
-    monkeypatch.setattr(holidays_api, "require_http_auth", lambda request, settings: None)
+    monkeypatch.setattr(holidays_api, "require_scope", lambda request, settings, *scopes: None)
 
     app = FastAPI()
     app.include_router(holidays_api.router)

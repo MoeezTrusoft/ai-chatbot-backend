@@ -6,19 +6,21 @@ from pathlib import Path
 def test_ci_runs_security_and_verifier_gates() -> None:
     ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert "make verifier-gates" in ci
-    assert "make security-scan" in ci
-    assert "make dependency-scan" in ci
+    for check in ("verifier-gates", "security-scan", "dependency-scan"):
+        assert check in ci
+    assert "make ${{ matrix.check }}" in ci
+    assert "fail-fast: false" in ci
 
 
-def test_cd_documents_required_deployment_stages() -> None:
+def test_cd_builds_validates_and_exports_without_deployment() -> None:
     cd = Path(".github/workflows/cd.yml").read_text(encoding="utf-8").casefold()
 
     assert "build image" in cd
-    assert "run migrations" in cd
-    assert "deploy staging" in cd
     assert "smoke test" in cd
-    assert "manual production gate" in cd
+    assert "push: false" in cd
+    assert "docker save" in cd
+    assert "actions/upload-artifact" in cd
+    assert "deploy staging" not in cd
 
 
 def test_security_runbook_exists() -> None:

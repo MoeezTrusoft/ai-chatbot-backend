@@ -641,9 +641,16 @@ def _processed(raw: str):
     from bookcraft.components.preprocessor.schemas import ProcessedMessage
 
     return ProcessedMessage(
-        raw=raw, normalized=raw.lower(), tokens=[], negation_spans=[], hedge_spans=[],
-        counterfactual_spans=[], deterministic_atoms={}, embedding=[0.0],
-        language="en", char_count=len(raw),
+        raw=raw,
+        normalized=raw.lower(),
+        tokens=[],
+        negation_spans=[],
+        hedge_spans=[],
+        counterfactual_spans=[],
+        deterministic_atoms={},
+        embedding=[0.0],
+        language="en",
+        char_count=len(raw),
     )
 
 
@@ -657,13 +664,21 @@ def test_greeting_template_never_splices_raw_rag_text():
     from bookcraft.domain.state import ThreadState
 
     intent = IntentVote(
-        query_primary=QueryIntentType.GREETING, funnel_stage=SalesStage.NEW,
-        needs_clarification=False, confidence=0.9, rationale="t", evidence=[],
+        query_primary=QueryIntentType.GREETING,
+        funnel_stage=SalesStage.NEW,
+        needs_clarification=False,
+        confidence=0.9,
+        rationale="t",
+        evidence=[],
     )
     plan = ResponsePlan(primary_goal="greeting_welcome")
     response = _humanized_template_response(
-        intent=intent, state=ThreadState(), message=_processed("hi"),
-        runtime_atoms={}, rag_chunks=[_faq_chunk()], route_name="default",
+        intent=intent,
+        state=ThreadState(),
+        message=_processed("hi"),
+        runtime_atoms={},
+        rag_chunks=[_faq_chunk()],
+        route_name="default",
         response_plan=plan,
     )
     assert "trim size" not in response.lower()
@@ -680,12 +695,20 @@ def test_manuscript_update_template_never_splices_raw_rag_text():
     from bookcraft.domain.state import ThreadState
 
     intent = IntentVote(
-        query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE, funnel_stage=SalesStage.SERVICE_DISCOVERY,
-        needs_clarification=False, confidence=0.9, rationale="t", evidence=[],
+        query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE,
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False,
+        confidence=0.9,
+        rationale="t",
+        evidence=[],
     )
     response = _humanized_template_response(
-        intent=intent, state=ThreadState(), message=_processed("finished my draft"),
-        runtime_atoms={}, rag_chunks=[_faq_chunk()], route_name="default",
+        intent=intent,
+        state=ThreadState(),
+        message=_processed("finished my draft"),
+        runtime_atoms={},
+        rag_chunks=[_faq_chunk()],
+        route_name="default",
     )
     assert "trim size" not in response.lower()
     assert "4.25" not in response

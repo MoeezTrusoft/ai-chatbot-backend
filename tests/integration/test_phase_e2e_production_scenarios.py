@@ -14,17 +14,16 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bookcraft.api.main import create_app
-from bookcraft.components.csr.commitment_detector import CsrCommitment, detect_commitments
+from bookcraft.components.csr.commitment_detector import detect_commitments
 from bookcraft.components.csr.summarizer import CsrContextSummarizer
-from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor, LLMExtractionResult
+from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import StateDelta
 from bookcraft.components.trg import InMemoryGraphRepository, TemporalRelationGraphEngine
@@ -33,10 +32,10 @@ from bookcraft.domain.enums import Source
 from bookcraft.domain.state import ThreadState
 from bookcraft.infra.config import Settings
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _app() -> Any:
     return create_app(Settings(app_env="test", api_auth_mode="off"))
@@ -111,8 +110,10 @@ def _trace(client: TestClient, thread_id: str) -> dict[str, Any]:
 # Phase A: LLM Metadata Extractor (unit, with mock adapter)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class _MockAdapter:
     """Minimal LLMProvider that returns a pre-configured LLMExtractedFacts."""
+
     name = "mock_extractor"
 
     def __init__(self, facts: LLMExtractedFacts) -> None:
@@ -126,12 +127,18 @@ class _MockAdapter:
 async def test_llm_extractor_high_confidence_produces_full_delta() -> None:
     """≥0.85 confidence → delta keeps the raw confidence (override-capable)."""
     facts = LLMExtractedFacts(
-        name=ExtractedValue(value="Layla Hassan", confidence=0.95, source_quote="my name is Layla Hassan"),
-        email=ExtractedValue(value="layla@example.com", confidence=0.92, source_quote="layla@example.com"),
+        name=ExtractedValue(
+            value="Layla Hassan", confidence=0.95, source_quote="my name is Layla Hassan"
+        ),
+        email=ExtractedValue(
+            value="layla@example.com", confidence=0.92, source_quote="layla@example.com"
+        ),
         word_count=ExtractedValue(value=72000, confidence=0.90, source_quote="72,000 words"),
     )
     extractor = LLMMetadataExtractor(adapter=_MockAdapter(facts))
-    result = await extractor.extract("My name is Layla Hassan, email layla@example.com, 72k words", "", ThreadState())
+    result = await extractor.extract(
+        "My name is Layla Hassan, email layla@example.com, 72k words", "", ThreadState()
+    )
 
     assert len(result.state_deltas) == 3
     paths = {d.path for d in result.state_deltas}
@@ -148,7 +155,9 @@ async def test_llm_extractor_high_confidence_produces_full_delta() -> None:
 async def test_llm_extractor_low_confidence_downscaled_to_fill_value() -> None:
     """<0.85 confidence → forced to 0.3 so StateApplier only fills empty fields."""
     facts = LLMExtractedFacts(
-        genre=ExtractedValue(value="maybe thriller", confidence=0.60, source_quote="maybe thriller"),
+        genre=ExtractedValue(
+            value="maybe thriller", confidence=0.60, source_quote="maybe thriller"
+        ),
     )
     extractor = LLMMetadataExtractor(adapter=_MockAdapter(facts))
     result = await extractor.extract("maybe thriller", "", ThreadState())
@@ -209,8 +218,10 @@ async def test_llm_extractor_coreference_notes_captured() -> None:
 @pytest.mark.asyncio
 async def test_llm_extractor_adapter_failure_returns_empty() -> None:
     """If the LLM call raises, the extractor returns an empty result (never crashes)."""
+
     class _FailAdapter:
         name = "fail"
+
         async def structured(self, **kwargs: Any) -> Any:
             raise RuntimeError("connection refused")
 
@@ -225,8 +236,10 @@ async def test_llm_extractor_adapter_failure_returns_empty() -> None:
 async def test_llm_extractor_empty_message_skipped() -> None:
     """Empty / whitespace-only messages skip LLM call entirely."""
     called = []
+
     class _TrackAdapter:
         name = "track"
+
         async def structured(self, **kwargs: Any) -> Any:
             called.append(True)
             return LLMExtractedFacts()
@@ -242,6 +255,7 @@ async def test_llm_extractor_empty_message_skipped() -> None:
 # Phase B: TRG engagement_weight + importance-weighted compaction
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_trg_engagement_weight_higher_for_questions() -> None:
     """User messages with questions produce higher engagement_weight on the node."""
@@ -249,12 +263,17 @@ async def test_trg_engagement_weight_higher_for_questions() -> None:
     engine = TemporalRelationGraphEngine(repository=InMemoryGraphRepository())
 
     await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=1,
-        user_text="I need editing.", assistant_text="OK.",
+        thread_id=thread_id,
+        turn_sequence=1,
+        user_text="I need editing.",
+        assistant_text="OK.",
     )
     questioning = await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=2,
-        user_text="Can you tell me the pricing? How long will it take? What formats do you support?",
+        thread_id=thread_id,
+        turn_sequence=2,
+        user_text=(
+            "Can you tell me the pricing? How long will it take? What formats do you support?"
+        ),
         assistant_text="Let me explain...",
     )
 
@@ -275,11 +294,14 @@ async def test_trg_engagement_weight_higher_for_corrections() -> None:
     engine = TemporalRelationGraphEngine(repository=InMemoryGraphRepository())
 
     await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=1,
-        user_text="50000 words.", assistant_text="Got it.",
+        thread_id=thread_id,
+        turn_sequence=1,
+        user_text="50000 words.",
+        assistant_text="Got it.",
     )
     correcting = await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=2,
+        thread_id=thread_id,
+        turn_sequence=2,
         user_text="Actually I meant 80000 words, not 50000. I was wrong earlier.",
         assistant_text="Thanks for clarifying.",
     )
@@ -310,19 +332,24 @@ async def test_trg_compaction_never_drops_state_fact_nodes() -> None:
         value="Tariq Musa", confidence=0.95, source=Source.USER_STATED, raw_excerpt="Tariq Musa"
     )
     await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=1,
+        thread_id=thread_id,
+        turn_sequence=1,
         user_text="My name is Tariq Musa.",
         assistant_text="Hello Tariq!",
     )
 
     # Turn 2: user corrects their name — DIFFERENT value → contradiction → STATE_FACT node added
     delta_correction = StateDelta(
-        path="personal.name", value="Tariq Mousavi",  # different from "Tariq Musa"
-        confidence=0.95, source=Source.USER_STATED,
-        extracted_by="test", raw_excerpt="Actually Tariq Mousavi",
+        path="personal.name",
+        value="Tariq Mousavi",  # different from "Tariq Musa"
+        confidence=0.95,
+        source=Source.USER_STATED,
+        extracted_by="test",
+        raw_excerpt="Actually Tariq Mousavi",
     )
     await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=2,
+        thread_id=thread_id,
+        turn_sequence=2,
         user_text="Actually my name is Tariq Mousavi, not Musa.",
         assistant_text="Got it, Tariq Mousavi!",
         previous_state=state_v1,
@@ -331,13 +358,16 @@ async def test_trg_compaction_never_drops_state_fact_nodes() -> None:
 
     # Verify STATE_FACT node was created
     graph_after_correction = await engine.repository.load(thread_id)
-    fact_nodes_before = [n for n in graph_after_correction.nodes if n.node_type == GraphNodeType.STATE_FACT]
+    fact_nodes_before = [
+        n for n in graph_after_correction.nodes if n.node_type == GraphNodeType.STATE_FACT
+    ]
     assert len(fact_nodes_before) > 0, "STATE_FACT node should exist after contradiction"
 
     # Now drive compaction with 10 more turns (compact_keep=4, so most turns drop)
     for i in range(3, 13):
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=i,
+            thread_id=thread_id,
+            turn_sequence=i,
             user_text=f"This is filler turn {i}.",
             assistant_text=f"Acknowledged turn {i}.",
         )
@@ -350,6 +380,7 @@ async def test_trg_compaction_never_drops_state_fact_nodes() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase E: Commitment Detector (unit)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_commitment_detector_price_quoted() -> None:
     """Dollar amounts in standard pricing phrases are detected as price_quoted."""
@@ -383,11 +414,7 @@ def test_commitment_detector_discount_offered() -> None:
 
 def test_commitment_detector_multiple_in_one_message() -> None:
     """Multiple commitment types in one message are all detected."""
-    text = (
-        "The package is $2,500 total. "
-        "Turnaround is 4 weeks. "
-        "We'll waive the rush fee."
-    )
+    text = "The package is $2,500 total. Turnaround is 4 weeks. We'll waive the rush fee."
     commitments = detect_commitments(text)
     types = {c.commitment_type for c in commitments}
     assert "price_quoted" in types
@@ -405,6 +432,7 @@ def test_commitment_detector_no_false_positives_on_plain_text() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase E: CSR Summarizer sliding window (unit, no adapter)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_csr_summarizer_verbatim_window_fills_to_three() -> None:
@@ -425,16 +453,28 @@ async def test_csr_summarizer_fourth_turn_compresses_oldest() -> None:
     summarizer = CsrContextSummarizer()  # no adapter → naive fallback
     state = ThreadState()
 
-    await summarizer.ingest(state, user_message="Hi", csr_message="Hello, I am Sarah from BookCraft.")
-    await summarizer.ingest(state, user_message="Tell me about editing", csr_message="We offer developmental editing.")
-    await summarizer.ingest(state, user_message="What's the price?", csr_message="Editing starts at $800.")
+    await summarizer.ingest(
+        state, user_message="Hi", csr_message="Hello, I am Sarah from BookCraft."
+    )
+    await summarizer.ingest(
+        state, user_message="Tell me about editing", csr_message="We offer developmental editing."
+    )
+    await summarizer.ingest(
+        state, user_message="What's the price?", csr_message="Editing starts at $800."
+    )
     # 4th turn — oldest should compress into abstract
-    await summarizer.ingest(state, user_message="How long does it take?", csr_message="Typically 3 weeks turnaround.")
+    await summarizer.ingest(
+        state, user_message="How long does it take?", csr_message="Typically 3 weeks turnaround."
+    )
 
     assert len(state.csr_context_recent_verbatim) == 3
     # Abstract must not be empty — oldest turn ("Hello, I am Sarah...") went there
     assert state.csr_context_abstract, "Abstract should contain compressed first turn"
-    assert "Sarah" in state.csr_context_abstract or "BookCraft" in state.csr_context_abstract or "Hello" in state.csr_context_abstract
+    assert (
+        "Sarah" in state.csr_context_abstract
+        or "BookCraft" in state.csr_context_abstract
+        or "Hello" in state.csr_context_abstract
+    )
 
 
 @pytest.mark.asyncio
@@ -444,7 +484,7 @@ async def test_csr_summarizer_window_always_keeps_latest_three() -> None:
     state = ThreadState()
 
     messages = [f"CSR says turn {i}" for i in range(8)]
-    for i, msg in enumerate(messages):
+    for msg in messages:
         await summarizer.ingest(state, user_message=None, csr_message=msg)
 
     verbatim = state.csr_context_recent_verbatim
@@ -463,7 +503,10 @@ async def test_csr_summarizer_with_llm_adapter_called_on_overflow() -> None:
 
     class _TrackingAdapter:
         name = "tracker"
-        async def structured(self, *, system: str, user: str, output_model: Any, purpose: str) -> Any:
+
+        async def structured(
+            self, *, system: str, user: str, output_model: Any, purpose: str
+        ) -> Any:
             compress_calls.append(user[:80])
             # Return an instance of whatever output_model the summarizer passes in
             # (it's _AbstractModel with a `text` field)
@@ -486,6 +529,7 @@ async def test_csr_summarizer_with_llm_adapter_called_on_overflow() -> None:
 # Phase C: /csr-turn endpoint (integration)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_csr_turn_endpoint_returns_204() -> None:
     """POST /csr-turn returns 204 No Content."""
     app = _app()
@@ -493,7 +537,8 @@ def test_csr_turn_endpoint_returns_204() -> None:
         r1 = _turn(client, "I need help with my fantasy novel editing.")
         thread_id = r1["thread_id"]
         _csr_turn(
-            client, thread_id,
+            client,
+            thread_id,
             csr_message="Hi there! I'm Sarah from BookCraft. How can I help?",
         )
 
@@ -506,7 +551,8 @@ def test_csr_turn_stores_commitment_in_state() -> None:
         thread_id = r1["thread_id"]
 
         _csr_turn(
-            client, thread_id,
+            client,
+            thread_id,
             csr_name="Mark",
             csr_message="Our full publishing package is $3,500 total for your book.",
         )
@@ -539,7 +585,9 @@ def test_csr_turn_populates_verbatim_window() -> None:
 
         _csr_turn(client, thread_id, csr_message="Formatting covers interior layout and design.")
         _csr_turn(client, thread_id, csr_message="We support epub, mobi, and print-ready PDF.")
-        _csr_turn(client, thread_id, csr_message="Our turnaround for formatting is 10 business days.")
+        _csr_turn(
+            client, thread_id, csr_message="Our turnaround for formatting is 10 business days."
+        )
 
         state = _state(client, thread_id)
         assert len(state.csr_context_recent_verbatim) == 3
@@ -554,9 +602,17 @@ def test_csr_turn_overflows_to_abstract_on_fourth() -> None:
         thread_id = r1["thread_id"]
 
         _csr_turn(client, thread_id, csr_message="Let me explain our NDA process first.")
-        _csr_turn(client, thread_id, csr_message="We require a signed agreement before any project begins.")
-        _csr_turn(client, thread_id, csr_message="Ghostwriting engagements start with a discovery call.")
-        _csr_turn(client, thread_id, csr_message="Packages for ghostwriting range from $5,000 to $15,000.")
+        _csr_turn(
+            client,
+            thread_id,
+            csr_message="We require a signed agreement before any project begins.",
+        )
+        _csr_turn(
+            client, thread_id, csr_message="Ghostwriting engagements start with a discovery call."
+        )
+        _csr_turn(
+            client, thread_id, csr_message="Packages for ghostwriting range from $5,000 to $15,000."
+        )
 
         state = _state(client, thread_id)
         assert len(state.csr_context_recent_verbatim) == 3
@@ -572,7 +628,8 @@ def test_csr_turn_with_user_message_extracts_user_facts() -> None:
 
         # Pass a user message alongside CSR message — user reveals name
         _csr_turn(
-            client, thread_id,
+            client,
+            thread_id,
             csr_message="Great to meet you! What's your name?",
             user_message="My name is Aisha Patel and I have a 60,000 word thriller.",
         )
@@ -584,6 +641,7 @@ def test_csr_turn_with_user_message_extracts_user_facts() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase C: /handover endpoint (integration)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_handover_to_csr_activates_flag() -> None:
     """direction=to_csr sets csr_handover_active=True on state."""
@@ -653,6 +711,7 @@ def test_handover_bot_can_still_respond_after_return() -> None:
 #   Turns 9–12: Bot continues with full CSR context retained
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_full_12_turn_bot_csr_bot_journey() -> None:
     """
     Complete production journey: bot → CSR handover → bot return.
@@ -668,7 +727,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
     app = _app()
     with TestClient(app) as client:
         # ── Bot discovery phase (turns 1–4) ──────────────────────────────
-        r1 = _turn(client, "Hi, I'm Abdullah Malik. I've written a 78,000-word thriller called 'Dark Signal'.")
+        r1 = _turn(
+            client,
+            "Hi, I'm Abdullah Malik. I've written a 78,000-word thriller called 'Dark Signal'.",
+        )
         thread_id = r1["thread_id"]
         assert thread_id
 
@@ -699,7 +761,9 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
 
         # ── Handover to CSR Sarah (turn 5) ───────────────────────────────
         ho1 = _handover(
-            client, thread_id, "to_csr",
+            client,
+            thread_id,
+            "to_csr",
             csr_id="csr-sarah-01",
             csr_name="Sarah Thompson",
             handover_note="Customer wants pricing and timeline for editing + cover.",
@@ -709,8 +773,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
 
         # ── CSR Sarah sends 4 messages ────────────────────────────────────
         _csr_turn(
-            client, thread_id,
-            csr_id="csr-sarah-01", csr_name="Sarah Thompson",
+            client,
+            thread_id,
+            csr_id="csr-sarah-01",
+            csr_name="Sarah Thompson",
             csr_message=(
                 "Hi Abdullah! I'm Sarah from BookCraft. I've reviewed your project. "
                 "For a 78,000-word thriller, our developmental editing package is $1,800."
@@ -719,8 +785,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
         )
 
         _csr_turn(
-            client, thread_id,
-            csr_id="csr-sarah-01", csr_name="Sarah Thompson",
+            client,
+            thread_id,
+            csr_id="csr-sarah-01",
+            csr_name="Sarah Thompson",
             csr_message=(
                 "It includes line editing, structural feedback, and one revision round. "
                 "Turnaround is 4 weeks for your word count."
@@ -728,8 +796,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
         )
 
         _csr_turn(
-            client, thread_id,
-            csr_id="csr-sarah-01", csr_name="Sarah Thompson",
+            client,
+            thread_id,
+            csr_id="csr-sarah-01",
+            csr_name="Sarah Thompson",
             csr_message=(
                 "For the cover design, our premium package is $600. "
                 "Since you're bundling both, we can offer a 10% discount on the total."
@@ -738,8 +808,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
 
         # 4th CSR turn → overflow triggers abstract compression
         _csr_turn(
-            client, thread_id,
-            csr_id="csr-sarah-01", csr_name="Sarah Thompson",
+            client,
+            thread_id,
+            csr_id="csr-sarah-01",
+            csr_name="Sarah Thompson",
             csr_message=(
                 "The combined package with discount comes to $2,160. "
                 "We can have the complete project ready in 5 weeks."
@@ -757,15 +829,21 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
         assert state_csr_phase.csr_commitments, "CSR commitments should be recorded"
         commitment_types = {c["type"] for c in state_csr_phase.csr_commitments}
         assert "price_quoted" in commitment_types, f"Expected price_quoted, got: {commitment_types}"
-        assert "timeline_promised" in commitment_types, f"Expected timeline_promised, got: {commitment_types}"
-        assert "discount_offered" in commitment_types, f"Expected discount_offered, got: {commitment_types}"
+        assert "timeline_promised" in commitment_types, (
+            f"Expected timeline_promised, got: {commitment_types}"
+        )
+        assert "discount_offered" in commitment_types, (
+            f"Expected discount_offered, got: {commitment_types}"
+        )
 
         # Validate csr_name stored correctly
         for c in state_csr_phase.csr_commitments:
             assert c.get("csr_name") == "Sarah Thompson", f"Wrong csr_name: {c}"
 
         # ── Handover back to bot ──────────────────────────────────────────
-        ho2 = _handover(client, thread_id, "to_bot", csr_id="csr-sarah-01", csr_name="Sarah Thompson")
+        ho2 = _handover(
+            client, thread_id, "to_bot", csr_id="csr-sarah-01", csr_name="Sarah Thompson"
+        )
         assert ho2["csr_handover_active"] is False
 
         state_post_handover = _state(client, thread_id)
@@ -814,13 +892,15 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
 # Edge cases and regression guards
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_csr_turn_on_unknown_thread_creates_new_state() -> None:
     """CSR turn with a fresh UUID creates a new thread state without crashing."""
     app = _app()
     with TestClient(app) as client:
         fresh_thread_id = str(uuid4())
         _csr_turn(
-            client, fresh_thread_id,
+            client,
+            fresh_thread_id,
             csr_message="Hello, welcome to BookCraft!",
         )
         state = _state(client, fresh_thread_id)
@@ -858,7 +938,8 @@ def test_csr_commitment_persists_across_bot_turns() -> None:
 
         _handover(client, thread_id, "to_csr")
         _csr_turn(
-            client, thread_id,
+            client,
+            thread_id,
             csr_message="The proofreading package is $950 and indexing is $400 total.",
         )
         _handover(client, thread_id, "to_bot")
@@ -884,12 +965,15 @@ def test_csr_turn_empty_message_handled_gracefully() -> None:
         thread_id = r1["thread_id"]
 
         # Empty csr_message violates min_length=1 — should return 422
-        r = client.post("/api/v1/chat/csr-turn", json={
-            "thread_id": thread_id,
-            "csr_id": "csr-001",
-            "csr_name": "Test CSR",
-            "csr_message": "",
-        })
+        r = client.post(
+            "/api/v1/chat/csr-turn",
+            json={
+                "thread_id": thread_id,
+                "csr_id": "csr-001",
+                "csr_name": "Test CSR",
+                "csr_message": "",
+            },
+        )
         assert r.status_code == 422, f"Expected 422 for empty csr_message, got {r.status_code}"
 
 
@@ -900,10 +984,13 @@ def test_handover_invalid_direction_rejected() -> None:
         r1 = _turn(client, "Hello.")
         thread_id = r1["thread_id"]
 
-        r = client.post("/api/v1/chat/handover", json={
-            "thread_id": thread_id,
-            "direction": "sideways",  # invalid
-        })
+        r = client.post(
+            "/api/v1/chat/handover",
+            json={
+                "thread_id": thread_id,
+                "direction": "sideways",  # invalid
+            },
+        )
         assert r.status_code == 422, f"Expected 422 for invalid direction, got {r.status_code}"
 
 
@@ -917,7 +1004,10 @@ def test_multiple_csr_agents_in_sequence() -> None:
         # First CSR agent
         _handover(client, thread_id, "to_csr", csr_id="csr-001", csr_name="Rachel")
         _csr_turn(
-            client, thread_id, csr_id="csr-001", csr_name="Rachel",
+            client,
+            thread_id,
+            csr_id="csr-001",
+            csr_name="Rachel",
             csr_message="Hi! For 90k words, editing is $2,200. We can deliver in 5 weeks.",
         )
         _handover(client, thread_id, "to_bot")
@@ -927,7 +1017,10 @@ def test_multiple_csr_agents_in_sequence() -> None:
         # Second CSR agent picks up
         _handover(client, thread_id, "to_csr", csr_id="csr-002", csr_name="David")
         _csr_turn(
-            client, thread_id, csr_id="csr-002", csr_name="David",
+            client,
+            thread_id,
+            csr_id="csr-002",
+            csr_name="David",
             csr_message="Hi, I'm David. We also offer a free consultation to get started.",
         )
         _handover(client, thread_id, "to_bot")

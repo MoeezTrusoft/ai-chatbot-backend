@@ -1,4 +1,5 @@
 """Tests for the SonnetResponseGenerator.stream() async generator."""
+
 from __future__ import annotations
 
 import inspect

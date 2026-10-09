@@ -47,7 +47,7 @@ class _CompressedAbstract:
 
     # Minimal BaseModel-like interface for adapter.structured()
     @classmethod
-    def model_validate(cls, data: object) -> "_CompressedAbstract":
+    def model_validate(cls, data: object) -> _CompressedAbstract:
         if isinstance(data, dict):
             return cls(text=str(data.get("text", "")))
         return cls(text=str(data))

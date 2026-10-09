@@ -198,8 +198,7 @@ def test_quick_look_enrichment_round_trips_through_service(client: TestClient) -
             {
                 "filename": "winter-memoir.docx",
                 "mime_type": (
-                    "application/vnd.openxmlformats-officedocument."
-                    "wordprocessingml.document"
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 ),
                 "page_count": 134,
                 "word_count": 40200,

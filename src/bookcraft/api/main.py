@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import cast
 
+import httpx
 import sentry_sdk
 import structlog
 from elasticsearch import AsyncElasticsearch
@@ -14,11 +15,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.api.admin_analysis import router as admin_analysis_router
 from bookcraft.api.chat import router as chat_router
-from bookcraft.api.holidays import router as holidays_router
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
+from bookcraft.api.holidays import router as holidays_router
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.actions import SalesActionDispatcher
@@ -30,6 +32,9 @@ from bookcraft.components.consultations import (
     refresh_holiday_cache,
 )
 from bookcraft.components.consultations.holidays import HOLIDAY_CACHE_TTL_SECONDS
+from bookcraft.components.context import ContextPackBuilder
+from bookcraft.components.context.entity_index import ConversationEntityIndex
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.document_actions import (
     AgreementActionService,
     DocumentRequestRepository,
@@ -39,12 +44,7 @@ from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
-from bookcraft.components.context import ContextPackBuilder
-from bookcraft.components.context.entity_index import ConversationEntityIndex
-from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
-from bookcraft.components.trg.checkpointer import ConversationCheckpointer
-from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.intent import (
     EnsembleIntentClassifier,
     LLMIntentProvider,
@@ -53,7 +53,6 @@ from bookcraft.components.intent import (
 )
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.leads import LeadRepository, LeadService
-import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.portfolio.tools import register_portfolio_tools
@@ -70,13 +69,19 @@ from bookcraft.components.pricing_actions import (
 )
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.storage.action_idempotency_repository import ActionIdempotencyRepository
 from bookcraft.components.storage.db import create_engine, create_session_factory
-from bookcraft.components.storage.thread_repository import ThreadRepository
+from bookcraft.components.storage.thread_repository import (
+    ThreadRepository,
+    ThreadVersionConflictError,
+)
 from bookcraft.components.trg import (
     InMemoryGraphRepository,
     RedisHotGraphStore,
     TemporalRelationGraphEngine,
 )
+from bookcraft.components.trg.checkpointer import ConversationCheckpointer
+from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.trimatch import (
     RuleRepository,
     TriMatchEngine,
@@ -102,6 +107,7 @@ from bookcraft.tools import (
     ToolGatingPolicy,
     ToolRegistry,
 )
+from bookcraft.workers.csr_outbox import CsrOutboxWorker
 
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
@@ -116,6 +122,14 @@ READINESS_LATENCY = Histogram(
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
+    if resolved_settings.app_env not in {"test", "dev", "development", "local"}:
+        if resolved_settings.api_auth_mode != "jwt" or not resolved_settings.jwt_signing_key:
+            raise RuntimeError("Production requires API_AUTH_MODE=jwt and JWT_SIGNING_KEY")
+        if len(resolved_settings.jwt_signing_key) < 32:
+            raise RuntimeError("Production JWT_SIGNING_KEY must contain at least 32 characters")
+    from bookcraft.components.llm.metrics import configure_prices
+
+    configure_prices(resolved_settings.llm_price_per_million_tokens)
     configure_logging(resolved_settings)
     configure_sentry(resolved_settings)
 
@@ -176,22 +190,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             holiday_refresh_task = asyncio.create_task(_holiday_refresh_loop())
 
-        yield
-        if holiday_refresh_task is not None:
-            holiday_refresh_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await holiday_refresh_task
-        await _adapters_module.close_shared_client()
-        db_engine = getattr(app.state, "db_engine", None)
-        if db_engine is not None:
-            await db_engine.dispose()
-        rate_limit_client = getattr(app.state, "rate_limit_client", None)
-        if rate_limit_client is not None:
-            await rate_limit_client.aclose()
-        elasticsearch_client = getattr(app.state, "elasticsearch_client", None)
-        if elasticsearch_client is not None:
-            await elasticsearch_client.close()
-        structlog.get_logger(__name__).info("app_stopped")
+        outbox_task: asyncio.Task[None] | None = None
+        outbox_client: httpx.AsyncClient | None = None
+        if session_factory is not None and resolved_settings.csr_node_api_url:
+            outbox_client = httpx.AsyncClient(
+                timeout=resolved_settings.csr_node_consultation_timeout_seconds
+            )
+            worker = CsrOutboxWorker(
+                session_factory,
+                resolved_settings.csr_node_api_url,
+                outbox_client,
+                resolved_settings.csr_node_api_token,
+            )
+            outbox_task = asyncio.create_task(worker.run())
+        try:
+            yield
+        finally:
+            if outbox_task is not None:
+                outbox_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await outbox_task
+            if outbox_client is not None:
+                await outbox_client.aclose()
+            if holiday_refresh_task is not None:
+                holiday_refresh_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await holiday_refresh_task
+            await _adapters_module.close_shared_client()
+            db_engine = getattr(app.state, "db_engine", None)
+            if db_engine is not None:
+                await db_engine.dispose()
+            rate_limit_client = getattr(app.state, "rate_limit_client", None)
+            if rate_limit_client is not None:
+                await rate_limit_client.aclose()
+            elasticsearch_client = getattr(app.state, "elasticsearch_client", None)
+            if elasticsearch_client is not None:
+                await elasticsearch_client.close()
+            structlog.get_logger(__name__).info("app_stopped")
 
     app = FastAPI(
         title="BookCraft AI Chatbot",
@@ -204,7 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.state.settings = resolved_settings
@@ -253,6 +288,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rag_retriever = RagRetriever(
             client=elasticsearch_client,
             index_alias=resolved_settings.rag_index_alias,
+            vector_search_mode=resolved_settings.rag_vector_search_mode,
+            num_candidates=resolved_settings.rag_knn_num_candidates,
         )
 
     app.state.chat_service = build_chat_service(
@@ -262,7 +299,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rag_retriever=rag_retriever,
         trg_engine=trg_engine,
         elasticsearch_client=elasticsearch_client if resolved_settings.app_env != "test" else None,
+        cache_client=cast(CacheClient, rate_limit_client)
+        if rate_limit_client is not None
+        else None,
     )
+
+    @app.exception_handler(TimeoutError)
+    async def turn_timeout_handler(request: Request, exc: TimeoutError) -> JSONResponse:
+        return JSONResponse(status_code=504, content={"error": "turn_timeout"})
+
+    @app.exception_handler(ThreadVersionConflictError)
+    async def thread_conflict_handler(
+        request: Request, exc: ThreadVersionConflictError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"error": "thread_changed_retry_turn"})
+
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
     app.include_router(holidays_router)
@@ -353,16 +404,17 @@ def build_chat_service(
     rag_retriever: RagRetriever | None = None,
     trg_engine: TemporalRelationGraphEngine | None = None,
     elasticsearch_client: AsyncElasticsearch | None = None,
+    cache_client: CacheClient | None = None,
 ) -> ChatService:
     sidecars = load_sidecars(settings.preprocessor_sidecar_dir)
-    cache_client = None
-    if settings.readiness_check_externals:
+    if cache_client is None and settings.app_env != "test":
         cache_client = cast(CacheClient, create_redis_client(settings))
     key_builder = CacheKeyBuilder(environment=settings.app_env)
     embedding_client = EmbeddingClient(
         tei_url=settings.tei_url,
         timeout_seconds=settings.tei_timeout_seconds,
         dimensions=settings.embedding_dimensions,
+        offline=settings.app_env == "test",
         degraded_mode_enabled=settings.tei_degraded_mode_enabled,
         cache=cache_client,
         keys=key_builder,
@@ -441,8 +493,10 @@ def build_chat_service(
         None
         if session_factory is None
         else ConsultationActionService(
-            repository=ConsultationRepository(session_factory=session_factory),
-            csr_node_api_url=settings.csr_node_api_url or None,
+            repository=ConsultationRepository(
+                session_factory=session_factory, enqueue_csr_sync=bool(settings.csr_node_api_url)
+            ),
+            csr_node_api_url=None,
             csr_node_timeout=settings.csr_node_consultation_timeout_seconds,
         )
     )
@@ -492,6 +546,11 @@ def build_chat_service(
     )
     csr_summarizer = CsrContextSummarizer(adapter=_extraction_adapter)
     return ChatService(
+        turn_timeout_seconds=settings.chat_turn_timeout_seconds,
+        event_log_batching_enabled=settings.event_log_batching_enabled,
+        trg_background_persist_enabled=settings.trg_background_persist_enabled,
+        llm_extraction_overlap_enabled=settings.llm_extraction_overlap_enabled,
+        trimatch_event_evidence_summary=settings.trimatch_event_evidence_summary,
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
         intent_classifier=build_intent_classifier(settings),
@@ -517,6 +576,7 @@ def build_chat_service(
             pricing_engine,
             portfolio_engine,
             session_factory=session_factory,
+            cache_client=cache_client,
         ),
         environment=settings.app_env,
         response_repair_enabled=settings.response_repair_enabled,
@@ -525,6 +585,7 @@ def build_chat_service(
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         trimatch_extra_mode=settings.trimatch_extra_mode,
         action_dispatcher=SalesActionDispatcher(
+            action_idempotency_repository=ActionIdempotencyRepository(session_factory),
             lead_service=lead_service,
             consultation_action_service=consultation_action_service,
             pricing_action_service=pricing_action_service,
@@ -544,6 +605,7 @@ def build_tool_dispatcher(
     portfolio_engine: PortfolioEngine,
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    cache_client: CacheClient | None = None,
 ) -> ToolDispatcher:
     registry = ToolRegistry()
     register_pricing_tools(registry, pricing_engine)
@@ -559,13 +621,18 @@ def build_tool_dispatcher(
     key_builder = CacheKeyBuilder(environment=settings.app_env)
     audit_sink = (
         MemoryAuditSink()
-        if session_factory is None or settings.app_env == "test"
+        if session_factory is None
         else DbToolAuditSink(session_factory=session_factory)
     )
     return ToolDispatcher(
         registry=registry,
         idempotency_store=IdempotencyStore(
-            client=MemoryCache(),
+            client=cache_client
+            or (
+                MemoryCache()
+                if settings.app_env == "test"
+                else cast(CacheClient, create_redis_client(settings))
+            ),
             keys=key_builder,
             ttl_seconds=settings.redis_idempotency_ttl_hours * 3600,
         ),

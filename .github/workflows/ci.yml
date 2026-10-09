@@ -1,32 +1,61 @@
 name: CI
-
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "codex/**"]
   pull_request:
-
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  APP_ENV: test
+  LLM_PROVIDER_MODE: mock
 jobs:
-  test:
+  checks:
+    name: ${{ matrix.check }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, type, test, verifier-gates, security-scan, dependency-scan]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: make install
-      - name: Lint
-        run: make lint
-      - name: Type check
-        run: make type
-      - name: Test
-        run: make test
-      - name: Verifier gates
-        run: make verifier-gates
-      - name: Security scan
-        run: make security-scan
-      - name: Dependency scan
-        run: make dependency-scan
-      - name: Compose config
-        run: docker compose config
+      - run: make install
+      - run: make ${{ matrix.check }}
+        timeout-minutes: 20
+      - if: matrix.check == 'verifier-gates'
+        run: docker compose config --quiet
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bookcraft
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: bookcraft_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bookcraft -d bookcraft_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://bookcraft:test-only@localhost:5432/bookcraft_test
+      TEST_POSTGRES_URL: postgresql+asyncpg://bookcraft:test-only@localhost:5432/bookcraft_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: make install
+      - run: uv run --frozen alembic upgrade head
+      - run: uv run --frozen pytest tests/integration/test_postgres_hardening.py
+      - run: uv run --frozen alembic downgrade -1
+      - run: uv run --frozen alembic upgrade head
+  image:
+    uses: ./.github/workflows/cd.yml

@@ -61,18 +61,14 @@ def _next_business_half_hour(
     # after-hours. 14 comfortably covers a holiday adjacent to a weekend.
     for _ in range(14):
         if candidate.weekday() >= 5 or is_blackout_date(candidate.date()):  # weekend/holiday
-            candidate = (candidate + timedelta(days=1)).replace(
-                hour=business_start_hour, minute=0
-            )
+            candidate = (candidate + timedelta(days=1)).replace(hour=business_start_hour, minute=0)
             continue
         if candidate.hour < business_start_hour:
             candidate = candidate.replace(hour=business_start_hour, minute=0)
             continue
         # Past the last bookable start (>= close, leaving no room for 30 min).
         if candidate.hour >= business_end_hour:
-            candidate = (candidate + timedelta(days=1)).replace(
-                hour=business_start_hour, minute=0
-            )
+            candidate = (candidate + timedelta(days=1)).replace(hour=business_start_hour, minute=0)
             continue
         return candidate
     return candidate
@@ -80,7 +76,7 @@ def _next_business_half_hour(
 
 def _format_slot(value: datetime, *, tz_label: str) -> str:
     # e.g. "Friday, Jun 20 at 2:30 PM CT"
-    return f"{value.strftime('%A, %b %-d at %-I:%M %p')} {tz_label}"
+    return f"{value:%A, %b} {value.day} at {value.hour % 12 or 12}:{value:%M %p} {tz_label}"
 
 
 def suggest_consultation_slots(

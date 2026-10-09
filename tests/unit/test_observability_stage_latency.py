@@ -1,6 +1,8 @@
 """Tests for the STAGE_LATENCY Prometheus histogram in observability.py."""
-from bookcraft.infra.observability import STAGE_LATENCY
+
 from prometheus_client import Histogram
+
+from bookcraft.infra.observability import STAGE_LATENCY
 
 
 def test_stage_latency_is_histogram():

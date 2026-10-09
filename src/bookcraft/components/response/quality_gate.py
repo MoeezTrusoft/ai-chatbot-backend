@@ -91,25 +91,28 @@ _FORMATTING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # RAG document-body bleed (no asterisks): verbatim document headers/section leads
     # that appear in chat responses. Uses compound phrases that only occur in RAG source
     # documents, not in natural conversational prose.
-    ("rag_document_body", re.compile(
-        r"(?:"
-        r"What\s+Influences\s+Cost|"
-        r"Cost\s*&\s*Timeline\s+Beyond|"
-        r"Beyond\s+genre\s+and\s+engagement\s+model|"
-        r"factors\s+can\s+affect\s+your\s+quote|"
-        r"Content\s+complexity\s+drivers|"
-        r"engagement\s+model,\s+these\s+factors|"
-        r"specialized\s+non-fiction[^.]{10,}|"
-        # Specific phrases observed in production RAG bleed incidents:
-        r"editing\s+and\s+proofreading\s+is\s+the\s+main\s+direction\s+here|"
-        r"ghostwriting\s+is\s+the\s+main\s+direction\s+here|"
-        r"I'd\s+confirm\s+the\s+manuscript\s+stage\s+first,\s+then\s+map|"
-        r"Crafting\s+Clarity,\s+Perfecting\s+Prose|"
-        r"Precision\s+in\s+every\s+word;\s+excellence|"
-        r"beyond\s+catching\s+typos\s+-\s+we\s+refine"
-        r")[^\n]{0,}",
-        re.IGNORECASE,
-    )),
+    (
+        "rag_document_body",
+        re.compile(
+            r"(?:"
+            r"What\s+Influences\s+Cost|"
+            r"Cost\s*&\s*Timeline\s+Beyond|"
+            r"Beyond\s+genre\s+and\s+engagement\s+model|"
+            r"factors\s+can\s+affect\s+your\s+quote|"
+            r"Content\s+complexity\s+drivers|"
+            r"engagement\s+model,\s+these\s+factors|"
+            r"specialized\s+non-fiction[^.]{10,}|"
+            # Specific phrases observed in production RAG bleed incidents:
+            r"editing\s+and\s+proofreading\s+is\s+the\s+main\s+direction\s+here|"
+            r"ghostwriting\s+is\s+the\s+main\s+direction\s+here|"
+            r"I'd\s+confirm\s+the\s+manuscript\s+stage\s+first,\s+then\s+map|"
+            r"Crafting\s+Clarity,\s+Perfecting\s+Prose|"
+            r"Precision\s+in\s+every\s+word;\s+excellence|"
+            r"beyond\s+catching\s+typos\s+-\s+we\s+refine"
+            r")[^\n]{0,}",
+            re.IGNORECASE,
+        ),
+    ),
 ]
 
 # Slippy / hedging words — built from the style policy so there is one source
@@ -1061,7 +1064,8 @@ _METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
-# Consultation time-confirmation phrases — broader than scheduling claim (catches "12 PM is confirmed").
+# Consultation time-confirmation phrases — broader than scheduling claim (catches "12 PM is
+# confirmed").
 _TIME_CONFIRMATION_RE = re.compile(
     r"\b(?:\d{1,2}\s*(?::\d{2}\s*)?(?:am|pm)|tomorrow|monday|tuesday|wednesday|thursday|friday|"
     r"saturday|sunday|next\s+\w+)\b",
@@ -1118,9 +1122,7 @@ def _unverified_scheduling_claim(text: str, state: ThreadState) -> bool:
         is not a booking claim.
     """
     explicit = bool(_SCHEDULING_CLAIM_RE.search(text))
-    implicit = bool(_LOCKED_IN_CLAIM_RE.search(text)) and bool(
-        _TIME_CONFIRMATION_RE.search(text)
-    )
+    implicit = bool(_LOCKED_IN_CLAIM_RE.search(text)) and bool(_TIME_CONFIRMATION_RE.search(text))
     if not (explicit or implicit):
         return False
 
@@ -1404,7 +1406,9 @@ def _build_safe_fallback(
 
     # Prefer governance blocked_message when that is the trigger.
     if tool_governance is not None and not tool_governance.allowed:
-        if tool_governance.blocked_message and _engine_text_is_safe(tool_governance.blocked_message):
+        if tool_governance.blocked_message and _engine_text_is_safe(
+            tool_governance.blocked_message
+        ):
             return tool_governance.blocked_message
 
     # Use plan's customer_safe_tool_summary when available.
@@ -1449,9 +1453,7 @@ def _engine_text_is_safe(msg: str) -> bool:
     smuggle copied document prose into the customer reply as the safety fallback.
     """
     return bool(msg) and not (
-        _contains_internal(msg)
-        or _internal_artifacts(msg)
-        or _formatting_artifacts(msg)
+        _contains_internal(msg) or _internal_artifacts(msg) or _formatting_artifacts(msg)
     )
 
 

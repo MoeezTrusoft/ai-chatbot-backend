@@ -3,6 +3,7 @@
 (Issue 1 — LLM-only sign-off name reaching the lead/CSR — is exercised end-to-end
 by scripts/e2e_consultation_lead_flow.py scenario S5.)
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -22,8 +23,10 @@ from bookcraft.domain.state import ThreadState
 class TestPastedMediaUrlAttachment:
     def test_docx_url_with_space_in_path_detected(self) -> None:
         # Verbatim shape from the transcript (note the space in "Chapter 2_…").
-        msg = ("It shows uploaded. https://server.trusoft.pk/media/assets/"
-               "Chapter 2_2026-06-17T13-59-55-251Z.docx Did you get it?")
+        msg = (
+            "It shows uploaded. https://server.trusoft.pk/media/assets/"
+            "Chapter 2_2026-06-17T13-59-55-251Z.docx Did you get it?"
+        )
         atts = _attachments_from_message(msg)
         assert len(atts) == 1
         assert atts[0].filename.endswith(".docx")
@@ -40,7 +43,10 @@ class TestPastedMediaUrlAttachment:
         assert any("media_url_detected" in a for a in r.audit)
 
     def test_pdf_and_image_urls(self) -> None:
-        assert _attachments_from_message("my draft https://x.io/files/draft.pdf")[0].filename == "draft.pdf"
+        assert (
+            _attachments_from_message("my draft https://x.io/files/draft.pdf")[0].filename
+            == "draft.pdf"
+        )
         # Category is inferred during process(), not on the raw synthesized attachment.
         r = AttachmentIntakeProcessor().process(
             attachments=None, message="cover https://x.io/c/cover-art.png"
@@ -61,7 +67,14 @@ def _intent():
     return SimpleNamespace(query_primary=None)
 
 
-def _reduce(*, state=None, has_email=True, has_phone=False, require_phone=True, message="let's book a consultation"):
+def _reduce(
+    *,
+    state=None,
+    has_email=True,
+    has_phone=False,
+    require_phone=True,
+    message="let's book a consultation",
+):
     return reduce_consultation_state(
         state=state or ThreadState(),
         message=message,
@@ -100,8 +113,13 @@ class TestAlwaysAskPhone:
     def test_no_email_no_phone_asks_contact_first(self) -> None:
         # Genuinely no contact yet → normal contact ask, not the phone enrichment.
         d = reduce_consultation_state(
-            state=ThreadState(), message="book a consultation", intent=_intent(),
-            contact_ready=False, has_email=False, has_phone=False, require_phone=True,
+            state=ThreadState(),
+            message="book a consultation",
+            intent=_intent(),
+            contact_ready=False,
+            has_email=False,
+            has_phone=False,
+            require_phone=True,
         )
         assert d.stage == ConsultationStage.REQUESTED_CONTACT_NEEDED
 
@@ -123,21 +141,33 @@ class TestTimezoneFromPersonalUnblocksBooking:
         # test_consultation_slot_suggestions.py).
         st.preferred_call_time = "Tuesday afternoon at 2pm"
         if tz:
-            st.personal.timezone = FieldMeta[str](value=tz, confidence=0.92, source=Source.USER_STATED)
+            st.personal.timezone = FieldMeta[str](
+                value=tz, confidence=0.92, source=Source.USER_STATED
+            )
         return st
 
     def test_personal_timezone_reaches_ready_to_schedule(self) -> None:
         d = reduce_consultation_state(
-            state=self._state_with_tz("America/New_York"), message="book a consultation",
-            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+            state=self._state_with_tz("America/New_York"),
+            message="book a consultation",
+            intent=_intent(),
+            contact_ready=True,
+            has_email=True,
+            has_phone=True,
+            require_phone=True,
         )
         assert d.stage == ConsultationStage.READY_TO_SCHEDULE
         assert d.can_schedule is True
 
     def test_no_timezone_anywhere_still_asks(self) -> None:
         d = reduce_consultation_state(
-            state=self._state_with_tz(None), message="book a consultation",
-            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+            state=self._state_with_tz(None),
+            message="book a consultation",
+            intent=_intent(),
+            contact_ready=True,
+            has_email=True,
+            has_phone=True,
+            require_phone=True,
         )
         assert d.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
 

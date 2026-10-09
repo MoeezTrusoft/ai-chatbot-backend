@@ -14,11 +14,13 @@ A quarantined rule's JSON entry gets "enabled": false applied in a patch.
 Output format:
     {
         "quarantine_list": [
-            {"rule_id": "BAD-RULE-001", "accuracy": 0.32, "n_total": 20, "reason": "accuracy_below_threshold"}
+            {"rule_id": "BAD-RULE-001", "accuracy": 0.32, "n_total": 20, "reason":
+            "accuracy_below_threshold"}
         ],
         "patch_file": "data/trimatch/quarantine/disabled_rules.json"
     }
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,13 +76,15 @@ def quarantine(
             continue
         accuracy = n_correct / n_total
         if accuracy < threshold:
-            quarantine_list.append({
-                "rule_id": rule_id,
-                "accuracy": round(accuracy, 4),
-                "n_correct": n_correct,
-                "n_total": n_total,
-                "reason": "accuracy_below_threshold",
-            })
+            quarantine_list.append(
+                {
+                    "rule_id": rule_id,
+                    "accuracy": round(accuracy, 4),
+                    "n_correct": n_correct,
+                    "n_total": n_total,
+                    "reason": "accuracy_below_threshold",
+                }
+            )
 
     quarantine_list.sort(key=lambda r: r["accuracy"])
 
@@ -112,17 +116,30 @@ def quarantine(
     else:
         print(f"[DRY RUN] Would quarantine {len(quarantine_list)} rules:")
         for r in quarantine_list:
-            print(f"  {r['rule_id']}: accuracy={r['accuracy']:.1%} ({r['n_correct']}/{r['n_total']})")
+            print(
+                f"  {r['rule_id']}: accuracy={r['accuracy']:.1%} ({r['n_correct']}/{r['n_total']})"
+            )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quarantine underperforming TriMatch rules.")
     parser.add_argument("--rule-dir", type=Path, default=Path("data/trimatch/rules"))
     parser.add_argument("--eval-file", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=Path("data/trimatch/quarantine/quarantine_list.json"))
-    parser.add_argument("--threshold", type=float, default=0.5, help="Accuracy threshold below which rules are quarantined")
+    parser.add_argument(
+        "--output", type=Path, default=Path("data/trimatch/quarantine/quarantine_list.json")
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Accuracy threshold below which rules are quarantined",
+    )
     parser.add_argument("--min-observations", type=int, default=5)
-    parser.add_argument("--dry-run", action="store_true", help="Print what would be quarantined without writing files")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be quarantined without writing files",
+    )
 
     args = parser.parse_args()
 

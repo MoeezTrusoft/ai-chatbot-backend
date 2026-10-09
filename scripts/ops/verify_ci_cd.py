@@ -3,21 +3,22 @@ from __future__ import annotations
 from pathlib import Path
 
 REQUIRED_CI_STEPS = [
-    "make lint",
-    "make type",
-    "make test",
-    "make verifier-gates",
-    "make security-scan",
-    "make dependency-scan",
+    "lint",
+    "type",
+    "test",
+    "verifier-gates",
+    "security-scan",
+    "dependency-scan",
     "docker compose config",
+    "fail-fast: false",
+    "test_postgres_hardening.py",
 ]
-
 REQUIRED_CD_MARKERS = [
     "build image",
-    "run migrations",
-    "deploy staging",
     "smoke test",
-    "manual production gate",
+    "push: false",
+    "docker save",
+    "upload-artifact",
 ]
 
 

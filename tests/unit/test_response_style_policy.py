@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.response.style_policy import ResponseStylePolicy
 

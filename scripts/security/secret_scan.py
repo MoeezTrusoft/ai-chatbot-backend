@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 EXCLUDED_DIRS = {
@@ -50,7 +52,18 @@ PLACEHOLDER_VALUES = {
 
 def main() -> int:
     findings: list[str] = []
-    for path in sorted(Path(".").rglob("*")):
+    # Follow Git's ignore rules, avoiding virtual environments, build outputs and
+    # private local configuration while including newly added, eligible files.
+    git = shutil.which("git")
+    if git is None:
+        raise RuntimeError("Git is required to scan repository files")
+    files = subprocess.run(  # noqa: S603 - resolved Git executable and fixed argument list
+        [git, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split("\0")
+    for path in sorted({Path(name) for name in files if name}):
         if not path.is_file() or _excluded(path):
             continue
         try:

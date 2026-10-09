@@ -6,7 +6,7 @@ def test_extracts_name_and_email() -> None:
     r = ContactCaptureDetector().extract("My name is Sarah Khan and my email is sarah@example.com")
     assert r.has_name is True
     assert r.has_email is True
-    assert r.lead_contact_ready is True   # name + email = ready
+    assert r.lead_contact_ready is True  # name + email = ready
     assert "phone" in r.missing_contact_fields  # still asks for phone as supplementary
 
 
@@ -39,8 +39,8 @@ def test_name_and_email_is_ready() -> None:
     r = ContactCaptureDetector().extract("this is Sarah, email sarah@example.com")
     assert r.has_name is True
     assert r.has_email is True
-    assert r.lead_contact_ready is True   # name + email = ready
-    assert "phone" in r.missing_contact_fields   # phone still asked as supplementary
+    assert r.lead_contact_ready is True  # name + email = ready
+    assert "phone" in r.missing_contact_fields  # phone still asked as supplementary
     assert "email_or_phone" not in r.missing_contact_fields
 
 

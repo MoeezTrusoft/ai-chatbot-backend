@@ -127,7 +127,9 @@ class ResponsePlan(BaseModel):
     customer_safe_tool_summary: str | None = None
     audit: list[str] = Field(default_factory=list)
     # P4-T4: contradiction-confirmation flow.
-    contradiction_pending: bool = False  # True if there are unresolved contradictions worth confirming
+    contradiction_pending: bool = (
+        False  # True if there are unresolved contradictions worth confirming
+    )
     contradiction_hint: str | None = None  # What the contradiction is about
 
 
@@ -292,7 +294,11 @@ class ResponsePlanner:
         # picking one.  Only activates when contradiction_confirmation_enabled=True.
         contradiction_pending = False
         contradiction_hint: str | None = None
-        if self.contradiction_confirmation_enabled and trg_context is not None and trg_context.contradictions:
+        if (
+            self.contradiction_confirmation_enabled
+            and trg_context is not None
+            and trg_context.contradictions
+        ):
             _PRICING_PATHS = {
                 "project.word_count",
                 "project.page_count",
@@ -300,18 +306,16 @@ class ResponsePlanner:
                 "service.timeline",
             }
             pricing_contradictions = [
-                c for c in trg_context.contradictions
+                c
+                for c in trg_context.contradictions
                 if c.fact_path in _PRICING_PATHS and c.resolution_status == "unresolved"
             ]
             if pricing_contradictions:
                 contradiction_pending = True
                 contradiction_hint = (
-                    f"Conflicting info about "
-                    f"{pricing_contradictions[0].fact_path.split('.')[-1]}"
+                    f"Conflicting info about {pricing_contradictions[0].fact_path.split('.')[-1]}"
                 )
-                audit.append(
-                    f"planner:contradiction_pending:{pricing_contradictions[0].fact_path}"
-                )
+                audit.append(f"planner:contradiction_pending:{pricing_contradictions[0].fact_path}")
 
         return ResponsePlan(
             acknowledge_facts=facts,
@@ -376,9 +380,7 @@ def _acknowledge_facts(context_pack: ContextPack) -> list[str]:
         if _dims:
             w, h = _dims[0]
             facts.append(f"attachment_image_dimensions: {w}x{h}")
-        _excerpts = [
-            a.excerpt.strip() for a in context_pack.attachments_received if a.excerpt
-        ]
+        _excerpts = [a.excerpt.strip() for a in context_pack.attachments_received if a.excerpt]
         if _excerpts:
             # Defensive cap even though the upload service already trims it.
             facts.append(f"attachment_excerpt: {_excerpts[0][:500]}")
@@ -556,7 +558,10 @@ def _primary_goal(
     # Only confirm lead creation on the turn it was JUST created (lod_move == "create_lead").
     # context_pack.lead_created persists across all subsequent turns and must not keep
     # triggering lead_created_confirmation after the first acknowledgement.
-    if lead_objective_decision is not None and getattr(lead_objective_decision, "objective_move", None) == "create_lead":
+    if (
+        lead_objective_decision is not None
+        and getattr(lead_objective_decision, "objective_move", None) == "create_lead"
+    ):
         return "lead_created_confirmation"
 
     # Greeting-only turns map to greeting_welcome ONLY on a fresh thread. On an
@@ -654,7 +659,9 @@ def _primary_goal(
 
     # Manuscript status updates (e.g. "I just finished my chapter!") should be celebrated
     # even when inside a cover design scoping flow — don't interrupt good news with scoping.
-    _has_manuscript_update = QueryIntentType.MANUSCRIPT_STATUS_UPDATE in (intent.query_secondary or [])
+    _has_manuscript_update = QueryIntentType.MANUSCRIPT_STATUS_UPDATE in (
+        intent.query_secondary or []
+    )
     if context_pack.active_service == "cover_design_illustration" and not _has_manuscript_update:
         return "cover_design_scoping"
 

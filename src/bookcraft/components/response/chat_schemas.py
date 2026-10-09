@@ -3,6 +3,7 @@
 Placed here (rather than in api/) to break the circular import between
 api/chat.py and services/chat.py. Both modules import from this shared location.
 """
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -40,7 +41,7 @@ class ChatTurnRequest(BaseModel):
     turn_token: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def _require_message_or_attachment(self) -> "ChatTurnRequest":
+    def _require_message_or_attachment(self) -> ChatTurnRequest:
         if not self.message.strip() and not self.attachments:
             raise ValueError("a message or at least one attachment is required")
         return self

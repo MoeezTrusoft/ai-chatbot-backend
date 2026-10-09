@@ -53,10 +53,24 @@ _REASK_PROTECTION: dict[str, list[str]] = {
 
 # Normalized single-phrase user inputs that carry no real answer content.
 # These phrases must NOT be treated as resolving an outstanding question.
-_NON_ANSWER_PHRASES: frozenset[str] = frozenset({
-    "hi", "hello", "hey", "ok", "okay", "sure", "thanks", "thank you",
-    "yes", "no", "yep", "nope", "got it", "alright",
-})
+_NON_ANSWER_PHRASES: frozenset[str] = frozenset(
+    {
+        "hi",
+        "hello",
+        "hey",
+        "ok",
+        "okay",
+        "sure",
+        "thanks",
+        "thank you",
+        "yes",
+        "no",
+        "yep",
+        "nope",
+        "got it",
+        "alright",
+    }
+)
 
 
 def _derive_slot_path(question_text: str) -> str | None:
@@ -112,7 +126,11 @@ class TemporalRelationGraphEngine:
         with TRG_UPDATE_LATENCY.time():
             # Materialize once so helpers can iterate multiple times.
             delta_list = list(state_deltas)
-            graph = preloaded_graph if preloaded_graph is not None else await self.repository.load(thread_id)
+            graph = (
+                preloaded_graph
+                if preloaded_graph is not None
+                else await self.repository.load(thread_id)
+            )
             if graph is None:
                 graph = TemporalRelationGraph(thread_id=thread_id)
 
@@ -261,9 +279,7 @@ class TemporalRelationGraphEngine:
             non_fact_nodes = [n for _, n in scored[:slots_for_non_fact]]
 
         # Always keep nodes anchoring unresolved questions.
-        unresolved_ids = {
-            q.node_id for q in graph.unresolved_questions if not q.resolved
-        }
+        unresolved_ids = {q.node_id for q in graph.unresolved_questions if not q.resolved}
         for n in graph.nodes:
             if n.id in unresolved_ids and n not in non_fact_nodes and n not in fact_nodes:
                 non_fact_nodes.append(n)
@@ -564,10 +580,20 @@ def semantic_facts_from_deltas(state_deltas: Iterable[StateDelta]) -> list[TRGFa
 
 
 # Correction-phrase signals that raise engagement weight.
-_CORRECTION_KEYWORDS = frozenset([
-    "actually", "correction", "i meant", "not that", "wait no", "i was wrong",
-    "let me correct", "change it to", "i decided", "now it's",
-])
+_CORRECTION_KEYWORDS = frozenset(
+    [
+        "actually",
+        "correction",
+        "i meant",
+        "not that",
+        "wait no",
+        "i was wrong",
+        "let me correct",
+        "change it to",
+        "i decided",
+        "now it's",
+    ]
+)
 
 
 def _compute_engagement_weight(user_text: str) -> float:

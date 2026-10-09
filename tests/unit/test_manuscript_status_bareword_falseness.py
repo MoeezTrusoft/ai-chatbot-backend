@@ -58,8 +58,7 @@ def test_in_progress_scoped_to_nonbook_yields_book_status() -> None:
     # "in progress" modifies "the marketing plan"; the book clause ("just an idea")
     # is the real manuscript status.
     assert (
-        _detect("in progress on the marketing plan, book is just an idea")
-        == ManuscriptStatus.IDEA
+        _detect("in progress on the marketing plan, book is just an idea") == ManuscriptStatus.IDEA
     )
 
 

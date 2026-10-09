@@ -23,9 +23,7 @@ SERVICE_BY_FILE = {
     "authors-website.md": ServiceCategory.AUTHOR_WEBSITE,
     "video-trailers.md": ServiceCategory.VIDEO_TRAILER,
     # New services — 3 files each (description, process, FAQ)
-    "fine-art-monograph-publishing-service-description.md": (
-        ServiceCategory.FINE_ART_MONOGRAPH
-    ),
+    "fine-art-monograph-publishing-service-description.md": (ServiceCategory.FINE_ART_MONOGRAPH),
     "our-process-for-fine-art-monograph-publishing.md": ServiceCategory.FINE_ART_MONOGRAPH,
     "faq-fine-art-monograph-publishing.md": ServiceCategory.FINE_ART_MONOGRAPH,
     "catalog-transition-and-rights-recovery-service-description.md": (

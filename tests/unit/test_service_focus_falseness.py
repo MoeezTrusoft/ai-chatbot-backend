@@ -61,9 +61,7 @@ FALSE_POSITIVES = [
 @pytest.mark.parametrize(("text", "service"), FALSE_POSITIVES)
 async def test_ambiguous_keyword_does_not_mis_scope_service(text: str, service: str) -> None:
     services = await _services(text)
-    assert service not in services, (
-        f"{text!r} should not scope {service!r}; got {services}"
-    )
+    assert service not in services, f"{text!r} should not scope {service!r}; got {services}"
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +82,7 @@ TRUE_POSITIVES = [
 @pytest.mark.parametrize(("text", "service"), TRUE_POSITIVES)
 async def test_genuine_service_request_is_preserved(text: str, service: str) -> None:
     services = await _services(text)
-    assert service in services, (
-        f"{text!r} should still scope {service!r}; got {services}"
-    )
+    assert service in services, f"{text!r} should still scope {service!r}; got {services}"
 
 
 @pytest.mark.asyncio

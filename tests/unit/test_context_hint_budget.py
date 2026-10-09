@@ -3,6 +3,7 @@
 Covers ``_apply_hint_budget`` directly plus the flag-gated wiring in
 ``ContextPackBuilder.build`` and the ``context_hint_dropped_total`` counter.
 """
+
 from __future__ import annotations
 
 from bookcraft.components.context.pack_builder import (
@@ -171,9 +172,7 @@ class TestBuilderFlagWiring:
         # Drive the builder via a minimal path that reuses _response_hint on the pack:
         # the public build() with empty state plus the same hint logic.
         # Direct equivalence: flag-off code path == _response_hint(pack).
-        produced = (
-            pack.model_copy(update={"response_hint": _response_hint(pack)}).response_hint
-        )
+        produced = pack.model_copy(update={"response_hint": _response_hint(pack)}).response_hint
         assert produced == expected_full
         assert builder_off._budget_enabled is False
 
@@ -190,7 +189,7 @@ class TestBuilderFlagWiring:
 
     def test_flag_on_oversized_hint_within_budget_and_drops_recorded(self):
         budget = 25
-        builder = ContextPackBuilder(budget_enabled=True, hint_token_budget=budget)
+        ContextPackBuilder(budget_enabled=True, hint_token_budget=budget)
 
         # Build the segments the builder will see for this rich pack, to know which
         # labels must drop, then assert the counter moves for each.
@@ -236,9 +235,7 @@ class TestBuilderFlagWiring:
 
         # Compare against the full hint: with a tiny budget the budgeted hint must be
         # strictly shorter (something was dropped) and the counter advanced.
-        full_segments = _response_hint_segments(
-            pack.model_copy(update={"response_hint": None})
-        )
+        full_segments = _response_hint_segments(pack.model_copy(update={"response_hint": None}))
         full_hint = " ".join(t for _l, t in full_segments)
         if _hint_approx_tokens(full_hint) > 8:
             assert pack.response_hint != full_hint

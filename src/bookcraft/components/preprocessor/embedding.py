@@ -17,10 +17,13 @@ class EmbeddingClient:
     timeout_seconds: float
     dimensions: int
     degraded_mode_enabled: bool
+    offline: bool = False
     cache: CacheClient | None = None
     keys: CacheKeyBuilder | None = None
 
     async def embed(self, normalized_text: str, language: str) -> list[float]:
+        if self.offline:
+            return [0.0] * self.dimensions
         text_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
         cache_key = self.keys.embedding(language, text_hash) if self.keys is not None else None
         if self.cache is not None and cache_key is not None:

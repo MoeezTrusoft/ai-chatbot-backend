@@ -491,12 +491,10 @@ class ContextEnforcementGate:
         # "your book is already published" on subsequent turns.
         _current_ms = getattr(
             getattr(getattr(state, "project", None), "manuscript_status", None),
-            "value", None,
+            "value",
+            None,
         )
-        if (
-            _current_ms in {"published", "already_published"}
-            and _NOT_PUBLISHED_YET_RE.search(text)
-        ):
+        if _current_ms in {"published", "already_published"} and _NOT_PUBLISHED_YET_RE.search(text):
             state_updates["clear_manuscript_status"] = True
             cleared_false_facts.append("project.manuscript_status")
             stale_context_terms.append("published")

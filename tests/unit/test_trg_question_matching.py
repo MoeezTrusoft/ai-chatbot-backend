@@ -9,6 +9,7 @@ Validates that, with ``question_matching_enabled``:
   * ``TRGContext.questions_ignored`` surfaces the dodge signal;
   * with the flag OFF, the legacy "resolve the first question" behavior is intact.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -60,14 +61,18 @@ class TestSlotMatching:
             repository=InMemoryGraphRepository(), question_matching_enabled=True
         )
         first = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
-            user_text="I need editing.", assistant_text="What is your word count?",
+            thread_id=thread_id,
+            turn_sequence=1,
+            user_text="I need editing.",
+            assistant_text="What is your word count?",
         )
         assert first.unresolved_question_count == 1
 
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="About 60000 words for the manuscript.", assistant_text="Thanks.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="About 60000 words for the manuscript.",
+            assistant_text="Thanks.",
             state_deltas=[_delta("project.word_count", 60000)],
         )
         assert second.unresolved_question_count == 0
@@ -79,12 +84,16 @@ class TestSlotMatching:
         repo = InMemoryGraphRepository()
         engine = TemporalRelationGraphEngine(repository=repo, question_matching_enabled=True)
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
-            user_text="I need editing.", assistant_text="What is your word count?",
+            thread_id=thread_id,
+            turn_sequence=1,
+            user_text="I need editing.",
+            assistant_text="What is your word count?",
         )
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="Tell me about your portfolio please.", assistant_text="Sure.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="Tell me about your portfolio please.",
+            assistant_text="Sure.",
             state_deltas=[],  # no slot delta, no embedding → no resolution
         )
         assert second.unresolved_question_count == 1
@@ -99,13 +108,19 @@ class TestSlotMatching:
             repository=InMemoryGraphRepository(), question_matching_enabled=True
         )
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
-            user_text="I need editing.", assistant_text="What is your word count?",
+            thread_id=thread_id,
+            turn_sequence=1,
+            user_text="I need editing.",
+            assistant_text="What is your word count?",
         )
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="hi", assistant_text="Hello!",
-            state_deltas=[_delta("project.word_count", 60000)],  # even with a delta, "hi" is guarded
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="hi",
+            assistant_text="Hello!",
+            state_deltas=[
+                _delta("project.word_count", 60000)
+            ],  # even with a delta, "hi" is guarded
         )
         assert second.unresolved_question_count == 1
 
@@ -115,13 +130,16 @@ class TestSlotMatching:
         repo = InMemoryGraphRepository()
         engine = TemporalRelationGraphEngine(repository=repo, question_matching_enabled=True)
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
+            thread_id=thread_id,
+            turn_sequence=1,
             user_text="I need help.",
             assistant_text="What is your word count? What genre is it?",
         )
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="It is around 80000 words total.", assistant_text="Great.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="It is around 80000 words total.",
+            assistant_text="Great.",
             state_deltas=[_delta("project.word_count", 80000)],
         )
         # word_count question resolved; genre question still open with ignored bumped.
@@ -138,13 +156,16 @@ class TestSlotMatching:
             repository=InMemoryGraphRepository(), question_matching_enabled=True
         )
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
+            thread_id=thread_id,
+            turn_sequence=1,
             user_text="I need help.",
             assistant_text="What is your word count? What genre is it?",
         )
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="It is an 80000 word fantasy novel.", assistant_text="Great.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="It is an 80000 word fantasy novel.",
+            assistant_text="Great.",
             state_deltas=[_delta("project.word_count", 80000), _delta("project.genre", "fantasy")],
         )
         assert second.unresolved_question_count == 0
@@ -162,15 +183,19 @@ class TestEmbeddingMatching:
         graph = TemporalRelationGraph(thread_id=thread_id)
         graph.unresolved_questions.append(
             UnresolvedQuestion(
-                node_id=uuid4(), question="Tell me more?", asked_turn_sequence=1,
+                node_id=uuid4(),
+                question="Tell me more?",
+                asked_turn_sequence=1,
                 embedding=[1.0, 0.0, 0.0],
             )
         )
         await repo.save(graph)
 
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="Here is a real and detailed answer.", assistant_text="Thanks.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="Here is a real and detailed answer.",
+            assistant_text="Thanks.",
             user_embedding=[0.98, 0.02, 0.0],  # cosine ≈ 1.0 ≥ 0.6
         )
         assert second.unresolved_question_count == 0
@@ -185,14 +210,18 @@ class TestEmbeddingMatching:
         graph = TemporalRelationGraph(thread_id=thread_id)
         graph.unresolved_questions.append(
             UnresolvedQuestion(
-                node_id=uuid4(), question="Tell me more?", asked_turn_sequence=1,
+                node_id=uuid4(),
+                question="Tell me more?",
+                asked_turn_sequence=1,
                 embedding=[1.0, 0.0, 0.0],
             )
         )
         await repo.save(graph)
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="A completely unrelated statement here.", assistant_text="Ok.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="A completely unrelated statement here.",
+            assistant_text="Ok.",
             user_embedding=[0.0, 1.0, 0.0],  # cosine 0.0
         )
         assert second.unresolved_question_count == 1
@@ -205,12 +234,16 @@ class TestContextSignal:
         repo = InMemoryGraphRepository()
         engine = TemporalRelationGraphEngine(repository=repo, question_matching_enabled=True)
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
-            user_text="I need editing.", assistant_text="What is your word count?",
+            thread_id=thread_id,
+            turn_sequence=1,
+            user_text="I need editing.",
+            assistant_text="What is your word count?",
         )
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="Tell me about your portfolio first.", assistant_text="Sure.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="Tell me about your portfolio first.",
+            assistant_text="Sure.",
         )
         graph = await repo.load(thread_id)
         ctx = engine.build_context(graph)
@@ -225,12 +258,16 @@ class TestLegacyBehaviorPreserved:
             repository=InMemoryGraphRepository(), question_matching_enabled=False
         )
         await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=1,
-            user_text="I need editing.", assistant_text="What is your word count?",
+            thread_id=thread_id,
+            turn_sequence=1,
+            user_text="I need editing.",
+            assistant_text="What is your word count?",
         )
         # No delta, no embedding — legacy path still resolves on any substantive text.
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="Tell me about your portfolio please.", assistant_text="Sure.",
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="Tell me about your portfolio please.",
+            assistant_text="Sure.",
         )
         assert second.unresolved_question_count == 0

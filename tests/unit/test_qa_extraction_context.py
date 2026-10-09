@@ -12,6 +12,7 @@ an explicit Q&A extraction rule with worked examples for every major slot.
 
 from __future__ import annotations
 
+from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.extraction.llm_extractor import (
     _EXTRACTION_SYSTEM,
     _EXTRACTION_USER_TEMPLATE,
@@ -20,16 +21,15 @@ from bookcraft.components.extraction.llm_extractor import (
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.extraction.state_applier import StateApplier
-from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _field(value, *, confidence: float = 0.92):
     return FieldMeta(value=value, confidence=confidence, source=Source.AI_EXTRACTED)
@@ -59,6 +59,7 @@ def _render_template(user_msg: str, assistant_msg: str, known_facts: str = "  (n
 # Template structure tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtractionTemplateStructure:
     """The template must show the assistant's question BEFORE the user's reply
     so the LLM extractor understands the conversational Q&A context."""
@@ -73,40 +74,57 @@ class TestExtractionTemplateStructure:
         )
 
     def test_template_has_qa_extraction_instruction(self):
-        assert "replying to" in _EXTRACTION_USER_TEMPLATE.lower() or \
-               "is replying" in _EXTRACTION_USER_TEMPLATE.lower() or \
-               "in context" in _EXTRACTION_USER_TEMPLATE.lower()
+        assert (
+            "replying to" in _EXTRACTION_USER_TEMPLATE.lower()
+            or "is replying" in _EXTRACTION_USER_TEMPLATE.lower()
+            or "in context" in _EXTRACTION_USER_TEMPLATE.lower()
+        )
 
     def test_template_has_examples_for_manuscript_status_qa(self):
-        assert "its all in head right now" in _EXTRACTION_USER_TEMPLATE.lower() or \
-               "not_started" in _EXTRACTION_USER_TEMPLATE
+        assert (
+            "its all in head right now" in _EXTRACTION_USER_TEMPLATE.lower()
+            or "not_started" in _EXTRACTION_USER_TEMPLATE
+        )
 
     def test_template_has_examples_for_word_count_qa(self):
-        assert "130,000" in _EXTRACTION_USER_TEMPLATE or "word count" in _EXTRACTION_USER_TEMPLATE.lower()
+        assert (
+            "130,000" in _EXTRACTION_USER_TEMPLATE
+            or "word count" in _EXTRACTION_USER_TEMPLATE.lower()
+        )
 
     def test_rule1_now_allows_qa_implied_extractions(self):
         """Rule 1 must clarify that direct answers to questions ARE explicit statements."""
-        assert "direct reply" in _EXTRACTION_SYSTEM.lower() or \
-               "answering" in _EXTRACTION_SYSTEM.lower() or \
-               "direct answers" in _EXTRACTION_SYSTEM.lower()
+        assert (
+            "direct reply" in _EXTRACTION_SYSTEM.lower()
+            or "answering" in _EXTRACTION_SYSTEM.lower()
+            or "direct answers" in _EXTRACTION_SYSTEM.lower()
+        )
 
 
 # ---------------------------------------------------------------------------
 # Chat 5266 specific Q&A pairs
 # ---------------------------------------------------------------------------
 
+
 class TestChat5266QAPairs:
     """Simulate the exact Q&A pairs from Chat 5266 that were failing."""
 
     def test_template_renders_its_all_in_head_as_answer_to_question(self):
         """The rendered prompt must show the bot's question before the user's brief answer."""
-        bot_q = "For a world this layered, do you have any of this written down (notes, outlines, lore docs), or is it all in your head right now?"
+        bot_q = (
+            "For a world this layered, do you have any of this written down (n"
+            "otes, outlines, lore docs), or is it all in your head right now?"
+        )
         user_a = "Its all in head right now."
         rendered = _render_template(user_a, bot_q)
         # Bot question must appear before user answer
         assert rendered.index(bot_q) < rendered.index(user_a)
         # The extraction instruction must be present
-        assert "EXTRACTION INSTRUCTION" in rendered or "Q&A" in rendered or "replying" in rendered.lower()
+        assert (
+            "EXTRACTION INSTRUCTION" in rendered
+            or "Q&A" in rendered
+            or "replying" in rendered.lower()
+        )
 
     def test_around_130000_extraction_delta(self):
         """'around 130,000' → word_count 130000 at hedged confidence."""
@@ -129,15 +147,20 @@ class TestChat5266QAPairs:
         applier = StateApplier()
         state = ThreadState()
         assert state.project.word_count.value is None
-        state = applier.apply(state, CombinedExtraction(state_deltas=[
-            StateDelta(
-                path="project.word_count",
-                value=130000,
-                confidence=0.3,
-                source=Source.AI_EXTRACTED,
-                extracted_by="test",
-            )
-        ]))
+        state = applier.apply(
+            state,
+            CombinedExtraction(
+                state_deltas=[
+                    StateDelta(
+                        path="project.word_count",
+                        value=130000,
+                        confidence=0.3,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="test",
+                    )
+                ]
+            ),
+        )
         assert state.project.word_count.value == 130000
 
     def test_word_count_leaves_missing_facts_once_set(self):
@@ -150,15 +173,20 @@ class TestChat5266QAPairs:
         applier = StateApplier()
         state = ThreadState()
         assert state.project.manuscript_status.value is None
-        state = applier.apply(state, CombinedExtraction(state_deltas=[
-            StateDelta(
-                path="project.manuscript_status",
-                value="not_started",
-                confidence=0.92,
-                source=Source.AI_EXTRACTED,
-                extracted_by="test",
-            )
-        ]))
+        state = applier.apply(
+            state,
+            CombinedExtraction(
+                state_deltas=[
+                    StateDelta(
+                        path="project.manuscript_status",
+                        value="not_started",
+                        confidence=0.92,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="test",
+                    )
+                ]
+            ),
+        )
         assert state.project.manuscript_status.value == "not_started"
 
     def test_manuscript_stage_leaves_missing_facts_once_set(self):
@@ -191,21 +219,46 @@ class TestChat5266QAPairs:
         state = ThreadState()
 
         # Turn 1: customer says "around 130,000"
-        state = applier.apply(state, CombinedExtraction(state_deltas=[
-            StateDelta(path="project.word_count", value=130000, confidence=0.3,
-                       source=Source.AI_EXTRACTED, extracted_by="t1"),
-        ]))
+        state = applier.apply(
+            state,
+            CombinedExtraction(
+                state_deltas=[
+                    StateDelta(
+                        path="project.word_count",
+                        value=130000,
+                        confidence=0.3,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="t1",
+                    ),
+                ]
+            ),
+        )
 
         # Turn 2: customer says "its a series" — no word_count info
         # (no new delta; state unchanged for word_count)
 
         # Turn 3: customer gives name/phone — also no word_count info
-        state = applier.apply(state, CombinedExtraction(state_deltas=[
-            StateDelta(path="personal.name", value="Subhan Ali", confidence=0.92,
-                       source=Source.AI_EXTRACTED, extracted_by="t3"),
-            StateDelta(path="personal.phone", value="8887690431", confidence=0.92,
-                       source=Source.AI_EXTRACTED, extracted_by="t3"),
-        ]))
+        state = applier.apply(
+            state,
+            CombinedExtraction(
+                state_deltas=[
+                    StateDelta(
+                        path="personal.name",
+                        value="Subhan Ali",
+                        confidence=0.92,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="t3",
+                    ),
+                    StateDelta(
+                        path="personal.phone",
+                        value="8887690431",
+                        confidence=0.92,
+                        source=Source.AI_EXTRACTED,
+                        extracted_by="t3",
+                    ),
+                ]
+            ),
+        )
 
         # After turn 3 the word_count must still be set
         assert state.project.word_count.value == 130000
@@ -216,6 +269,7 @@ class TestChat5266QAPairs:
 # ---------------------------------------------------------------------------
 # Template worked-example coverage
 # ---------------------------------------------------------------------------
+
 
 class TestTemplateExamples:
     """Every example in the template must match an actual extractable scenario."""

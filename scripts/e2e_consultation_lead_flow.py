@@ -16,6 +16,7 @@ Validates (multiple scenarios):
 
 Run:  cd ai_chatbot && .venv/bin/python scripts/e2e_consultation_lead_flow.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -111,13 +112,20 @@ class _FakeLLMExtractor:
         # "E2E Smoke Test"), or a capitalized "First Last" sign-off on its own line.
         m = _re.search(
             r"\bmy name is\s+([A-Za-z][A-Za-z0-9 ]*?)(?:\s+and\b|,|\.|\s+my\b|$)",
-            user_text, _re.IGNORECASE,
+            user_text,
+            _re.IGNORECASE,
         ) or _re.search(r"(?:^|\n)\s*([A-Z][a-z]+ [A-Z][a-z]+)\s*(?:\n|$)", user_text)
         if m:
-            deltas.append(StateDelta(
-                path="personal.name", value=m.group(1).strip(), confidence=0.92,
-                source=Source.AI_EXTRACTED, extracted_by="fake_llm.v1", raw_excerpt=m.group(1).strip(),
-            ))
+            deltas.append(
+                StateDelta(
+                    path="personal.name",
+                    value=m.group(1).strip(),
+                    confidence=0.92,
+                    source=Source.AI_EXTRACTED,
+                    extracted_by="fake_llm.v1",
+                    raw_excerpt=m.group(1).strip(),
+                )
+            )
         return LLMExtractionResult(state_deltas=deltas, rich_metadata={}, coreference_notes=[])
 
 
@@ -195,8 +203,11 @@ async def main() -> int:
     events = r["action_events"]
     leads = await _leads(sf)
     lead = next((x for x in leads if (x.email or "") == "sarah@example.com"), None)
-    check("lead_created event emitted", any(e.get("type") == "lead_created" for e in events),
-          str([e.get("type") for e in events]))
+    check(
+        "lead_created event emitted",
+        any(e.get("type") == "lead_created" for e in events),
+        str([e.get("type") for e in events]),
+    )
     check("sales_leads row persisted", lead is not None)
     if lead:
         check("lead.name == 'Sarah Khan'", lead.name == "Sarah Khan", repr(lead.name))
@@ -207,29 +218,46 @@ async def main() -> int:
     r = await turn("I'd like to book a free consultation for ghostwriting.", None)
     tid2 = r["thread_id"]
     await turn("My name is Maya Author, maya@example.com, +1 555 987 6543.", tid2)
-    rprop = await turn("Let's schedule the call for Friday afternoon, Eastern time.", tid2)
+    await turn("Let's schedule the call for Friday afternoon, Eastern time.", tid2)
     # The booking proposal should now be pending confirmation.
     dbg_prop = await chat.get_thread_debug_state(tid2)
-    check("consultation reaches pending confirmation",
-          (dbg_prop.get("consultation") or {}).get("stage") == "pending_confirmation",
-          (dbg_prop.get("consultation") or {}).get("stage"))
+    check(
+        "consultation reaches pending confirmation",
+        (dbg_prop.get("consultation") or {}).get("stage") == "pending_confirmation",
+        (dbg_prop.get("consultation") or {}).get("stage"),
+    )
     rc = await turn("yes, go ahead and schedule it", tid2)
     events2 = rc["action_events"]
     consults = await _consultations(sf)
     consult = next((c for c in consults if (c.customer_email or "") == "maya@example.com"), None)
-    check("consultation_scheduled event emitted",
-          any(e.get("type") == "consultation_scheduled" for e in events2),
-          str([e.get("type") for e in events2]))
+    check(
+        "consultation_scheduled event emitted",
+        any(e.get("type") == "consultation_scheduled" for e in events2),
+        str([e.get("type") for e in events2]),
+    )
     check("sales_consultations row persisted", consult is not None)
     if consult:
-        check("consultation.customer_name == 'Maya Author'",
-              consult.customer_name == "Maya Author", repr(consult.customer_name))
+        check(
+            "consultation.customer_name == 'Maya Author'",
+            consult.customer_name == "Maya Author",
+            repr(consult.customer_name),
+        )
         check("consultation has CSR assigned", bool(consult.csr_name), repr(consult.csr_name))
-        check("consultation.status == 'scheduled'", consult.status == "scheduled", repr(consult.status))
-    csr_post = next((p for p in CSR_NODE_POSTS if (p.get("email") or "") == "maya@example.com"), None)
+        check(
+            "consultation.status == 'scheduled'",
+            consult.status == "scheduled",
+            repr(consult.status),
+        )
+    csr_post = next(
+        (p for p in CSR_NODE_POSTS if (p.get("email") or "") == "maya@example.com"), None
+    )
     check("CSR Node POST captured", csr_post is not None)
     if csr_post:
-        check("CSR POST name == 'Maya Author'", csr_post["name"] == "Maya Author", repr(csr_post["name"]))
+        check(
+            "CSR POST name == 'Maya Author'",
+            csr_post["name"] == "Maya Author",
+            repr(csr_post["name"]),
+        )
         check("CSR POST has startsAtUtc", bool(csr_post["startsAtUtc"]))
         check("CSR POST source == 'ai_chatbot'", csr_post["source"] == "ai_chatbot")
 
@@ -237,13 +265,17 @@ async def main() -> int:
     print("\n▶ S3: Cross-turn contact (email turn 1, name later) survives persistence")
     r = await turn("I want a consultation. My email is clifford@safarisolutions.com", None)
     tid3 = r["thread_id"]
-    rn = await turn("My name is Ann Carter", tid3)
+    await turn("My name is Ann Carter", tid3)
     leads3 = await _leads(sf)
     lead3 = next((x for x in leads3 if (x.email or "") == "clifford@safarisolutions.com"), None)
     check("lead assembled across turns (email survived)", lead3 is not None)
     if lead3:
         check("lead3.name == 'Ann Carter'", lead3.name == "Ann Carter", repr(lead3.name))
-        check("lead3.email survived turn 1", lead3.email == "clifford@safarisolutions.com", repr(lead3.email))
+        check(
+            "lead3.email survived turn 1",
+            lead3.email == "clifford@safarisolutions.com",
+            repr(lead3.email),
+        )
 
     # ── Scenario 4: extraction guards (bad data never becomes contact) ──
     print("\n▶ S4: Extraction guards — period not phone, timezone not name")
@@ -262,9 +294,11 @@ async def main() -> int:
     email4b = (dbg2.get("personal") or {}).get("email")
     nameval = name4b.get("value") if isinstance(name4b, dict) else name4b
     check("'EST' NOT captured as name", nameval != "EST", repr(nameval))
-    check("email still captured from 'EST - email'",
-          isinstance(email4b, dict) and "clifford2@safarisolutions.com" in str(email4b.get("value")),
-          repr(email4b.get("value") if isinstance(email4b, dict) else None))
+    check(
+        "email still captured from 'EST - email'",
+        isinstance(email4b, dict) and "clifford2@safarisolutions.com" in str(email4b.get("value")),
+        repr(email4b.get("value") if isinstance(email4b, dict) else None),
+    )
 
     # ── Scenario 5 (chat 6040): sign-off name (LLM-only) must reach lead + CSR ──
     print("\n▶ S5: Sign-off name in a long message reaches the lead (issue 1)")
@@ -279,13 +313,18 @@ async def main() -> int:
     lead5 = next((x for x in leads5 if (x.email or "") == "gargonz@gmail.com"), None)
     check("lead created from sign-off message", lead5 is not None)
     if lead5:
-        check("lead5.name == 'Gonzalo Garcia' (LLM name reached the lead)",
-              lead5.name == "Gonzalo Garcia", repr(lead5.name))
+        check(
+            "lead5.name == 'Gonzalo Garcia' (LLM name reached the lead)",
+            lead5.name == "Gonzalo Garcia",
+            repr(lead5.name),
+        )
     dbgg = await chat.get_thread_debug_state(tidg)
-    ci_name = ((dbgg.get("personal") or {}).get("name") or {})
-    check("personal.name shows in AI state",
-          isinstance(ci_name, dict) and ci_name.get("value") == "Gonzalo Garcia",
-          repr(ci_name.get("value") if isinstance(ci_name, dict) else None))
+    ci_name = (dbgg.get("personal") or {}).get("name") or {}
+    check(
+        "personal.name shows in AI state",
+        isinstance(ci_name, dict) and ci_name.get("value") == "Gonzalo Garcia",
+        repr(ci_name.get("value") if isinstance(ci_name, dict) else None),
+    )
 
     # ── Scenario 6 (chat 6040): bot asks for phone even with email (issue 3) ──
     print("\n▶ S6: Bot asks for phone before booking even when email is given (issue 3)")
@@ -293,17 +332,25 @@ async def main() -> int:
     tid6 = r["thread_id"]
     # Digit-bearing name only the LLM catches (deterministic capture rejects "E2E"),
     # email but NO phone — contact must go ready SAME turn and the phone ask must fire.
-    await turn("My name is E2E Smoke Test and my email is carlos@example.com. Let's do this via email.", tid6)
+    await turn(
+        "My name is E2E Smoke Test and my email is carlos@example.com. Let's do this via email.",
+        tid6,
+    )
     dbg6 = await chat.get_thread_debug_state(tid6)
     stage6 = (dbg6.get("consultation") or {}).get("stage")
-    check("bot asks for phone even with email (stage=requested_phone_needed)",
-          stage6 == "requested_phone_needed", repr(stage6))
+    check(
+        "bot asks for phone even with email (stage=requested_phone_needed)",
+        stage6 == "requested_phone_needed",
+        repr(stage6),
+    )
     # After asking once, providing only a time should proceed (loop-safe, not stuck on phone).
     await turn("Any weekday afternoon works.", tid6)
     dbg6b = await chat.get_thread_debug_state(tid6)
-    check("phone ask is loop-safe (proceeds after asking once)",
-          (dbg6b.get("consultation") or {}).get("stage") != "requested_phone_needed",
-          (dbg6b.get("consultation") or {}).get("stage"))
+    check(
+        "phone ask is loop-safe (proceeds after asking once)",
+        (dbg6b.get("consultation") or {}).get("stage") != "requested_phone_needed",
+        (dbg6b.get("consultation") or {}).get("stage"),
+    )
 
     await engine.dispose()
 
@@ -312,8 +359,10 @@ async def main() -> int:
     total = len(RESULTS)
     print("\n" + "=" * 76)
     print(f" RESULT: {passed}/{total} checks passed")
-    print(f" Leads persisted: {len(await _leads(sf)) if False else len(leads3)} | "
-          f"Consultations: {len(consults)} | CSR Node POSTs captured: {len(CSR_NODE_POSTS)}")
+    print(
+        f" Leads persisted: {len(await _leads(sf)) if False else len(leads3)} | "
+        f"Consultations: {len(consults)} | CSR Node POSTs captured: {len(CSR_NODE_POSTS)}"
+    )
     print("=" * 76)
     if passed < total:
         print(" FAILURES:")

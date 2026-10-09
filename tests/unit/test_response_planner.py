@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.response.planner import ResponsePlanner
+from bookcraft.components.response.planner import (
+    ResponsePlanner,
+    _primary_goal,
+    _thread_is_established,
+)
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
 from bookcraft.domain.state import ThreadState
@@ -564,7 +568,6 @@ def test_plan_internal_terms_are_never_allowed() -> None:
 
 
 # ── Chat 6211: greeting must not re-fire on an established thread ──────────────
-from bookcraft.components.response.planner import _primary_goal, _thread_is_established
 
 
 def _greeting_intent() -> IntentVote:
@@ -625,9 +628,7 @@ def _priority(has_priority: bool, question_type: str | None = None):
         CurrentQuestionPriorityResult,
     )
 
-    return CurrentQuestionPriorityResult(
-        has_priority=has_priority, question_type=question_type
-    )
+    return CurrentQuestionPriorityResult(has_priority=has_priority, question_type=question_type)
 
 
 def test_narrative_sharing_overrides_friendly_redirect_on_established_thread() -> None:

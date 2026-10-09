@@ -1,4 +1,5 @@
 """Tests for new extraction value types: RangeValue, DimensionValue, and conditional field."""
+
 from __future__ import annotations
 
 import pytest
@@ -113,11 +114,13 @@ class TestLLMExtractedFactsConditional:
         (The dict still needs to be a valid ExtractedValue or validation fails —
         this test verifies the validator logic leaves it alone, not that it succeeds.)
         """
-        from bookcraft.components.extraction.llm_schemas import LLMExtractedFacts
         # The coerce_bare_values validator skips range-shaped dicts for word_count.
         # Verify the validator does not wrap them (raw passthrough), which is the
         # intended behavior for the guard clause in coerce_bare_values.
         import inspect
+
+        from bookcraft.components.extraction.llm_schemas import LLMExtractedFacts
+
         src = inspect.getsource(LLMExtractedFacts.coerce_bare_values)
         assert "low" in src or "high" in src  # guard clause references low/high
 

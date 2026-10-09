@@ -24,9 +24,9 @@ from bookcraft.components.preprocessor.detectors.genre_detector import detect_ge
 @pytest.mark.parametrize(
     "text",
     [
-        "my life story about cancer",          # "life story" idiom, not fiction
-        "Long story short, I need editing",    # "long story short" idiom
-        "a novel approach to marketing",       # "novel" as adjective
+        "my life story about cancer",  # "life story" idiom, not fiction
+        "Long story short, I need editing",  # "long story short" idiom
+        "a novel approach to marketing",  # "novel" as adjective
         "we took a novel approach",
         "to make a long story short",
         "the whole story of my childhood",

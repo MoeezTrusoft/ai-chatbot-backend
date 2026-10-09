@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +23,8 @@ RAG_EMPTY_RESULTS = Counter("rag_empty_result_total", "RAG retrieval empty resul
 class RagRetriever:
     client: AsyncElasticsearch
     index_alias: str
+    vector_search_mode: str = "exact"
+    num_candidates: int = 100
 
     async def retrieve(
         self,
@@ -41,8 +44,10 @@ class RagRetriever:
         )
         with RAG_RETRIEVAL_SECONDS.time(), RAG_QUERY_LATENCY.time():
             try:
-                bm25 = await self._bm25(request)
-                vector = await self._vector(request)
+                async with asyncio.TaskGroup() as group:
+                    lexical_task = group.create_task(self._bm25(request))
+                    vector_task = group.create_task(self._vector(request))
+                bm25, vector = lexical_task.result(), vector_task.result()
                 ranked = reciprocal_rank_fusion([bm25, vector], top_k=top_k)
                 maybe_chunks = [
                     _hit_to_chunk(hit_id, score, bm25, vector) for hit_id, score in ranked
@@ -79,6 +84,19 @@ class RagRetriever:
         ):
             return {}
         filters = _filters(request.service_intent)
+        if self.vector_search_mode == "knn":
+            response = await self.client.search(
+                index=self.index_alias,
+                size=request.top_k,
+                knn={
+                    "field": "content_vector",
+                    "query_vector": request.query_embedding,
+                    "k": request.top_k,
+                    "num_candidates": max(request.top_k, self.num_candidates),
+                    "filter": {"bool": {"filter": filters}},
+                },
+            )
+            return _hits_by_id(dict(response))
         response = await self.client.search(
             index=self.index_alias,
             size=request.top_k,

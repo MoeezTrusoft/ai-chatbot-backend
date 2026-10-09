@@ -307,7 +307,14 @@ def _service_from_text(text: str) -> ServiceCategory | None:
     # a request for an author website. Require a qualified phrase / specific platform cue.
     if _mentions_any(
         text,
-        ["author website", "book website", "writer website", "author site", "newsletter", "lead magnet"],
+        [
+            "author website",
+            "book website",
+            "writer website",
+            "author site",
+            "newsletter",
+            "lead magnet",
+        ],
     ):
         return ServiceCategory.AUTHOR_WEBSITE
 

@@ -109,6 +109,7 @@ def _strip_authorship_from_title(title_value: object) -> object:
     stripped = _TITLE_AUTHORSHIP_SUFFIX.sub("", title_value).strip()
     return stripped or title_value
 
+
 _HIGH_CONFIDENCE_THRESHOLD = 0.85
 _LOW_CONFIDENCE_FILL_VALUE = 0.3  # fills only empty fields via StateApplier rules
 
@@ -312,7 +313,8 @@ Examples of Q&A extractions that MUST be captured:
   Assistant asked "what's your book's title?" → User: "the past & the future written by Thomas Ray"
   → book_title: "The Past & The Future"  (NOT name — "Thomas Ray" is the AUTHOR, not the customer)
 
-  Assistant asked "do you have notes or are you starting from scratch?" → User: "starting from scratch"
+  Assistant asked "do you have notes or are you starting from scratch?" → User: "starting from
+  scratch"
   → manuscript_status: "not_started", confidence 0.92
 
   Assistant asked "do you have an outline or draft chapters?" → User: "partially outlined"

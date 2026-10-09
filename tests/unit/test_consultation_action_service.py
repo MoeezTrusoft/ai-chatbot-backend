@@ -14,6 +14,7 @@ from bookcraft.components.consultations import (
 # Helper: minimal valid request (phone + timezone now required; email optional)
 # ---------------------------------------------------------------------------
 
+
 def _req(**overrides) -> ConsultationActionRequest:
     defaults = dict(
         customer_id=uuid4(),
@@ -32,6 +33,7 @@ def _req(**overrides) -> ConsultationActionRequest:
 # ---------------------------------------------------------------------------
 # Scheduling behaviour
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_consultation_schedules_with_first_priority_csr() -> None:
@@ -120,9 +122,7 @@ async def test_cancelled_appointment_is_not_a_reschedule_target() -> None:
     repo.records[0].cancelled_at = datetime.now(UTC).replace(tzinfo=None)
     repo.records[0].status = "cancelled"
 
-    await service.schedule(
-        _req(customer_id=customer_id, requested_time_text="tomorrow at 7pm")
-    )
+    await service.schedule(_req(customer_id=customer_id, requested_time_text="tomorrow at 7pm"))
 
     # A fresh appointment is created rather than reviving the cancelled one.
     assert len(repo.records) == 2
@@ -150,6 +150,7 @@ async def test_dedup_falls_back_to_thread_when_no_customer_id() -> None:
 # Validation — new required fields: phone + customer_timezone
 # ---------------------------------------------------------------------------
 
+
 def test_consultation_requires_phone() -> None:
     with pytest.raises(ValueError, match="consultation_requires_phone"):
         ConsultationActionRequest(
@@ -176,6 +177,7 @@ def test_consultation_requires_name() -> None:
     # name: str is a required non-optional field — any falsy value (empty/whitespace)
     # is stripped to None by the validator and Pydantic raises a type error.
     import pydantic
+
     with pytest.raises((ValueError, pydantic.ValidationError)):
         ConsultationActionRequest(
             thread_id=uuid4(),
@@ -216,9 +218,11 @@ def test_consultation_accepts_email_when_provided() -> None:
 # Time parsing
 # ---------------------------------------------------------------------------
 
+
 def test_consultation_parser_respects_absolute_houston_date() -> None:
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     from bookcraft.components.consultations.service import _parse_requested_start
 
     business_tz = ZoneInfo("America/Chicago")
@@ -248,6 +252,7 @@ _TZ_NAME = "America/Chicago"
 
 def _parse(text: str, now):
     from zoneinfo import ZoneInfo
+
     from bookcraft.components.consultations.service import _parse_requested_start
 
     tz = ZoneInfo(_TZ_NAME)

@@ -12,11 +12,12 @@ Usage:
     field = FIELD_REGISTRY["project.genre"]
     print(field.display_name)  # "Genre"
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
-
+from typing import Any, Literal
 
 FieldType = Literal["str", "int", "float", "bool", "enum", "list", "range"]
 ExtractionSource = Literal["deterministic", "llm", "both", "none"]
@@ -26,12 +27,12 @@ ExtractionSource = Literal["deterministic", "llm", "both", "none"]
 class FieldDef:
     """Definition of a single extractable field."""
 
-    path: str                          # Dot-path in ThreadState, e.g. "project.genre"
-    display_name: str                  # Human-readable name, e.g. "Genre"
-    field_type: FieldType = "str"      # Data type
+    path: str  # Dot-path in ThreadState, e.g. "project.genre"
+    display_name: str  # Human-readable name, e.g. "Genre"
+    field_type: FieldType = "str"  # Data type
     extraction_source: ExtractionSource = "both"  # Where this field gets populated
-    required_for_quote: bool = False   # Must be known before pricing
-    pii: bool = False                  # Contains PII — handle with care in logs
+    required_for_quote: bool = False  # Must be known before pricing
+    pii: bool = False  # Contains PII — handle with care in logs
     reask_phrases: list[str] = field(default_factory=list)  # Forbidden reask phrases when known
     validator: Callable[[Any], bool] | None = field(default=None, compare=False, hash=False)
     description: str = ""

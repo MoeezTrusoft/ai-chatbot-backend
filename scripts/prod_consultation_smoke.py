@@ -8,7 +8,7 @@ labelled TEST customer, exercises:
     • the always-ask-for-phone behaviour
     • consultation booking WITH confirmation ("yes")
 …and verifies the bot's action_events + AI state, then prints exactly which test
-records to delete. Stdlib only (urllib) — no pip installs required.
+records to delete. Run with the project environment (uv run).
 
   python3 scripts/prod_consultation_smoke.py
   python3 scripts/prod_consultation_smoke.py --bot-url http://127.0.0.1:8001 --csr-url http://localhost:5050
@@ -18,43 +18,33 @@ records to delete. Stdlib only (urllib) — no pip installs required.
     name "E2E Smoke Test") and prints the thread_id / appointment_id / email so you
     can delete them. Pass --bearer if the bot has JWT auth enabled.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
-import urllib.error
-import urllib.request
+
+import httpx
 
 RESULTS: list[tuple[str, bool, str]] = []
 CLEANUP: dict[str, object] = {}
 
 
 def _post(url: str, payload: dict, bearer: str | None) -> tuple[int, dict]:
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    if bearer:
-        req.add_header("Authorization", f"Bearer {bearer}")
+    headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            return resp.status, json.loads(resp.read() or b"{}")
-    except urllib.error.HTTPError as e:
-        return e.code, {"_error": e.read().decode()[:300]}
+        resp = httpx.post(url, json=payload, headers=headers, timeout=90)
+        return resp.status_code, resp.json()
     except Exception as e:  # noqa: BLE001
         return 0, {"_error": str(e)}
 
 
 def _get(url: str, bearer: str | None) -> tuple[int, dict]:
-    req = urllib.request.Request(url, method="GET")
-    if bearer:
-        req.add_header("Authorization", f"Bearer {bearer}")
+    headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status, json.loads(resp.read() or b"{}")
-    except urllib.error.HTTPError as e:
-        return e.code, {"_error": e.read().decode()[:300]}
+        resp = httpx.get(url, headers=headers, timeout=30)
+        return resp.status_code, resp.json()
     except Exception as e:  # noqa: BLE001
         return 0, {"_error": str(e)}
 
@@ -72,7 +62,7 @@ def main() -> int:
     args = ap.parse_args()
 
     turn_url = f"{args.bot_url.rstrip('/')}/api/v1/chat/turn"
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    time.strftime("%Y%m%d-%H%M%S")
     # Letter-prefixed tag so the email's digits are never mis-read as a phone number.
     test_email = f"e2e-smoke+t{time.strftime('%H%M%S')}@trusoft.pk"
     test_name = "E2E Smoke Test"
@@ -83,7 +73,7 @@ def main() -> int:
             payload["thread_id"] = thread_id
         status, body = _post(turn_url, payload, args.bearer)
         if status != 200:
-            print(f"   [turn HTTP {status}] {body.get('_error','')}", flush=True)
+            print(f"   [turn HTTP {status}] {body.get('_error', '')}", flush=True)
             return {}
         if trace:
             tid = body.get("thread_id") or thread_id
@@ -91,11 +81,15 @@ def main() -> int:
             stg = None
             pend = None
             if tid:
-                _, d = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
+                _, d = _get(
+                    f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer
+                )
                 stg = (d.get("consultation") or {}).get("stage")
                 pend = d.get("pending_confirmation")
-            print(f"     · sent {message[:38]!r:<40} → stage={stg!r} events={evts} pending={pend}",
-                  flush=True)
+            print(
+                f"     · sent {message[:38]!r:<40} → stage={stg!r} events={evts} pending={pend}",
+                flush=True,
+            )
         return body
 
     print("=" * 74)
@@ -104,7 +98,10 @@ def main() -> int:
     print("=" * 74)
 
     # ── Reachability ──
-    s, _ = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/00000000-0000-0000-0000-000000000000", args.bearer)
+    s, _ = _get(
+        f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/00000000-0000-0000-0000-000000000000",
+        args.bearer,
+    )
     check("bot reachable", s in (200, 404, 422), f"HTTP {s}")
     if s == 0:
         print("\nABORT: cannot reach the bot. Run this ON the server, or pass --bot-url.")
@@ -124,12 +121,17 @@ def main() -> int:
     turn(f"My name is {test_name} and my email is {test_email}.", tid, trace=True)
     _, dbg = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
     stage = (dbg.get("consultation") or {}).get("stage")
-    name_in_state = ((dbg.get("personal") or {}).get("name") or {})
-    check("bot asks for phone even with email (issue 3)",
-          stage == "requested_phone_needed", f"stage={stage}")
-    check("name saved in AI state (issue 1)",
-          isinstance(name_in_state, dict) and name_in_state.get("value") == test_name,
-          str(name_in_state.get("value") if isinstance(name_in_state, dict) else None))
+    name_in_state = (dbg.get("personal") or {}).get("name") or {}
+    check(
+        "bot asks for phone even with email (issue 3)",
+        stage == "requested_phone_needed",
+        f"stage={stage}",
+    )
+    check(
+        "name saved in AI state (issue 1)",
+        isinstance(name_in_state, dict) and name_in_state.get("value") == test_name,
+        str(name_in_state.get("value") if isinstance(name_in_state, dict) else None),
+    )
 
     # Provide a VALID 10-digit phone, then an explicit time + timezone, then confirm.
     # Per-turn trace so we can see exactly where the booking stalls in production.
@@ -139,30 +141,51 @@ def main() -> int:
     rc = turn("yes, go ahead and schedule it", tid, trace=True)
     events = rc.get("action_events") or []
     sched = next((e for e in events if e.get("type") == "consultation_scheduled"), None)
-    check("consultation_scheduled action_event emitted",
-          sched is not None, str([e.get("type") for e in events]))
+    check(
+        "consultation_scheduled action_event emitted",
+        sched is not None,
+        str([e.get("type") for e in events]),
+    )
     if sched:
         CLEANUP["appointment_id"] = sched.get("appointment_id")
-        check("consultation has CSR assigned", bool(sched.get("csr_name")), str(sched.get("csr_name")))
-        check("consultation has start time", bool(sched.get("starts_at_utc")), str(sched.get("starts_at_utc")))
+        check(
+            "consultation has CSR assigned", bool(sched.get("csr_name")), str(sched.get("csr_name"))
+        )
+        check(
+            "consultation has start time",
+            bool(sched.get("starts_at_utc")),
+            str(sched.get("starts_at_utc")),
+        )
 
     # Final AI state should show the booking + contact.
     _, dbg2 = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
     consult = dbg2.get("consultation") or {}
-    check("AI state shows consultation handled",
-          consult.get("stage") in ("scheduled", "pending_confirmation", "handoff_created"),
-          str(consult.get("stage")))
+    check(
+        "AI state shows consultation handled",
+        consult.get("stage") in ("scheduled", "pending_confirmation", "handoff_created"),
+        str(consult.get("stage")),
+    )
 
     # ── CSR Node verification (best-effort; /api/consultations is POST-only) ──
     print("\n▶ CSR Node check (informational — not counted)")
     cs, cbody = _get(f"{args.csr_url.rstrip('/')}/api/consultations", args.bearer)
     if cs == 200:
-        rows = cbody if isinstance(cbody, list) else (cbody.get("data") or cbody.get("consultations") or [])
+        rows = (
+            cbody
+            if isinstance(cbody, list)
+            else (cbody.get("data") or cbody.get("consultations") or [])
+        )
         found = test_email in json.dumps(rows)
-        print(f"   {'✓' if found else '·'} consultation visible in CSR Node list ({len(rows) if isinstance(rows, list) else '?'} rows)")
+        print(
+            f"   {('✓') if found else '·'} consultation visible in CSR Node list ({
+                len(rows) if isinstance(rows, list) else '?'
+            } rows)"
+        )
     else:
-        print(f"   · /api/consultations is not GET-readable (HTTP {cs}) — confirm the test "
-              f"booking on the CSR dashboard for {test_email}")
+        print(
+            f"   · /api/consultations is not GET-readable (HTTP {cs}) — confirm the test "
+            f"booking on the CSR dashboard for {test_email}"
+        )
 
     # ── Summary + cleanup ──
     passed = sum(1 for _, ok, _ in RESULTS if ok)
@@ -173,8 +196,8 @@ def main() -> int:
     print(f"   • appointment_id : {CLEANUP.get('appointment_id')}")
     print(f"   • test email     : {test_email}  (delete the lead + consultation rows)")
     print("   SQL (adjust table/column names to your schema):")
-    print(f"     DELETE FROM sales_consultations WHERE customer_email = '{test_email}';")
-    print(f"     DELETE FROM sales_leads         WHERE email = '{test_email}';")
+    print("     DELETE FROM sales_consultations WHERE customer_email = :test_email;")
+    print("     DELETE FROM sales_leads WHERE email = :test_email;")
     print("   …and remove the matching consultation from the CSR Node DB / dashboard.")
     print("=" * 74)
     return 0 if passed == len(RESULTS) else 1

@@ -1,32 +1,43 @@
-name: CD
-
+name: Build and validate image
 on:
   workflow_dispatch:
-
+  workflow_call:
+permissions:
+  contents: read
 jobs:
-  staging:
+  image:
     runs-on: ubuntu-latest
-    environment: staging
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
         with:
-          python-version: "3.12"
-      - name: Install
-        run: make install
-      - name: Build image placeholder
-        run: echo "build image: Dockerfile will be introduced with deployment packaging"
-      - name: Run migrations placeholder
-        run: echo "run migrations: alembic upgrade head in staging deployment"
-      - name: Deploy staging placeholder
-        run: echo "deploy staging: publish image and update staging service"
-      - name: Smoke test placeholder
-        run: echo "smoke test: run post-deploy health, readiness, and chat checks"
-  production-gate:
-    runs-on: ubuntu-latest
-    needs: staging
-    environment: production
-    steps:
-      - name: Manual production gate
-        run: echo "manual production gate: approval required before production deployment"
+          context: .
+          load: true
+          push: false
+          tags: bookcraft:validated
+      - name: Smoke test
+        run: |
+          docker run -d --name bookcraft-smoke -p 127.0.0.1:8000:8000 -e APP_ENV=test bookcraft:validated
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/healthz; then break; fi
+            sleep 2
+          done
+          curl --fail http://127.0.0.1:8000/healthz
+          curl --fail http://127.0.0.1:8000/readyz
+          docker exec bookcraft-smoke python -c "import os; assert os.getuid() != 0"
+          docker exec bookcraft-smoke alembic heads
+      - name: Export validated image
+        run: docker save bookcraft:validated | gzip > bookcraft-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bookcraft-image-${{ github.sha }}
+          path: bookcraft-image.tar.gz
+          retention-days: 7
+      - name: Container logs
+        if: always()
+        run: docker logs bookcraft-smoke || true
+      - name: Cleanup
+        if: always()
+        run: docker rm -f bookcraft-smoke || true

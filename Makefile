@@ -6,22 +6,22 @@ UV_CACHE_DIR ?= .uv-cache
 APP ?= bookcraft.api.main:app
 
 install:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) sync --all-extras
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) sync --frozen --all-extras
 
 lint:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run ruff check .
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen ruff check .
 
 type:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run mypy src
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen mypy src
 
 test:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run pytest
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen pytest
 
 run:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run uvicorn $(APP) --host 0.0.0.0 --port 8000
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen uvicorn $(APP) --host 0.0.0.0 --port 8000
 
 migrate:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run alembic upgrade head
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen alembic upgrade head
 
 up:
 	docker compose up -d
@@ -33,83 +33,85 @@ compose-config:
 	docker compose config
 
 smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/dev/smoke.py
 
 acceptance:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/final_acceptance.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/dev/final_acceptance.py
 
 chat-probe:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/complex_chat_probe.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/dev/complex_chat_probe.py
 
 chat-diagnostics:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/dev/complex_chat_diagnostics.py --continue-on-error
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/dev/complex_chat_diagnostics.py --continue-on-error
 
 rag-build:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/extract_bookcraft_knowledge.py
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/build_rag_corpus.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/extract_bookcraft_knowledge.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/build_rag_corpus.py
 
 rag-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_rag_corpus.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_rag_corpus.py
 
 rag-index:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/index_rag_corpus.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/index_rag_corpus.py
 
 rag-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/rag_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/rag_smoke.py
 
 pricing-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_pricing_rules.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_pricing_rules.py
 
 pricing-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/pricing_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/pricing_smoke.py
 
 portfolio-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_portfolio_registry.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_portfolio_registry.py
 
 portfolio-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/portfolio_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/portfolio_smoke.py
 
 trimatch-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_trimatch_rules.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_trimatch_rules.py
 
 trimatch-eval:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/trimatch_eval.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/trimatch_eval.py
 
 trimatch-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/trimatch_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/trimatch_smoke.py
 
 funnel-partition:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/partition_funnel_rules.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/partition_funnel_rules.py
 
 funnel-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_funnel_rules.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_funnel_rules.py
 
 funnel-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/funnel_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/funnel_smoke.py
 
 documents-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_document_templates.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_document_templates.py
 
 documents-smoke:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/document_smoke.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/document_smoke.py
 
 monitoring-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/ops/verify_monitoring.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/ops/verify_monitoring.py
 
 prompt-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_prompt_pack.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_prompt_pack.py
 
 eval-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/data/verify_eval_corpus.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/data/verify_eval_corpus.py
 
 ci-cd-verify:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/ops/verify_ci_cd.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/ops/verify_ci_cd.py
 
 security-scan:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/secret_scan.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/security/secret_scan.py
 
 dependency-scan:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run python scripts/security/dependency_scan.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --frozen python scripts/security/dependency_scan.py
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) export --frozen --no-dev --no-emit-project --format requirements-txt --output-file /tmp/bookcraft-audit-requirements.txt
+	UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) tool run pip-audit -r /tmp/bookcraft-audit-requirements.txt --disable-pip
 
 verifier-gates: rag-build rag-verify pricing-verify portfolio-verify documents-verify trimatch-verify funnel-verify monitoring-verify prompt-verify eval-verify ci-cd-verify
 

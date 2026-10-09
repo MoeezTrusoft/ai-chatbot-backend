@@ -11,8 +11,8 @@ from collections.abc import Callable
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col, select
 
 from bookcraft.components.storage.models import ConversationCheckpoint
 from bookcraft.domain.state import ThreadState
@@ -23,9 +23,7 @@ logger = structlog.get_logger(__name__)
 _MILESTONES: dict[str, Callable[[ThreadState], bool]] = {
     "lead_created": lambda s: s.lead_created,
     "service_confirmed": lambda s: bool(s.project.services_discussed),
-    "consultation_scheduled": lambda s: bool(
-        s.sales_actions.consultation.confirmed_appointment_id
-    ),
+    "consultation_scheduled": lambda s: bool(s.sales_actions.consultation.confirmed_appointment_id),
 }
 
 
@@ -76,9 +74,9 @@ class ConversationCheckpointer:
     async def _already_checkpointed(self, thread_id: UUID, milestone: str) -> bool:
         async with self._session_factory() as session:
             result = await session.execute(
-                select(ConversationCheckpoint.id).where(
-                    ConversationCheckpoint.thread_id == thread_id,
-                    ConversationCheckpoint.milestone == milestone,
+                select(col(ConversationCheckpoint.id)).where(
+                    col(ConversationCheckpoint.thread_id) == thread_id,
+                    col(ConversationCheckpoint.milestone) == milestone,
                 )
             )
             return result.scalar_one_or_none() is not None

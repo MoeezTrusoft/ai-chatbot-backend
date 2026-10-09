@@ -8,6 +8,7 @@ step. The service↔API import cycle (P4-T2 step 3) is already resolved via
 ``run_pipeline`` incrementally behind ``staged_pipeline_enabled``; until then the
 monolith remains the execution path and these primitives are exercised in tests.
 """
+
 from __future__ import annotations
 
 from .context import TurnContext

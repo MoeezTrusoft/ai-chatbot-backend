@@ -77,9 +77,7 @@ _COVER_COMPLETE_RE = re.compile(
 # genuinely about the book/manuscript — never when used as a verb or as a fixed
 # idiom about something else. Matching is done on the (whitespace-normalised) matched
 # text, so richer phrases like "just an outline" / "concept for a novel" are unaffected.
-_WEAK_BARE_PHRASES = frozenset(
-    {"outline", "concept", "idea", "journal", "diary", "some notes"}
-)
+_WEAK_BARE_PHRASES = frozenset({"outline", "concept", "idea", "journal", "diary", "some notes"})
 
 # "outline" used as a VERB ("let me outline …", "to outline …"), not a book outline.
 _OUTLINE_VERB_PREFIX_RE = re.compile(
@@ -96,9 +94,7 @@ _JOURNAL_HABIT_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 # "notes on / about <X>" ("notes on our call") — notes ABOUT something, not the form.
-_NOTES_ABOUT_SUFFIX_RE = re.compile(
-    r"^\s+(?:on|about|from|regarding|re)\b", re.IGNORECASE
-)
+_NOTES_ABOUT_SUFFIX_RE = re.compile(r"^\s+(?:on|about|from|regarding|re)\b", re.IGNORECASE)
 # Stage-minimiser / possessive lead-in that marks a genuine "the manuscript is only at
 # <stage>" statement ("it's more of a concept", "I just have a concept").
 _WEAK_STAGE_DETERMINER_RE = re.compile(

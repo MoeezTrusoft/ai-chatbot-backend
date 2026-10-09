@@ -1,14 +1,16 @@
 import re
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from bookcraft.api.auth import authenticate_websocket, require_http_auth
+from bookcraft.api.auth import authenticate_websocket, require_http_auth, require_scope
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
+from bookcraft.api.thread_access import authorize_chat
 from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
+from bookcraft.components.storage.thread_repository import ThreadVersionConflictError
 from bookcraft.infra.config import Settings
 from bookcraft.infra.rate_limit import RateLimiter, client_ip_from_scope
 from bookcraft.services.chat import ChatService
@@ -179,8 +181,7 @@ class ConsultationCancelledResponse(BaseModel):
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
     settings: Settings = request.app.state.settings
     principal = require_http_auth(request, settings)
-    if payload.customer_id is None and principal.customer_id is not None:
-        payload = payload.model_copy(update={"customer_id": principal.customer_id})
+    service: ChatService = request.app.state.chat_service
 
     limiter: RateLimiter = request.app.state.rate_limiter
     client_host = request.client.host if request.client else None
@@ -199,9 +200,12 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
             headers={"Retry-After": str(decision.reset_after_seconds)},
         )
 
-    update: dict[str, object] = {
-        "correlation_id": sanitize_correlation_id(payload.correlation_id)
-    }
+    thread_id, customer_id = await authorize_chat(
+        principal, settings, service, payload.thread_id, payload.customer_id
+    )
+    payload = payload.model_copy(update={"thread_id": thread_id, "customer_id": customer_id})
+
+    update: dict[str, object] = {"correlation_id": sanitize_correlation_id(payload.correlation_id)}
     # Landing-context fallback: if the widget did not pass landing_page on the turn, use
     # the browser's Referer (the embedding page URL, sent automatically). This lets the
     # service anchor the active service from the page even without any frontend change, so
@@ -211,7 +215,6 @@ async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnRespo
         if referer:
             update["landing_page"] = referer[:200]
     payload = payload.model_copy(update=update)
-    service: ChatService = request.app.state.chat_service
     return await service.handle_turn(payload)
 
 
@@ -220,8 +223,7 @@ async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnRes
     """Generate a proactive personalised first message when the chat widget opens."""
     settings: Settings = request.app.state.settings
     principal = require_http_auth(request, settings)
-    if payload.customer_id is None and principal.customer_id is not None:
-        payload = payload.model_copy(update={"customer_id": principal.customer_id})
+    service: ChatService = request.app.state.chat_service
 
     limiter: RateLimiter = request.app.state.rate_limiter
     client_host = request.client.host if request.client else None
@@ -240,18 +242,22 @@ async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnRes
             headers={"Retry-After": str(decision.reset_after_seconds)},
         )
 
+    thread_id, customer_id = await authorize_chat(
+        principal, settings, service, payload.thread_id, payload.customer_id
+    )
+    payload = payload.model_copy(update={"thread_id": thread_id, "customer_id": customer_id})
+
     payload = payload.model_copy(
         update={"correlation_id": sanitize_correlation_id(payload.correlation_id)}
     )
-    service: ChatService = request.app.state.chat_service
-    return await service.handle_greet(payload)
+    return ChatTurnResponse.model_validate(await service.handle_greet(payload))
 
 
 @router.post("/csr-turn", status_code=204)
 async def chat_csr_turn(payload: CsrTurnRequest, request: Request) -> None:
     """Ingest a CSR message for context gathering — no bot response is generated."""
     settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
     await service.handle_csr_turn(payload)
 
@@ -260,13 +266,13 @@ async def chat_csr_turn(payload: CsrTurnRequest, request: Request) -> None:
 async def chat_handover(payload: HandoverRequest, request: Request) -> HandoverResponse:
     """Signal a handover between bot and CSR."""
     settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
-    return await service.handle_handover(payload)
+    return HandoverResponse.model_validate(await service.handle_handover(payload))
 
 
 @router.get("/debug/state/{thread_id}")
-async def chat_debug_state(thread_id: UUID, request: Request) -> dict:
+async def chat_debug_state(thread_id: UUID, request: Request) -> dict[str, Any]:
     """Return the thread's extracted state for debugging in the CSR dashboard.
 
     Shows: personal facts (name/email/phone/timezone), project facts
@@ -274,7 +280,7 @@ async def chat_debug_state(thread_id: UUID, request: Request) -> dict:
     Requires the same auth as other endpoints.
     """
     settings: Settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
     return await service.get_thread_debug_state(thread_id)
 
@@ -296,9 +302,9 @@ async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> Chat
     capture — are refused and return ``fields_applied: []``.
     """
     settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
-    return await service.handle_inject_facts(payload)
+    return ChatFactsResponse.model_validate(await service.handle_inject_facts(payload))
 
 
 @router.post("/consultation-confirmed", response_model=ConsultationConfirmedResponse)
@@ -314,9 +320,11 @@ async def chat_consultation_confirmed(
     booking button (chat 7266).
     """
     settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
-    return await service.handle_consultation_confirmed(payload)
+    return ConsultationConfirmedResponse.model_validate(
+        await service.handle_consultation_confirmed(payload)
+    )
 
 
 @router.post("/consultation-cancelled", response_model=ConsultationCancelledResponse)
@@ -331,12 +339,14 @@ async def chat_consultation_cancelled(
     re-offer scheduling. Idempotent and appointment-id scoped.
     """
     settings = request.app.state.settings
-    require_http_auth(request, settings)
+    require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
-    return await service.handle_consultation_cancelled(payload)
+    return ConsultationCancelledResponse.model_validate(
+        await service.handle_consultation_cancelled(payload)
+    )
 
 
-@router.websocket("/ws/{thread_id}")
+@router.websocket("/ws/{thread_id:uuid}")
 async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
     settings: Settings = websocket.app.state.settings
     origin = websocket.headers.get("origin")
@@ -351,8 +361,8 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
+    await websocket.accept()
     limiter: RateLimiter = websocket.app.state.rate_limiter
     client_host = websocket.client.host if websocket.client else None
     rate_key = f"ws:chat:{client_ip_from_scope(client_host)}"
@@ -369,6 +379,9 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
                         "retry_after_seconds": decision.reset_after_seconds,
                     }
                 )
+                continue
+            if not isinstance(data, dict):
+                await websocket.send_json({"type": "error", "message": "JSON object required"})
                 continue
             message = data.get("message")
             raw_attachments = data.get("attachments")
@@ -395,7 +408,23 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
                     {"type": "error", "message": "a message or attachment is required"}
                 )
                 continue
-            response = await service.handle_turn(turn_request)
+            try:
+                authorized_id, customer_id = await authorize_chat(
+                    principal, settings, service, thread_id, principal.customer_id
+                )
+                turn_request = turn_request.model_copy(
+                    update={"thread_id": authorized_id, "customer_id": customer_id}
+                )
+                response = await service.handle_turn(turn_request)
+            except HTTPException:
+                await websocket.close(code=1008, reason="Thread not accessible")
+                return
+            except TimeoutError:
+                await websocket.send_json({"type": "error", "code": "turn_timeout"})
+                continue
+            except ThreadVersionConflictError:
+                await websocket.send_json({"type": "error", "code": "thread_conflict"})
+                continue
             for bubble in response.bubbles:
                 await websocket.send_json({"type": "typing_start"})
                 await websocket.send_json({"type": "typing_stop"})
@@ -426,8 +455,7 @@ def _chunk_text_for_stream(text: str, words_per_chunk: int = 4) -> list[str]:
         return []
     tokens = re.findall(r"\S+\s*", text)
     return [
-        "".join(tokens[i : i + words_per_chunk])
-        for i in range(0, len(tokens), words_per_chunk)
+        "".join(tokens[i : i + words_per_chunk]) for i in range(0, len(tokens), words_per_chunk)
     ]
 
 
@@ -436,7 +464,7 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
     """WebSocket endpoint for streaming chat responses.
 
     When ``settings.response_streaming_enabled`` is True, response tokens are
-    sent incrementally as they are generated.  When it is False (or the adapter
+    delivered incrementally after response validation.  When it is False (or the adapter
     does not support streaming), the full response is sent as a single payload.
 
     Message protocol (server → client):
@@ -464,8 +492,8 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    await websocket.accept()
     service: ChatService = websocket.app.state.chat_service
+    await websocket.accept()
     limiter: RateLimiter = websocket.app.state.rate_limiter
     client_host = websocket.client.host if websocket.client else None
     rate_key = f"ws:stream:{client_ip_from_scope(client_host)}"
@@ -491,17 +519,35 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
 
             try:
                 request = ChatTurnRequest.model_validate(data)
-            except Exception as exc:
-                await websocket.send_json({"type": "error", "message": str(exc)})
+            except ValidationError:
+                await websocket.send_json({"type": "error", "message": "Invalid chat request"})
                 continue
 
-            # Inject principal customer_id if the caller did not supply one.
-            if request.customer_id is None and principal.customer_id is not None:
-                request = request.model_copy(update={"customer_id": principal.customer_id})
+            try:
+                authorized_id, customer_id = await authorize_chat(
+                    principal, settings, service, request.thread_id, request.customer_id
+                )
+            except TimeoutError:
+                await websocket.send_json({"type": "error", "code": "turn_timeout"})
+                continue
+            except HTTPException:
+                await websocket.close(code=1008, reason="Thread not accessible")
+                return
+            request = request.model_copy(
+                update={"thread_id": authorized_id, "customer_id": customer_id}
+            )
+
+            try:
+                response = await service.handle_turn(request)
+            except TimeoutError:
+                await websocket.send_json({"type": "error", "code": "turn_timeout"})
+                continue
+            except ThreadVersionConflictError:
+                await websocket.send_json({"type": "error", "code": "thread_conflict"})
+                continue
 
             if not streaming_enabled:
                 # Non-streaming path: delegate to the standard handle_turn pipeline.
-                response = await service.handle_turn(request)
                 await websocket.send_json(
                     {"type": "response", "data": response.model_dump(mode="json")}
                 )
@@ -513,7 +559,6 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
                 # scaffold streamed raw, un-gated generator tokens straight to the
                 # client, so a verbatim RAG/document bleed would reach the user before
                 # any validation could run.)
-                response = await service.handle_turn(request)
                 await websocket.send_json({"type": "stream_start"})
                 full_text = ""
                 last_index = len(response.bubbles) - 1

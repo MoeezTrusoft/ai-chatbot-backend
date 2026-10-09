@@ -85,9 +85,7 @@ _TIME_ASKING_STAGES = frozenset(
 
 # The ConsultationObjectiveEngine writes its OWN vocabulary into the same
 # `state.consultation_stage` field, so the prior stage may be one of these.
-_FOREIGN_TIME_ASKING_STAGES = frozenset(
-    {"consultation_time_requested", "consultation_pending"}
-)
+_FOREIGN_TIME_ASKING_STAGES = frozenset({"consultation_time_requested", "consultation_pending"})
 
 
 def is_time_asking_stage(prior_stage: Any) -> bool:
@@ -246,9 +244,7 @@ def reduce_consultation_state(
         message, existing=known_time, allow_numeric=allow_numeric
     )
     if preferred_call_time:
-        audit.append(
-            f"signal:preferred_call_time={preferred_call_time!r}(numeric={allow_numeric})"
-        )
+        audit.append(f"signal:preferred_call_time={preferred_call_time!r}(numeric={allow_numeric})")
 
     # ── Check for confirmed appointment ──────────────────────────────────
     confirmed_appointment_id = (
@@ -454,7 +450,9 @@ def reduce_consultation_state(
     # extractor stores "Eastern time" → "America/New_York"). Without this, a booking
     # whose timezone only lives in personal.timezone stalls forever at
     # time_captured_needs_timezone even though the timezone IS known (BUG-6040).
-    _tz_from_personal = getattr(getattr(getattr(state, "personal", None), "timezone", None), "value", None)
+    _tz_from_personal = getattr(
+        getattr(getattr(state, "personal", None), "timezone", None), "value", None
+    )
     # Require a known timezone before booking ANY clock time — not just relative
     # windows. A definite "Monday 11am" with no stated zone must NOT be silently
     # booked as Central; confirm the customer's timezone first (audit chat 6070).
@@ -463,9 +461,7 @@ def reduce_consultation_state(
     )
 
     if timezone_unknown:
-        audit.append(
-            f"signal:timezone_needed(relative_window={is_relative_window})"
-        )
+        audit.append(f"signal:timezone_needed(relative_window={is_relative_window})")
         return ConsultationStateDecision(
             stage=ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE,
             contact_ready=True,

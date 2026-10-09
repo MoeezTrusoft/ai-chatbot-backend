@@ -278,9 +278,9 @@ class ContactCaptureDetector:
             missing.append("phone")
             missing.append("email")
         elif not has_phone:
-            missing.append("phone")   # ask as supplementary (not blocking)
+            missing.append("phone")  # ask as supplementary (not blocking)
         elif not has_email:
-            missing.append("email")   # ask as supplementary (not blocking)
+            missing.append("email")  # ask as supplementary (not blocking)
 
         audit.append(f"lead_contact_ready:{lead_contact_ready}")
         audit.append(f"contact_complete:{contact_complete}")

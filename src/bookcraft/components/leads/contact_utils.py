@@ -25,10 +25,44 @@ from typing import Any
 # "EST" into personal.name before this guard existed.
 _TIMEZONE_ABBREVS: frozenset[str] = frozenset(
     {
-        "est", "edt", "cst", "cdt", "mst", "mdt", "pst", "pdt", "akst", "akdt",
-        "hst", "hast", "hadt", "gmt", "utc", "bst", "ist", "pkt", "cet", "cest",
-        "eet", "eest", "aest", "aedt", "acst", "awst", "nzst", "nzdt", "jst",
-        "kst", "sgt", "wib", "wita", "msk", "et", "ct", "mt", "pt",
+        "est",
+        "edt",
+        "cst",
+        "cdt",
+        "mst",
+        "mdt",
+        "pst",
+        "pdt",
+        "akst",
+        "akdt",
+        "hst",
+        "hast",
+        "hadt",
+        "gmt",
+        "utc",
+        "bst",
+        "ist",
+        "pkt",
+        "cet",
+        "cest",
+        "eet",
+        "eest",
+        "aest",
+        "aedt",
+        "acst",
+        "awst",
+        "nzst",
+        "nzdt",
+        "jst",
+        "kst",
+        "sgt",
+        "wib",
+        "wita",
+        "msk",
+        "et",
+        "ct",
+        "mt",
+        "pt",
     }
 )
 
@@ -38,15 +72,68 @@ _TIMEZONE_ABBREVS: frozenset[str] = frozenset(
 _NON_NAME_WORDS: frozenset[str] = frozenset(
     {
         # Verbs / fillers that follow "I am" / "I'm".
-        "looking", "working", "trying", "interested", "writing", "hoping", "ready",
-        "good", "fine", "okay", "here", "not", "sure", "still", "just", "going",
-        "thinking", "wondering", "currently", "also", "done", "happy", "glad",
-        "excited", "unsure", "unclear", "planning", "searching", "seeking", "needing",
-        "wanting", "considering", "exploring", "new", "really", "very", "based",
-        "located", "available", "free", "busy", "open", "starting",
+        "looking",
+        "working",
+        "trying",
+        "interested",
+        "writing",
+        "hoping",
+        "ready",
+        "good",
+        "fine",
+        "okay",
+        "here",
+        "not",
+        "sure",
+        "still",
+        "just",
+        "going",
+        "thinking",
+        "wondering",
+        "currently",
+        "also",
+        "done",
+        "happy",
+        "glad",
+        "excited",
+        "unsure",
+        "unclear",
+        "planning",
+        "searching",
+        "seeking",
+        "needing",
+        "wanting",
+        "considering",
+        "exploring",
+        "new",
+        "really",
+        "very",
+        "based",
+        "located",
+        "available",
+        "free",
+        "busy",
+        "open",
+        "starting",
         # Leading prepositions / articles ("I am in central time" → "in central time").
-        "in", "at", "on", "of", "to", "for", "with", "from", "into", "about",
-        "an", "the", "a", "my", "we", "our", "us", "your",
+        "in",
+        "at",
+        "on",
+        "of",
+        "to",
+        "for",
+        "with",
+        "from",
+        "into",
+        "about",
+        "an",
+        "the",
+        "a",
+        "my",
+        "we",
+        "our",
+        "us",
+        "your",
     }
 )
 
@@ -56,10 +143,32 @@ _NON_NAME_WORDS: frozenset[str] = frozenset(
 # where "Marisol and <email>" was saved as the name "Marisol and").
 _NAME_GLUE_WORDS: frozenset[str] = frozenset(
     {
-        "and", "or", "plus", "also", "then",
-        "email", "e-mail", "mail", "phone", "cell", "mobile", "number", "no",
-        "is", "are", "am", "here", "its", "it", "contact", "reach", "me",
-        "name", "named", "call", "at",
+        "and",
+        "or",
+        "plus",
+        "also",
+        "then",
+        "email",
+        "e-mail",
+        "mail",
+        "phone",
+        "cell",
+        "mobile",
+        "number",
+        "no",
+        "is",
+        "are",
+        "am",
+        "here",
+        "its",
+        "it",
+        "contact",
+        "reach",
+        "me",
+        "name",
+        "named",
+        "call",
+        "at",
     }
 )
 
@@ -73,6 +182,7 @@ def strip_name_glue_tokens(tokens: list[str]) -> list[str]:
     """
     drop = _NAME_GLUE_WORDS | _NON_NAME_WORDS
     return [t for t in tokens if t.lower().strip(".") not in drop]
+
 
 # A year/era range such as "1770-1810" — a historical period, never a phone number.
 _YEAR_RANGE_RE = re.compile(r"\b(1[5-9]\d{2}|20\d{2})\s*(?:[-–—]|to)\s*(1[5-9]\d{2}|20\d{2})\b")
@@ -151,6 +261,7 @@ def is_identifier_number(text: str, start: int) -> bool:
     not be captured as a phone. Small window keeps it from firing on distant mentions."""
     prefix = text[max(0, start - 24) : start]
     return bool(_IDENTIFIER_LABEL_RE.search(prefix))
+
 
 # All placeholder strings emitted by the state sanitizer / redaction layer.
 # Add new ones here if the sanitizer gains new sentinel formats.

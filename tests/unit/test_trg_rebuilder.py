@@ -1,11 +1,13 @@
 """Tests for the TRG graph rebuilder (rebuilder.py)."""
+
 from __future__ import annotations
 
-import pytest
 from uuid import uuid4
 
+import pytest
+
 from bookcraft.components.trg import InMemoryGraphRepository, TemporalRelationGraphEngine
-from bookcraft.components.trg.rebuilder import rebuild_graph, RebuildResult, _extract_turns
+from bookcraft.components.trg.rebuilder import RebuildResult, _extract_turns, rebuild_graph
 
 
 class TestExtractTurns:
@@ -22,8 +24,16 @@ class TestExtractTurns:
 
     def test_paired_turn_extracted(self):
         events = [
-            {"sequence": 1, "event_type": "user.message", "payload": {"text": "I need ghostwriting"}},
-            {"sequence": 2, "event_type": "assistant.response", "payload": {"preview": "I can help!"}},
+            {
+                "sequence": 1,
+                "event_type": "user.message",
+                "payload": {"text": "I need ghostwriting"},
+            },
+            {
+                "sequence": 2,
+                "event_type": "assistant.response",
+                "payload": {"preview": "I can help!"},
+            },
         ]
         turns = _extract_turns(events)
         assert len(turns) == 1
@@ -33,9 +43,17 @@ class TestExtractTurns:
     def test_two_turns_extracted(self):
         events = [
             {"sequence": 1, "event_type": "user.message", "payload": {"text": "First message"}},
-            {"sequence": 2, "event_type": "assistant.response", "payload": {"preview": "First reply"}},
+            {
+                "sequence": 2,
+                "event_type": "assistant.response",
+                "payload": {"preview": "First reply"},
+            },
             {"sequence": 3, "event_type": "user.message", "payload": {"text": "Second message"}},
-            {"sequence": 4, "event_type": "assistant.response", "payload": {"preview": "Second reply"}},
+            {
+                "sequence": 4,
+                "event_type": "assistant.response",
+                "payload": {"preview": "Second reply"},
+            },
         ]
         turns = _extract_turns(events)
         assert len(turns) == 2
@@ -96,10 +114,26 @@ class TestRebuildGraph:
         thread_id = uuid4()
         engine = TemporalRelationGraphEngine(repository=InMemoryGraphRepository())
         events = [
-            {"sequence": 1, "event_type": "user.message", "payload": {"text": "I need ghostwriting help"}},
-            {"sequence": 2, "event_type": "assistant.response", "payload": {"preview": "Sure, what genre?"}},
-            {"sequence": 3, "event_type": "user.message", "payload": {"text": "Fantasy, 80000 words"}},
-            {"sequence": 4, "event_type": "assistant.response", "payload": {"preview": "Great choice!"}},
+            {
+                "sequence": 1,
+                "event_type": "user.message",
+                "payload": {"text": "I need ghostwriting help"},
+            },
+            {
+                "sequence": 2,
+                "event_type": "assistant.response",
+                "payload": {"preview": "Sure, what genre?"},
+            },
+            {
+                "sequence": 3,
+                "event_type": "user.message",
+                "payload": {"text": "Fantasy, 80000 words"},
+            },
+            {
+                "sequence": 4,
+                "event_type": "assistant.response",
+                "payload": {"preview": "Great choice!"},
+            },
         ]
         result = await rebuild_graph(thread_id=thread_id, engine=engine, events=events)
         assert result.turns_replayed == 2

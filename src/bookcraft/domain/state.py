@@ -290,7 +290,7 @@ class ThreadState(BaseModel):
     msgs_since_language_redirect: int = 10
     # CSR handover context — populated when a CSR takes over and sends messages.
     csr_handover_active: bool = False
-    csr_context_abstract: str = ""        # LLM-compressed summary of oldest CSR turns
+    csr_context_abstract: str = ""  # LLM-compressed summary of oldest CSR turns
     csr_context_recent_verbatim: list[dict[str, str]] = Field(default_factory=list)
     csr_turns_ingested: int = 0
     csr_handover_returned_at: datetime | None = None

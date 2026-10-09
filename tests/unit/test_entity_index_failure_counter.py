@@ -1,6 +1,8 @@
 """Tests for the ENTITY_INDEX_FAILURES Prometheus counter in chat service."""
-from bookcraft.services.chat import ENTITY_INDEX_FAILURES
+
 from prometheus_client import Counter
+
+from bookcraft.services.chat import ENTITY_INDEX_FAILURES
 
 
 def test_entity_index_failures_is_counter():

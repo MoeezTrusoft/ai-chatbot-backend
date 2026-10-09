@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -75,15 +76,27 @@ def verify_jwt_token(token: str | None, settings: Settings) -> AuthPrincipal:
 
     now = int(time.time())
     exp = payload.claims.get("exp")
-    if isinstance(exp, int | float) and now >= int(exp):
+    if not isinstance(exp, int | float) or isinstance(exp, bool) or not math.isfinite(exp):
+        raise AuthError("jwt expiration is required and must be numeric")
+    if now >= exp:
         raise AuthError("jwt expired")
 
     nbf = payload.claims.get("nbf")
-    if isinstance(nbf, int | float) and now < int(nbf):
-        raise AuthError("jwt not active")
+    if nbf is not None:
+        if type(nbf) not in (int, float) or not math.isfinite(nbf):
+            raise AuthError("invalid jwt not-before")
+        if now < nbf:
+            raise AuthError("jwt not active")
+    if settings.jwt_issuer and payload.claims.get("iss") != settings.jwt_issuer:
+        raise AuthError("invalid jwt issuer")
+    if settings.jwt_audience:
+        audience = payload.claims.get("aud")
+        audiences = audience if isinstance(audience, list) else [audience]
+        if settings.jwt_audience not in audiences:
+            raise AuthError("invalid jwt audience")
 
     subject = payload.claims.get("sub")
-    if not isinstance(subject, str) or not subject.strip():
+    if not isinstance(subject, str) or not subject.strip() or len(subject) > 255:
         raise AuthError("jwt subject is required")
 
     customer_id = _customer_id_from_claim(payload.claims.get("customer_id"))
@@ -195,3 +208,10 @@ def _scopes_from_claim(value: Any) -> set[str]:
         return scopes
 
     raise AuthError("scope claim must be string or list")
+
+
+def require_scope(request: Request, settings: Settings, *scopes: str) -> AuthPrincipal:
+    principal = require_http_auth(request, settings)
+    if settings.api_auth_mode != "off" and not principal.scopes.intersection(scopes):
+        raise HTTPException(status_code=403, detail={"error": "insufficient_scope"})
+    return principal

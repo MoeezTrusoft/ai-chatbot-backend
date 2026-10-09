@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import httpx
 from pydantic import BaseModel
 
-from bookcraft.components.llm.metrics import LLM_CALLS, LLM_LATENCY
+from bookcraft.components.llm.metrics import LLM_CALLS, LLM_LATENCY, record_usage
 
 # Output-token ceiling per structured call. Measured: a reply that answers a
 # 13-question checklist is ~1030 output tokens by itself, so the previous
@@ -111,9 +111,7 @@ class MockLLMAdapter:
             return output_model.model_validate({})
 
 
-def _anthropic_system_payload(
-    system: str, suffix: str | None, cache_enabled: bool
-) -> object:
+def _anthropic_system_payload(system: str, suffix: str | None, cache_enabled: bool) -> object:
     """Build the Anthropic ``system`` field.
 
     When prompt caching is on, the stable ``system`` text is emitted as a single
@@ -231,6 +229,7 @@ class AnthropicAdapter:
                 timeout=call_timeout,
             )
             response.raise_for_status()
+        record_usage(response.text, provider=self.name, model=self.model, purpose=purpose)
         return _parse_structured_response(response.text, output_model)
 
     async def stream_text(
@@ -353,6 +352,7 @@ class OpenAIAdapter:
                 timeout=call_timeout,
             )
             response.raise_for_status()
+        record_usage(response.text, provider=self.name, model=self.model, purpose=purpose)
         return _parse_structured_response(response.text, output_model)
 
 
@@ -389,11 +389,7 @@ def _sse_text_delta(line: str) -> str | None:
     event_type = event.get("type")
     if event_type == "error":
         error = event.get("error")
-        message = (
-            error.get("message")
-            if isinstance(error, dict)
-            else "anthropic stream error"
-        )
+        message = error.get("message") if isinstance(error, dict) else "anthropic stream error"
         raise RuntimeError(f"anthropic_stream_error: {message}")
     if event_type != "content_block_delta":
         return None
@@ -431,7 +427,7 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
                 # inputs are not permitted" errors on the raw envelope, which
                 # pointed nowhere near the real cause (chat 5876).
                 kinds = sorted(
-                    {b.get("type") for b in content if isinstance(b, dict) and b.get("type")}
+                    {str(b["type"]) for b in content if isinstance(b, dict) and b.get("type")}
                 )
                 raise ValueError(
                     "model hit max_tokens before producing any text block "

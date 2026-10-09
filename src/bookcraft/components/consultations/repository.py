@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col, select
 
-from bookcraft.components.storage.models import SalesConsultationRecord
+from bookcraft.components.storage.models import DeliveryOutboxRecord, SalesConsultationRecord
 
 
 class ConsultationRepositoryProtocol(Protocol):
@@ -67,8 +67,38 @@ class ConsultationRepositoryProtocol(Protocol):
 
 
 class ConsultationRepository:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession], *, enqueue_csr_sync: bool = False
+    ) -> None:
         self.session_factory = session_factory
+        self.enqueue_csr_sync = enqueue_csr_sync
+
+    def _enqueue(self, session: AsyncSession, record: SalesConsultationRecord) -> None:
+        if not self.enqueue_csr_sync:
+            return
+        session.add(
+            DeliveryOutboxRecord(
+                aggregate_id=record.id,
+                topic="consultation.upsert",
+                payload={
+                    "externalAppointmentId": str(record.id),
+                    "startsAtUtc": record.starts_at_utc.replace(tzinfo=UTC).isoformat(),
+                    "endsAtUtc": record.ends_at_utc.replace(tzinfo=UTC).isoformat(),
+                    "customerId": str(record.customer_id) if record.customer_id else None,
+                    "csrId": record.csr_id,
+                    "name": record.customer_name,
+                    "phone": record.customer_phone,
+                    "email": record.customer_email,
+                    "customerTimezone": record.customer_timezone,
+                    "preferredCallTime": record.customer_display_time,
+                    "houstonTime": record.houston_display_time,
+                    "csrName": record.csr_name,
+                    "services": record.services,
+                    "threadId": str(record.thread_id),
+                    "source": "ai_chatbot",
+                },
+            )
+        )
 
     async def create_appointment(
         self,
@@ -119,6 +149,7 @@ class ConsultationRepository:
 
         async with self.session_factory() as session:
             session.add(record)
+            self._enqueue(session, record)
             await session.commit()
             await session.refresh(record)
             return record
@@ -204,6 +235,7 @@ class ConsultationRepository:
             record.metadata_ = metadata
             record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             session.add(record)
+            self._enqueue(session, record)
             await session.commit()
             await session.refresh(record)
             return record

@@ -11,32 +11,27 @@ Three bugs diagnosed:
 
 from __future__ import annotations
 
-import pytest
-
 from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.extraction.llm_extractor import (
-    LLMExtractionResult,
-    LLMMetadataExtractor,
     _EXTRACTION_SYSTEM,
-    _build_known_facts_block,
     _facts_to_deltas,
 )
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
+from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.response.generator import _response_user_prompt
 from bookcraft.components.response.planner import ResponsePlanner, _contact_next_question
-from bookcraft.components.preprocessor.schemas import ProcessedMessage
-from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_msg(text: str) -> ProcessedMessage:
     return ProcessedMessage(
@@ -73,7 +68,9 @@ def _intent(
     )
 
 
-def _pack_with_known_facts(known_facts: list[KnownFact], *, forbidden: list[str] | None = None) -> ContextPack:
+def _pack_with_known_facts(
+    known_facts: list[KnownFact], *, forbidden: list[str] | None = None
+) -> ContextPack:
     return ContextPack(
         known_facts=known_facts,
         missing_facts=[],
@@ -99,6 +96,7 @@ def _lead_stop(next_question: str | None = None) -> LeadObjectiveDecision:
 
 def _contact_capture_not_ready() -> ContactCaptureResult:
     from bookcraft.components.leads.contact import ContactInfo
+
     return ContactCaptureResult(
         contact=ContactInfo(),
         has_name=False,
@@ -112,6 +110,7 @@ def _contact_capture_not_ready() -> ContactCaptureResult:
 # ---------------------------------------------------------------------------
 # Bug 1 — Extractor vocabulary for manuscript_status
 # ---------------------------------------------------------------------------
+
 
 class TestExtractionVocabulary:
     """Verify the extraction system prompt contains the LLM-driven manuscript_status rules."""
@@ -197,6 +196,7 @@ class TestExtractionVocabulary:
 # Bug 2 — generator.py missing_str must respect context_pack.forbidden_reasks
 # ---------------------------------------------------------------------------
 
+
 class TestGeneratorMissingStr:
     """The 'What we still need' line in the user prompt must not list manuscript stage
     when the context pack's forbidden_reasks already suppresses it."""
@@ -227,7 +227,7 @@ class TestGeneratorMissingStr:
         prompt = self._build_prompt(state, pack)
         # The missing section should not list manuscript stage.
         assert "What we still need" in prompt
-        missing_line = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        missing_line = [label for label in prompt.splitlines() if "still need" in label.lower()]
         assert missing_line, "Prompt must contain 'What we still need' line"
         assert "manuscript" not in missing_line[0].lower()
 
@@ -242,7 +242,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=["manuscript_stage"],
         )
         prompt = self._build_prompt(state, pack)
-        missing_line = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        missing_line = [label for label in prompt.splitlines() if "still need" in label.lower()]
         assert missing_line
         assert "manuscript" in missing_line[0].lower()
 
@@ -257,7 +257,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [label for label in prompt.splitlines() if "already know" in label.lower()]
         assert known_line, "Prompt must contain 'What we already know' line"
         assert "christopher james" in known_line[0].lower()
 
@@ -272,7 +272,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [label for label in prompt.splitlines() if "already know" in label.lower()]
         assert known_line
         assert "author email" in known_line[0].lower()
 
@@ -287,7 +287,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [label for label in prompt.splitlines() if "already know" in label.lower()]
         assert known_line
         assert "author phone" in known_line[0].lower()
 
@@ -295,6 +295,7 @@ class TestGeneratorMissingStr:
 # ---------------------------------------------------------------------------
 # Bug 3 — planner must not ask for name when it's already captured
 # ---------------------------------------------------------------------------
+
 
 class TestContactNextQuestion:
     """_contact_next_question must return the most specific question given captured facts."""
@@ -305,35 +306,43 @@ class TestContactNextQuestion:
 
     def test_name_only_captured_returns_name_and_email_or_phone(self):
         """When only name is known (no phone, no email), ask for phone or email."""
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Christopher James"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Christopher James"),
+            ]
+        )
         assert _contact_next_question(pack) == "name_and_email_or_phone"
 
     def test_name_and_email_captured_returns_missing_phone(self):
         """When name and email are known but phone is not, ask for phone as supplementary."""
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Christopher James"),
-            _known_fact("personal.email", "author_email", "cj@example.com"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Christopher James"),
+                _known_fact("personal.email", "author_email", "cj@example.com"),
+            ]
+        )
         # Phone is still solicited as supplementary even though contact is ready.
         assert _contact_next_question(pack) == "missing_phone"
 
     def test_name_and_phone_captured_no_email_returns_missing_email(self):
         """When name and phone are known but email is not, ask for email."""
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Christopher James"),
-            _known_fact("personal.phone", "author_phone", "555-1234"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Christopher James"),
+                _known_fact("personal.phone", "author_phone", "555-1234"),
+            ]
+        )
         assert _contact_next_question(pack) == "missing_email"
 
     def test_all_three_captured_returns_preferred_call_time(self):
         """When all contact fields are present, fall back to call-time question."""
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Christopher James"),
-            _known_fact("personal.email", "author_email", "cj@example.com"),
-            _known_fact("personal.phone", "author_phone", "555-1234"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Christopher James"),
+                _known_fact("personal.email", "author_email", "cj@example.com"),
+                _known_fact("personal.phone", "author_phone", "555-1234"),
+            ]
+        )
         assert _contact_next_question(pack) == "preferred_call_time"
 
     def test_planner_returns_contact_question_when_only_name_known(self):
@@ -379,6 +388,7 @@ class TestContactNextQuestion:
 # scheduling ("preferred_call_time") without ever being asked for a phone number.
 # ---------------------------------------------------------------------------
 
+
 class TestPhoneIsAlwaysAsked:
     def _email_only_ready_capture(self) -> ContactCaptureResult:
         from bookcraft.components.leads.contact import ContactInfo
@@ -388,7 +398,7 @@ class TestPhoneIsAlwaysAsked:
             has_name=True,
             has_email=True,
             has_phone=False,
-            lead_contact_ready=True,   # name + email is "ready" — but phone still missing
+            lead_contact_ready=True,  # name + email is "ready" — but phone still missing
             contact_complete=False,
         )
 
@@ -410,10 +420,12 @@ class TestPhoneIsAlwaysAsked:
     def test_planner_asks_phone_before_call_time_when_only_email(self):
         """Lead-ready (name+email, no phone) must ask missing_phone, NOT preferred_call_time."""
         planner = ResponsePlanner()
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Deyah Lara"),
-            _known_fact("personal.email", "author_email", "d@example.com"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Deyah Lara"),
+                _known_fact("personal.email", "author_email", "d@example.com"),
+            ]
+        )
         plan = planner.plan(
             intent=_intent(query=QueryIntentType.CONTACT_INFO_PROVIDED),
             state=ThreadState(),
@@ -426,10 +438,12 @@ class TestPhoneIsAlwaysAsked:
     def test_lead_created_confirmation_still_asks_phone_when_missing(self):
         """On the create-lead turn (lead_created_confirmation), still solicit the phone."""
         planner = ResponsePlanner()
-        pack = _pack_with_known_facts([
-            _known_fact("personal.name", "author_name", "Deyah Lara"),
-            _known_fact("personal.email", "author_email", "d@example.com"),
-        ])
+        pack = _pack_with_known_facts(
+            [
+                _known_fact("personal.name", "author_name", "Deyah Lara"),
+                _known_fact("personal.email", "author_email", "d@example.com"),
+            ]
+        )
         lod = LeadObjectiveDecision(
             stage="lead_ready",
             stop_discovery=True,
@@ -451,6 +465,7 @@ class TestPhoneIsAlwaysAsked:
 # ---------------------------------------------------------------------------
 # Bug 1+2 integration — pack_builder forbidden_reasks covers manuscript phrases
 # ---------------------------------------------------------------------------
+
 
 class TestPackBuilderManuscriptForbiddenReasks:
     """When manuscript_status is known in state, pack_builder must add broad phrase coverage
@@ -502,6 +517,7 @@ class TestPackBuilderManuscriptForbiddenReasks:
 # ---------------------------------------------------------------------------
 # Contact re-ask regression — pack_builder must surface name/email/phone in known_facts
 # ---------------------------------------------------------------------------
+
 
 class TestPackBuilderContactKnownFacts:
     """pack_builder must add personal contact fields to known_facts and forbidden_reasks."""
@@ -558,6 +574,7 @@ class TestPackBuilderContactKnownFacts:
 # ---------------------------------------------------------------------------
 # End-to-end simulation: Christopher James full scenario
 # ---------------------------------------------------------------------------
+
 
 class TestChristopherJamesScenario:
     """High-level integration checks simulating the Chat 5148 conversation.
@@ -642,7 +659,7 @@ class TestChristopherJamesScenario:
             context_pack=pack,
         )
         # "What we still need" line must not mention manuscript.
-        still_need_lines = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        still_need_lines = [label for label in prompt.splitlines() if "still need" in label.lower()]
         for line in still_need_lines:
             assert "manuscript" not in line.lower(), (
                 f"'manuscript' appeared in 'still need' line after extraction: {line!r}"
@@ -664,7 +681,7 @@ class TestChristopherJamesScenario:
             runtime_atoms={},
             context_pack=pack,
         )
-        known_lines = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_lines = [label for label in prompt.splitlines() if "already know" in label.lower()]
         assert known_lines, "Prompt must have a 'What we already know' line"
         assert "christopher james" in known_lines[0].lower(), (
             f"Author name not in 'already know' line: {known_lines[0]!r}"

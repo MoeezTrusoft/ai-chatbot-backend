@@ -45,9 +45,7 @@ class SalesActionPlanner:
         if pending.type:
             import structlog as _structlog
 
-            _matched = is_confirmation_text(
-                processed.normalized, pending_action_type=pending.type
-            )
+            _matched = is_confirmation_text(processed.normalized, pending_action_type=pending.type)
             _structlog.get_logger(__name__).info(
                 "pending_confirmation_eval",
                 pending_type=str(pending.type),

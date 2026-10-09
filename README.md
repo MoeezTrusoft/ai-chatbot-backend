@@ -2,6 +2,9 @@
 
 Production-grade AI sales assistant for BookCraft Publishers.
 
+See [backend hardening and rollout](docs/backend-hardening.md) for authentication
+scopes, ownership migration, durable CSR delivery, performance controls and image validation.
+
 This repository is being implemented phase by phase from the locked architecture and implementation guide. It now includes the local app shell, guarded chat loop, RAG verifier/retriever, deterministic pricing engine, portfolio registry, template-only document generation, Tri-Match with ADR-gated funnel-stage shadow output, monitoring assets, governance gates, and final acceptance coverage.
 
 ## Local Docker Security Defaults

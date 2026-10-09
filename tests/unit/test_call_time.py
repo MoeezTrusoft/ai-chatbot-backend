@@ -22,9 +22,9 @@ class TestBareClockHours:
         assert parts.is_range is True
 
     def test_standalone_bare_hour_is_parsed(self) -> None:
-        assert parse_call_time(
-            "probably 12 would work the best", allow_numeric=True
-        ).clock == "12pm"
+        assert (
+            parse_call_time("probably 12 would work the best", allow_numeric=True).clock == "12pm"
+        )
 
     def test_preposed_bare_hour_is_parsed(self) -> None:
         assert parse_call_time("Friday works best at 2", allow_numeric=True).clock == "2pm"
@@ -64,10 +64,7 @@ class TestNumericGating:
     def test_long_prose_never_yields_a_standalone_hour(self) -> None:
         # The customer pasted ~5k words of manuscript while the bot was awaiting a
         # time; a lone integer in prose must not book a call.
-        prose = (
-            "a dragon book where the jem is stolen and they have "
-            "to find 6 dragonets to find it"
-        )
+        prose = "a dragon book where the jem is stolen and they have to find 6 dragonets to find it"
         assert extract_call_time(prose, allow_numeric=True) is None
 
 
@@ -119,9 +116,10 @@ class TestTimezoneIsNotATime:
     """The objective engine's old regex matched bare timezone tokens as times."""
 
     def test_timezone_answer_is_not_a_call_time(self) -> None:
-        assert extract_call_time(
-            "my time zone zone is in the central time zone", allow_numeric=True
-        ) is None
+        assert (
+            extract_call_time("my time zone zone is in the central time zone", allow_numeric=True)
+            is None
+        )
 
     def test_bare_direction_word_is_not_a_call_time(self) -> None:
         assert extract_call_time("west coast", allow_numeric=False) is None

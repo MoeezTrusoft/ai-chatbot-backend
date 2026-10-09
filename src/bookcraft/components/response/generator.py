@@ -1,5 +1,6 @@
 import json
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, cast
@@ -12,7 +13,7 @@ from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
-from bookcraft.components.llm.protocols import LLMProvider
+from bookcraft.components.llm.protocols import LLMProvider, StreamingLLMProvider
 from bookcraft.components.portfolio.schemas import PortfolioResponse, PortfolioStatus
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
@@ -44,6 +45,7 @@ def _approx_tokens(text: str) -> int:
     if not text:
         return 0
     return (len(text) + 3) // 4
+
 
 # How many retrieved chunks reach the prompt. A normal turn answers one thing and a
 # tight pack keeps it focused; a multi-question turn has to carry grounding for every
@@ -343,17 +345,17 @@ class SonnetResponseGenerator:
         response_plan: ResponsePlan | None = None,
         recent_turns: list[tuple[str, str]] | None = None,
         persona_decision: Any | None = None,
-    ):
+    ) -> AsyncIterator[str]:
         """Stream the response text as an async generator of string chunks.
 
         Two paths, both of which yield ≥ 1 chunk and never raise mid-stream:
 
         * **Real incremental streaming** — when ``self.adapter`` exposes a
           ``stream_text`` coroutine and is not in mock mode, the LLM is asked to
-          produce the reply over the Anthropic Messages streaming API and each
-          ``text_delta`` is yielded as it arrives.  The full text is accumulated
-          and, if the streamed result passes the same safety/quality validation
-          as :meth:`generate`, it is the turn.  On **any** streaming failure
+          produce the reply over the Anthropic Messages streaming API. The full
+          text is accumulated before yielding any chunk, then checked by the
+          generator's text safety guard. The API additionally applies the full
+          response quality pipeline. On **any** streaming failure
           (transport error, SSE error event, or a streamed reply that fails
           validation) the method falls back to :meth:`generate` so a streaming
           hiccup never produces a broken or unsafe turn.
@@ -385,7 +387,7 @@ class SonnetResponseGenerator:
             "persona_decision": persona_decision,
         }
 
-        # Real incremental streaming is only viable when the adapter exposes a
+        # Provider streaming is only viable when the adapter exposes a
         # stream_text coroutine AND is not in mock mode (mock adapters have no
         # api_key).  The generator — not the adapter — owns this decision.
         if self._streaming_viable():
@@ -405,7 +407,6 @@ class SonnetResponseGenerator:
                     persona_decision=persona_decision,
                 ):
                     accumulated.append(chunk)
-                    yield chunk
             except Exception as exc:
                 logger.warning(
                     "response_stream_failed",
@@ -413,19 +414,21 @@ class SonnetResponseGenerator:
                     error=str(exc),
                     note="streaming path failed mid-flight; falling back to generate()",
                 )
-                accumulated = None  # signal: discard partial, fall back below
+                accumulated.clear()  # Discard partial text before generating the fallback.
             else:
                 # Validate the fully-streamed text with the same gate generate()
                 # uses.  If it passes, the streamed turn is complete and we stop.
                 streamed_text = "".join(accumulated)
                 if _safe_generated_text(streamed_text) is not None:
+                    for safe_chunk in accumulated:
+                        yield safe_chunk
                     return
                 logger.info(
                     "response_stream_validation_rejected",
                     provider=self.provider_name,
                     preview=streamed_text[:120],
                 )
-                accumulated = None  # fall back to generate()
+                accumulated.clear()  #  # fall back to generate()
 
             # NOTE: we already yielded partial chunks above.  Falling back here
             # re-yields the full validated text; the WS consumer accumulates by
@@ -463,7 +466,7 @@ class SonnetResponseGenerator:
         response_plan: ResponsePlan | None,
         recent_turns: list[tuple[str, str]] | None,
         persona_decision: Any | None,
-    ):
+    ) -> AsyncIterator[str]:
         """Yield text deltas from ``adapter.stream_text`` for this turn.
 
         Builds the same system/user prompts as :meth:`_try_llm` so the streamed
@@ -493,7 +496,7 @@ class SonnetResponseGenerator:
             known_facts_render_cap=self.known_facts_render_cap,
             rag_within_prompt_dedup=self.rag_within_prompt_dedup,
         )
-        async for chunk in self.adapter.stream_text(
+        async for chunk in cast(StreamingLLMProvider, self.adapter).stream_text(
             system=system,
             messages=[{"role": "user", "content": user}],
             max_tokens=1024,
@@ -586,9 +589,7 @@ class SonnetResponseGenerator:
         LLM_CALLS.labels(provider=self.provider_name, purpose=f"response_{attempt}").inc()
 
         system = _response_system_prompt(
-            active_service=context_pack.active_service
-            if context_pack is not None
-            else None,
+            active_service=context_pack.active_service if context_pack is not None else None,
             persona_decision=persona_decision,
         )
         user = _response_user_prompt(
@@ -628,8 +629,7 @@ class SonnetResponseGenerator:
                 rag_tokens=_approx_tokens(rag_text),
             )
         except Exception:
-            # Instrumentation must never affect the response path.
-            pass
+            logger.debug("response_prompt_metrics_failed")
 
         try:
             generated = cast(
@@ -1321,7 +1321,7 @@ def _current_datetime_line(now: datetime | None = None) -> str:
     if now is None:
         now = datetime.now(ZoneInfo(_BUSINESS_TZ_NAME))
     # e.g. "Monday, June 22, 2026, 3:14 PM Central Time (CDT)"
-    pretty = now.strftime("%A, %B %d, %Y, %-I:%M %p")
+    pretty = f"{now:%A, %B %d, %Y}, {now.hour % 12 or 12}:{now:%M %p}"
     tz_abbr = now.strftime("%Z")
     return (
         "Current date and time (authoritative — use this as 'now' for ALL "
@@ -1358,9 +1358,7 @@ def _response_system_prompt(
     style = _STYLE_POLICY.style_instructions(active_service=active_service)
 
     # Persona: build identity instruction based on assigned representative name.
-    rep_name = (
-        getattr(persona_decision, "representative_name", None) if persona_decision else None
-    )
+    rep_name = getattr(persona_decision, "representative_name", None) if persona_decision else None
     is_identity_q = (
         getattr(persona_decision, "is_identity_question", False) if persona_decision else False
     )
@@ -1369,9 +1367,7 @@ def _response_system_prompt(
     )
 
     if rep_name:
-        identity_instruction = (
-            f"Your name is {rep_name}, a BookCraft publishing consultant.\n"
-        )
+        identity_instruction = f"Your name is {rep_name}, a BookCraft publishing consultant.\n"
         if is_identity_q and is_first:
             identity_instruction += (
                 f"The author just asked if you are a bot or AI. "
@@ -1440,19 +1436,21 @@ def _response_system_prompt(
         "email' or by insisting they book or share details in chat first — give the email, then "
         "they can proceed however they prefer.\n"
         "Manuscript / document submission: When an author says they want to send their manuscript, "
-        "document, or file by email (e.g. 'I can't upload', 'I'll email it', 'my document won't load'), "
-        "tell them they can send it to inquiry@bookcraftpublishers.com and that the team will follow up.\n"
+        "document, or file by email (e.g. 'I can't upload', 'I'll email it"
+        "', 'my document won't load'), "
+        "tell them they can send it to inquiry@bookcraftpublishers.com and"
+        " that the team will follow up.\n"
         "File or attachment received: When the user uploads a file or attachment:\n"
         "- ALWAYS confirm receipt by the file's name when the known facts include "
         "'attachment_filename' — name the file in your acknowledgement (e.g. \"Got your file "
         "'Chapter 2.docx'\"). If no filename is provided, acknowledge by type instead.\n"
         "- Quick human look (only using facts you are given — you did NOT open the file): if "
         "'attachment_page_count' or 'attachment_word_count' is present, mention the size "
-        "naturally and approximately (e.g. \"a ~134-page draft\", \"around 40,000 words\"). If "
+        'naturally and approximately (e.g. "a ~134-page draft", "around 40,000 words"). If '
         "'attachment_image_dimensions' is present for a cover/design, you may note the format "
         "and size (e.g. \"a 1600x2400 cover\"). If 'attachment_excerpt' is present, give ONE "
-        "brief, warm first impression of the subject or tone IN YOUR OWN WORDS (e.g. \"reads "
-        "like the opening of a family memoir\", \"looks like a business how-to\"). This is a "
+        'brief, warm first impression of the subject or tone IN YOUR OWN WORDS (e.g. "reads '
+        'like the opening of a family memoir", "looks like a business how-to"). This is a '
         "glance, like a person flipping to the first page — NOT a review.\n"
         "- HARD LIMITS on the quick look: never quote or paraphrase sentences from the "
         "excerpt; never claim to have read, finished, studied, or assessed the manuscript; "
@@ -1464,8 +1462,10 @@ def _response_system_prompt(
         "the free editorial assessment: \"Got your file 'Chapter 2.docx' — our editorial "
         "specialist will review it and provide a professional assessment. To send you the report, "
         "I just need your name, phone number, and preferred timezone for your consultation call.'\n"
-        "- If the attachment is something else (cover design, brief, etc.), acknowledge by name and "
-        "route to specialist assessment: \"Got your file 'brief.pdf' — a specialist will review it. "
+        "- If the attachment is something else (cover design, brief, etc.)"
+        ", acknowledge by name and "
+        "route to specialist assessment: \"Got your file 'brief.pdf' — a sp"
+        "ecialist will review it. "
         "To connect you, I just need your name, phone number, and timezone.'\n"
         "Free editorial assessment pitch: When the context hint includes "
         "'MANUSCRIPT UPLOAD PITCH', weave a natural one-time offer into your response "
@@ -1475,7 +1475,8 @@ def _response_system_prompt(
         "using the 📎 attach button at the bottom of this chat. "
         "Our editorial team will give you professional feedback before your consultation.' "
         "Say this once, blend it naturally, never repeat it.\n"
-        "CRITICAL: Never use the above contact details as a substitute for scheduling a consultation. "
+        "CRITICAL: Never use the above contact details as a substitute for"
+        " scheduling a consultation. "
         "When an author asks to schedule a consultation, collect their details in this chat — "
         "do NOT tell them to email or call us instead.\n\n"
         "Consultation scheduling flow:\n"
@@ -1484,7 +1485,8 @@ def _response_system_prompt(
         "'schedule me a specialist', 'I want to speak to someone', 'yes', 'sure', 'go ahead', "
         "'just schedule me', or any frustration like 'stop talking and book it') — "
         "you are in CONSULTATION MODE. In this mode:\n"
-        "- Do NOT ask about genre, word count, service type, manuscript stage, or ANY scoping detail.\n"
+        "- Do NOT ask about genre, word count, service type, manuscript st"
+        "age, or ANY scoping detail.\n"
         "- Do NOT re-ask for name, phone, or email if already captured — check Known Facts.\n"
         "- If the customer raises a service topic mid-consultation, acknowledge in ONE sentence "
         "('Our specialist will cover that on the call') and return to contact collection.\n"
@@ -1519,7 +1521,8 @@ def _response_system_prompt(
         "Language disambiguation:\n"
         "- 'print a sample' or 'sample copy' or 'proof copy' in the context of publishing "
         "means the author wants a physical proof of THEIR OWN book — this is an Interior "
-        "Formatting or Publishing service question, NOT a request for BookCraft portfolio samples.\n"
+        "Formatting or Publishing service question, NOT a request for Book"
+        "Craft portfolio samples.\n"
         "- 'show me samples' or 'see your work' or 'portfolio examples' means they want to "
         "view BookCraft's existing work — that IS a portfolio request.\n"
         "- 'publish a journal' is a legitimate BookCraft Publishing & Distribution service. "
@@ -1562,7 +1565,7 @@ def _response_system_prompt(
         "service). Reference them only when genuinely relevant to the current message, "
         "not as a default opener.\n"
         "- Do not use markdown headings, tables, bullet lists, or Source labels.\n"
-	"- Do not redirect an author to contact BookCraft by email or phone when they ask to "
+        "- Do not redirect an author to contact BookCraft by email or phone when they ask to "
         "schedule a consultation. Collect their details here and schedule it directly.\n"
         "- Do not write paragraphs. This is a chat window. Each response is 1–2 short sentences, "
         "40 words maximum. If more detail is truly needed, break it into a follow-up turn "
@@ -1676,7 +1679,8 @@ def _response_user_prompt(
     _bare_number_note = ""
     if (
         response_plan is not None
-        and response_plan.next_question in {
+        and response_plan.next_question
+        in {
             "name_and_email_or_phone",
             "missing_phone",
             "missing_email",
@@ -1686,6 +1690,7 @@ def _response_user_prompt(
     ):
         # Bare 10+ digit number in this message is almost certainly a phone number.
         import re as _re
+
         _bare = _re.findall(r"\b\d{10,}\b", message.raw or "")
         if _bare:
             _bare_number_note = (
@@ -1979,9 +1984,7 @@ def _dedupe_rag_snippets(snippets: list[str]) -> list[str]:
     return kept
 
 
-def _select_rendered_facts(
-    known_facts: list[KnownFact], cap: int
-) -> list[KnownFact]:
+def _select_rendered_facts(known_facts: list[KnownFact], cap: int) -> list[KnownFact]:
     """Bound the known-facts RENDERED into the prompt to at most ``cap`` items.
 
     Advisory item 5: ``ContextPack.known_facts`` grows unbounded as facts accumulate
@@ -1998,11 +2001,9 @@ def _select_rendered_facts(
         return list(known_facts)
 
     def _always_keep(fact: KnownFact) -> bool:
-        path = (getattr(fact, "path", "") or "")
+        path = getattr(fact, "path", "") or ""
         return (
-            path.startswith("personal")
-            or path.startswith("contact")
-            or path.startswith("service")
+            path.startswith("personal") or path.startswith("contact") or path.startswith("service")
         )
 
     keep_ids = {id(f) for f in known_facts if _always_keep(f)}
@@ -2083,7 +2084,10 @@ def _response_plan_prompt_section(response_plan: ResponsePlan | None) -> str:
         "consultation_handoff",
         "specialist_handoff",
     }:
-        parts.append("- Ask for name, email, and phone. You may settle for one of email or phone number but tactfully attempt to acquire both.")
+        parts.append(
+            "- Ask for name, email, and phone. You may settle for one of email"
+            " or phone number but tactfully attempt to acquire both."
+        )
         parts.append("- Do not provide final pricing or timeline commitments in this step.")
         parts.append("- Do not act as the final consultant; route to senior specialist follow-up.")
 
@@ -2343,7 +2347,6 @@ def _portfolio_response_as_facts(
     fallback_note = " (general selection — no exact genre match)" if response.fallback_used else ""
     facts = (
         f"Approved portfolio samples{fallback_note} "
-        "(use only these; do NOT invent additional links):\n"
-        + "\n".join(sample_lines)
+        "(use only these; do NOT invent additional links):\n" + "\n".join(sample_lines)
     )
     return facts, approved_urls

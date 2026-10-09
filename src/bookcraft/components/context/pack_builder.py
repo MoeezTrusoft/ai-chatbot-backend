@@ -5,17 +5,17 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from bookcraft.components.attachments.intake import ChatAttachment
+from bookcraft.components.consultations.slots import suggest_consultation_slot_labels
 from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.consultations.slots import suggest_consultation_slot_labels
-from bookcraft.components.sales.consultation_state import (
-    ConsultationStage,
-    is_definite_call_time,
-)
 from bookcraft.components.leads.contact_utils import (
     contact_is_complete,
     contact_status_from_dict,
+)
+from bookcraft.components.sales.consultation_state import (
+    ConsultationStage,
+    is_definite_call_time,
 )
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 
 # Maximum number of known facts to include in a context pack by priority tier.
 _FACT_PRIORITY_TIERS = {
-    "contact": 10,    # contact facts — always include all
-    "project": 15,    # project facts — include all
-    "service": 10,    # service-specific facts
-    "trg": 8,         # TRG semantic facts
-    "other": 5,       # anything else
+    "contact": 10,  # contact facts — always include all
+    "project": 15,  # project facts — include all
+    "service": 10,  # service-specific facts
+    "trg": 8,  # TRG semantic facts
+    "other": 5,  # anything else
 }
 _MAX_TOTAL_FACTS = 30  # hard cap on total facts in context pack
 
@@ -40,21 +40,21 @@ _MAX_TOTAL_FACTS = 30  # hard cap on total facts in context pack
 # Contradiction / confirmation guidance is most important, then TRG forbidden-reask
 # guards, then CSR-style scoping (consultation/upload), workflow, entity, then misc.
 _HINT_SOURCE_PRIORITY: dict[str, int] = {
-    "contradiction": 100,      # contradictory-detail / repeated-info guidance
-    "forbidden_reasks": 90,    # do-not-reask guard (TRG / state derived)
-    "consultation": 80,        # consultation-first scoping guard (CSR)
-    "manuscript_upload": 75,   # manuscript upload pitch (CSR)
-    "current_question": 70,    # priority-question / answer-before-capture (workflow)
-    "known_facts": 60,         # known facts recap (entity)
-    "active_service": 55,      # active service (entity)
-    "missing_facts": 50,       # missing facts / allowed-next (workflow)
-    "allowed_next": 48,        # allowed next questions (workflow)
-    "outstanding": 45,         # previously-asked questions (workflow)
+    "contradiction": 100,  # contradictory-detail / repeated-info guidance
+    "forbidden_reasks": 90,  # do-not-reask guard (TRG / state derived)
+    "consultation": 80,  # consultation-first scoping guard (CSR)
+    "manuscript_upload": 75,  # manuscript upload pitch (CSR)
+    "current_question": 70,  # priority-question / answer-before-capture (workflow)
+    "known_facts": 60,  # known facts recap (entity)
+    "active_service": 55,  # active service (entity)
+    "missing_facts": 50,  # missing facts / allowed-next (workflow)
+    "allowed_next": 48,  # allowed next questions (workflow)
+    "outstanding": 45,  # previously-asked questions (workflow)
     "preferred_call_time": 40,  # call-time handoff confirmation
-    "greeting": 35,            # greeting-only guard
-    "genre_uncertain": 30,     # genre-uncertain guidance
-    "book_format": 25,         # book-format note
-    "language": 20,            # non-English handling note
+    "greeting": 35,  # greeting-only guard
+    "genre_uncertain": 30,  # genre-uncertain guidance
+    "book_format": 25,  # book-format note
+    "language": 20,  # non-English handling note
 }
 _DEFAULT_HINT_PRIORITY = 10  # any unlabeled / misc source
 
@@ -437,9 +437,14 @@ class ContextPackBuilder:
         # Suppress them completely so the bot stays in contact/scheduling mode.
         if consultation_stage and consultation_stage not in ("", "none"):
             _consultation_scoping_suppress = {
-                "word_or_page_count", "word_count", "page_count",
-                "genre", "manuscript_stage", "manuscript_status",
-                "deadline", "cover_style",
+                "word_or_page_count",
+                "word_count",
+                "page_count",
+                "genre",
+                "manuscript_stage",
+                "manuscript_status",
+                "deadline",
+                "cover_style",
             }
             missing_facts = [f for f in missing_facts if f not in _consultation_scoping_suppress]
             allowed_next_questions = [
@@ -472,9 +477,7 @@ class ContextPackBuilder:
         # When the customer's call time is INDEFINITE, surface concrete half-hour
         # openings so the response can offer specific options to pick from.
         suggested_call_slots: list[str] = []
-        _needs_slots = (
-            consultation_stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED
-        ) or (
+        _needs_slots = (consultation_stage == ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED) or (
             contact_ready
             and bool(state_preferred_call_time)
             and not is_definite_call_time(state_preferred_call_time)
@@ -578,7 +581,8 @@ class ContextPackBuilder:
             if _known_meta_key not in forbidden_reasks:
                 forbidden_reasks.append(_known_meta_key)
 
-        # Token-budget trimming: cap known_facts at _MAX_TOTAL_FACTS, preferring higher-priority facts
+        # Token-budget trimming: cap known_facts at _MAX_TOTAL_FACTS, preferring higher-priority
+        # facts
         if len(known_facts) > _MAX_TOTAL_FACTS:
             known_facts = _trim_facts_by_priority(known_facts, _MAX_TOTAL_FACTS)
 
@@ -647,9 +651,7 @@ class ContextPackBuilder:
         )
         if self._budget_enabled:
             segments = _response_hint_segments(pack)
-            budgeted_hint, dropped_labels = _apply_hint_budget(
-                segments, self._hint_token_budget
-            )
+            budgeted_hint, dropped_labels = _apply_hint_budget(segments, self._hint_token_budget)
             for label in dropped_labels:
                 CONTEXT_HINT_DROPPED.labels(source=label).inc()
             return pack.model_copy(update={"response_hint": budgeted_hint})
@@ -756,26 +758,46 @@ def _forbidden_reasks(
     if active_genre is not None:
         forbidden.extend(["genre", "what genre"])
     if manuscript_status is not None:
-        forbidden.extend([
-            "manuscript_stage", "manuscript_status", "manuscript stage",
-            "draft status", "draft stage", "starting from scratch",
-            "have you started", "do you have a manuscript", "do you have notes",
-            "written anything", "have anything written", "where is the manuscript",
-            "manuscript stand",
-        ])
+        forbidden.extend(
+            [
+                "manuscript_stage",
+                "manuscript_status",
+                "manuscript stage",
+                "draft status",
+                "draft stage",
+                "starting from scratch",
+                "have you started",
+                "do you have a manuscript",
+                "do you have notes",
+                "written anything",
+                "have anything written",
+                "where is the manuscript",
+                "manuscript stand",
+            ]
+        )
     if active_service is not None:
         forbidden.append("unrelated service drift")
     # Contact fields already in state must never be re-asked.
     if state is not None:
-        if getattr(getattr(state, "personal", None), "name", None) and getattr(state.personal.name, "value", None):
+        if getattr(getattr(state, "personal", None), "name", None) and getattr(
+            state.personal.name, "value", None
+        ):
             forbidden.extend(["name", "author_name", "your name"])
-        if getattr(getattr(state, "personal", None), "email", None) and getattr(state.personal.email, "value", None):
+        if getattr(getattr(state, "personal", None), "email", None) and getattr(
+            state.personal.email, "value", None
+        ):
             forbidden.extend(["email", "author_email", "your email"])
-        if getattr(getattr(state, "personal", None), "phone", None) and getattr(state.personal.phone, "value", None):
+        if getattr(getattr(state, "personal", None), "phone", None) and getattr(
+            state.personal.phone, "value", None
+        ):
             forbidden.extend(["phone", "author_phone", "your phone", "phone number"])
-        if getattr(getattr(state, "personal", None), "timezone", None) and getattr(state.personal.timezone, "value", None):
+        if getattr(getattr(state, "personal", None), "timezone", None) and getattr(
+            state.personal.timezone, "value", None
+        ):
             forbidden.extend(["timezone", "your timezone", "what timezone", "time zone"])
-        if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(state.personal.preferred_contact_method, "value", None):
+        if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(
+            state.personal.preferred_contact_method, "value", None
+        ):
             forbidden.extend(["preferred contact", "how to reach", "best way to contact"])
     # The customer declined a voice call — every call-scheduling question below is
     # now a re-ask of something they already answered (chat 6816: "can they text
@@ -783,7 +805,10 @@ def _forbidden_reasks(
     if getattr(state, "call_opt_out", False):
         forbidden.extend(
             [
-                "call time (customer asked to be texted instead — do not ask them to schedule a call)",
+                (
+                    "call time (customer asked to be texted instead — do not ask them "
+                    "to schedule a call)"
+                ),
                 "what time works for your call",
                 "when can we call you",
                 "best time to call",
@@ -793,7 +818,10 @@ def _forbidden_reasks(
     if getattr(state, "consultation_deferred", False):
         forbidden.extend(
             [
-                "consultation booking (customer postponed — do not push scheduling until they raise it)",
+                (
+                    "consultation booking (customer postponed — do not push scheduling"
+                    " until they raise it)"
+                ),
                 "what day works for you",
                 "what time works for you",
             ]
@@ -826,27 +854,37 @@ def _response_hint_segments(pack: ContextPack) -> list[tuple[str, str]]:
     """
     parts: list[tuple[str, str]] = []
     if pack.is_greeting_turn:
-        parts.append((
-            "greeting",
-            "This is a greeting-only turn. Welcome the user warmly. "
-            "Do NOT ask about genre, word count, manuscript stage, or any scoping detail.",
-        ))
+        parts.append(
+            (
+                "greeting",
+                "This is a greeting-only turn. Welcome the user warmly. "
+                "Do NOT ask about genre, word count, manuscript stage, or any scoping detail.",
+            )
+        )
     if pack.genre_status == "uncertain":
         candidates = ", ".join(pack.genre_candidates) if pack.genre_candidates else "unknown"
-        parts.append((
-            "genre_uncertain",
-            f"Genre is UNCERTAIN — the user mentioned candidates ({candidates}) but has not "
-            f"confirmed a genre. Do NOT assert any genre as established. "
-            f"Offer options (fiction, memoir/personal story, business/self-help, "
-            f"children's book, not sure yet) as a helpful guide.",
-        ))
+        parts.append(
+            (
+                "genre_uncertain",
+                f"Genre is UNCERTAIN — the user mentioned candidates ({candidates}) but has not "
+                f"confirmed a genre. Do NOT assert any genre as established. "
+                f"Offer options (fiction, memoir/personal story, business/self-help, "
+                f"children's book, not sure yet) as a helpful guide.",
+            )
+        )
     if pack.book_formats:
-        parts.append((
-            "book_format",
-            f"Book format detected: {', '.join(pack.book_formats)}. "
-            f"Treat as format/type, not as a genre. "
-            f"{'Audience: ' + pack.audience if pack.audience else 'Audience not yet confirmed'}.",
-        ))
+        parts.append(
+            (
+                "book_format",
+                f"Book format detected: {', '.join(pack.book_formats)}. "
+                f"Treat as format/type, not as a genre. "
+                f"{
+                    'Audience: ' + pack.audience
+                    if pack.audience
+                    else ('Audience not yet confirmed')
+                }.",
+            )
+        )
     if pack.known_facts:
         known = ", ".join(f"{fact.label}={fact.value}" for fact in pack.known_facts)
         parts.append(("known_facts", f"Known facts: {known}."))
@@ -855,86 +893,111 @@ def _response_hint_segments(pack: ContextPack) -> list[tuple[str, str]]:
     if pack.missing_facts:
         parts.append(("missing_facts", "Missing facts: " + ", ".join(pack.missing_facts) + "."))
     if pack.forbidden_reasks:
-        parts.append((
-            "forbidden_reasks",
-            "Do not ask again for: " + ", ".join(pack.forbidden_reasks) + ".",
-        ))
+        parts.append(
+            (
+                "forbidden_reasks",
+                "Do not ask again for: " + ", ".join(pack.forbidden_reasks) + ".",
+            )
+        )
     if pack.allowed_next_questions:
-        parts.append((
-            "allowed_next",
-            "Allowed next questions: " + ", ".join(pack.allowed_next_questions) + ".",
-        ))
+        parts.append(
+            (
+                "allowed_next",
+                "Allowed next questions: " + ", ".join(pack.allowed_next_questions) + ".",
+            )
+        )
     if pack.outstanding_questions:
-        parts.append((
-            "outstanding",
-            "Previous assistant questions already asked: "
-            + " | ".join(pack.outstanding_questions[-3:])
-            + ".",
-        ))
+        parts.append(
+            (
+                "outstanding",
+                "Previous assistant questions already asked: "
+                + " | ".join(pack.outstanding_questions[-3:])
+                + ".",
+            )
+        )
     if pack.repeated_user_info:
-        parts.append((
-            "contradiction",
-            "The user appears to be repeating information; acknowledge it and move forward.",
-        ))
+        parts.append(
+            (
+                "contradiction",
+                "The user appears to be repeating information; acknowledge it and move forward.",
+            )
+        )
     if pack.contradiction_warnings:
-        parts.append((
-            "contradiction",
-            "There may be contradictory project details; ask one focused question.",
-        ))
+        parts.append(
+            (
+                "contradiction",
+                "There may be contradictory project details; ask one focused question.",
+            )
+        )
     if pack.language_ignored_segments:
-        parts.append((
-            "language",
-            "Some non-English segments were ignored. Answer the English portion only. "
-            "Ask the user to continue in English through one gentle prompt.",
-        ))
+        parts.append(
+            (
+                "language",
+                "Some non-English segments were ignored. Answer the English portion only. "
+                "Ask the user to continue in English through one gentle prompt.",
+            )
+        )
     # Consultation-first guidance.
     if pack.consultation_stage == "consultation_pending":
-        parts.append((
-            "consultation",
-            "CONSULTATION IS PENDING. Do NOT ask for word count, genre, deadline, or any "
-            "scoping detail. Confirm specialist follow-up and timing only.",
-        ))
+        parts.append(
+            (
+                "consultation",
+                "CONSULTATION IS PENDING. Do NOT ask for word count, genre, deadline, or any "
+                "scoping detail. Confirm specialist follow-up and timing only.",
+            )
+        )
     elif pack.consultation_stage == "consultation_time_requested":
-        parts.append((
-            "consultation",
-            "Contact is captured. Ask for the user's preferred call time only. "
-            "Do NOT ask for word count, genre, or deadline.",
-        ))
+        parts.append(
+            (
+                "consultation",
+                "Contact is captured. Ask for the user's preferred call time only. "
+                "Do NOT ask for word count, genre, or deadline.",
+            )
+        )
     if pack.current_question_type:
-        parts.append((
-            "current_question",
-            f"User asked a priority question ({pack.current_question_type}). "
-            f"Answer this concern first before asking for contact details.",
-        ))
+        parts.append(
+            (
+                "current_question",
+                f"User asked a priority question ({pack.current_question_type}). "
+                f"Answer this concern first before asking for contact details.",
+            )
+        )
     if pack.answer_before_capture_applied:
-        parts.append((
-            "current_question",
-            "Answer-before-capture policy was applied this turn. "
-            "Do not open with a contact request — answer the concern first.",
-        ))
+        parts.append(
+            (
+                "current_question",
+                "Answer-before-capture policy was applied this turn. "
+                "Do not open with a contact request — answer the concern first.",
+            )
+        )
     if pack.preferred_call_time and pack.lead_created:
-        parts.append((
-            "preferred_call_time",
-            f"Preferred call time captured: {pack.preferred_call_time}. "
-            "Confirm specialist handoff.",
-        ))
+        parts.append(
+            (
+                "preferred_call_time",
+                f"Preferred call time captured: {pack.preferred_call_time}. "
+                "Confirm specialist handoff.",
+            )
+        )
     # Manuscript upload pitch: proactively pitch free editorial assessment when
     # the author has written content but hasn't uploaded a file yet.
     if pack.manuscript_upload_eligible:
         status_label = pack.manuscript_status or "written content"
-        parts.append((
-            "manuscript_upload",
-            f"MANUSCRIPT UPLOAD PITCH (manuscript_status: {status_label}): "
-            "The author has written material. At the natural point in the conversation "
-            "— after acknowledging their work — weave in ONE offer of a free editorial assessment: "
-            "'Since you have [chapters/a draft/notes] written, our specialists can provide a "
-            "free editorial assessment — just upload your manuscript "
-            "directly here in this chat using the 📎 attach button at the bottom of the chat.' "
-            "Say this ONCE, naturally and conversationally. "
-            "Do not repeat it, do not make it sound like an advertisement, "
-            "and do not interrupt the current conversation flow to say it — "
-            "blend it in after you answer whatever the author is asking about.",
-        ))
+        parts.append(
+            (
+                "manuscript_upload",
+                f"MANUSCRIPT UPLOAD PITCH (manuscript_status: {status_label}): "
+                "The author has written material. At the natural point in the conversation "
+                "— after acknowledging their work — weave in ONE offer of a free e"
+                "ditorial assessment: "
+                "'Since you have [chapters/a draft/notes] written, our specialists can provide a "
+                "free editorial assessment — just upload your manuscript "
+                "directly here in this chat using the 📎 attach button at the bottom of the chat.' "
+                "Say this ONCE, naturally and conversationally. "
+                "Do not repeat it, do not make it sound like an advertisement, "
+                "and do not interrupt the current conversation flow to say it — "
+                "blend it in after you answer whatever the author is asking about.",
+            )
+        )
     return parts
 
 

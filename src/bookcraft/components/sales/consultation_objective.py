@@ -165,7 +165,8 @@ class ConsultationObjectiveEngine:
             require_phone
             and contact_ready
             and not _has_phone
-            and not phone_unavailable  # customer said phone can't be used — don't re-ask (chat 6759)
+            # Respect customers who cannot use a phone (chat 6759).
+            and not phone_unavailable
             and not handoff_created
             and lod_move not in {"create_lead"}
             and not _is_manuscript_update
@@ -256,7 +257,13 @@ class ConsultationObjectiveEngine:
         # ask for call time next turn so we don't interrupt their moment.
         if _is_manuscript_update:
             audit.append("skip_priority2:manuscript_status_update")
-        if contact_ready and not preferred_call_time and lead_confirmed_prior_turn and not handoff_created and not _is_manuscript_update:
+        if (
+            contact_ready
+            and not preferred_call_time
+            and lead_confirmed_prior_turn
+            and not handoff_created
+            and not _is_manuscript_update
+        ):
             # Try to extract call time from the *current* message in case the
             # user provided it on the same turn as a follow-up. Bare hours ("12",
             # "9-12") only count when we actually asked for a time last turn.

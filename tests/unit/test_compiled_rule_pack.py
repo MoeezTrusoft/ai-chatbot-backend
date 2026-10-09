@@ -1,12 +1,13 @@
 """Tests for CompiledRulePack and compiled indexes in trimatch."""
+
 from __future__ import annotations
 
 import dataclasses
 
 import pytest
 
-from bookcraft.components.trimatch.schemas import CompiledRulePack, RulePack
 from bookcraft.components.trimatch.repository import RuleRepository
+from bookcraft.components.trimatch.schemas import CompiledRulePack, RulePack
 
 
 class TestCompiledRulePackDataclass:
@@ -64,7 +65,6 @@ class TestBuildCompiledPack:
 
     def test_exact_union_pattern_matches_known_phrase(self):
         """Union pattern should match phrases from EXACT rules in the real pack."""
-        from bookcraft.components.trimatch.schemas import TriMatchLayer
 
         repo = self._make_repo()
         cp = repo.build_compiled_pack()
@@ -81,25 +81,27 @@ class TestBuildCompiledPack:
     def test_build_from_explicit_rule_pack(self):
         """build_compiled_pack accepts an explicit RulePack instead of loading from disk."""
         repo = self._make_repo()
-        pack = RulePack.model_validate({
-            "version": "test",
-            "rules": [
-                {
-                    "id": "TEST-EX-001",
-                    "layer": "exact",
-                    "target": {"service_intent": "ghostwriting"},
-                    "phrases": ["ghostwriting service"],
-                    "confidence": 0.9,
-                },
-                {
-                    "id": "TEST-RX-001",
-                    "layer": "regex",
-                    "target": {"service_intent": "editing_proofreading"},
-                    "regex": r"\bediting\b",
-                    "confidence": 0.85,
-                },
-            ],
-        })
+        pack = RulePack.model_validate(
+            {
+                "version": "test",
+                "rules": [
+                    {
+                        "id": "TEST-EX-001",
+                        "layer": "exact",
+                        "target": {"service_intent": "ghostwriting"},
+                        "phrases": ["ghostwriting service"],
+                        "confidence": 0.9,
+                    },
+                    {
+                        "id": "TEST-RX-001",
+                        "layer": "regex",
+                        "target": {"service_intent": "editing_proofreading"},
+                        "regex": r"\bediting\b",
+                        "confidence": 0.85,
+                    },
+                ],
+            }
+        )
         cp = repo.build_compiled_pack(pack)
         assert cp.exact_union_pattern is not None
         assert "TEST-RX-001" in cp.compiled_regex
@@ -118,7 +120,8 @@ class TestBuildCompiledPack:
         assert isinstance(cp.exact_rule_by_id, dict)
         # All values in exact_rule_by_id should be TriMatchRule objects
         from bookcraft.components.trimatch.schemas import TriMatchRule
-        for rule_id, rule in cp.exact_rule_by_id.items():
+
+        for _rule_id, rule in cp.exact_rule_by_id.items():
             assert isinstance(rule, TriMatchRule)
 
 
@@ -127,6 +130,7 @@ class TestCompiledPackPrescreen:
 
     def _make_processed_message(self, text: str):
         from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
+
         tokens = [
             TokenInfo(text=w, lemma=w.lower(), start=i * 5, end=i * 5 + len(w))
             for i, w in enumerate(text.split())
@@ -188,18 +192,20 @@ class TestCompiledPackPrescreen:
         from bookcraft.components.trimatch.schemas import TriMatchMode
 
         repo = RuleRepository("data/trimatch/rules")
-        pack = RulePack.model_validate({
-            "version": "test",
-            "rules": [
-                {
-                    "id": "TEST-EX-SKIP",
-                    "layer": "exact",
-                    "target": {"service_intent": "ghostwriting"},
-                    "phrases": ["very specific unique phrase xyz"],
-                    "confidence": 0.9,
-                },
-            ],
-        })
+        pack = RulePack.model_validate(
+            {
+                "version": "test",
+                "rules": [
+                    {
+                        "id": "TEST-EX-SKIP",
+                        "layer": "exact",
+                        "target": {"service_intent": "ghostwriting"},
+                        "phrases": ["very specific unique phrase xyz"],
+                        "confidence": 0.9,
+                    },
+                ],
+            }
+        )
         compiled = repo.build_compiled_pack(pack)
         engine = TriMatchEngine(
             rule_pack=pack,

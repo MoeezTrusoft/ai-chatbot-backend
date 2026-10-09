@@ -38,6 +38,7 @@ def _make_service():
 
     svc = ChatService.__new__(ChatService)
     svc.thread_repository = None  # in-memory path
+    svc.turn_timeout_seconds = 60.0
     svc.threads = {}
     svc.state_applier = StateApplier()
     svc.response_generator = SonnetResponseGenerator()
@@ -148,9 +149,7 @@ async def test_name_stated_in_chat_outranks_the_signup_record():
     tid = uuid4()
     mem = svc.threads.setdefault(tid, ThreadMemory())
     # What contact_capture_sync writes when the customer states a name in chat.
-    mem.state.personal.name = FieldMeta(
-        value="Mike", confidence=0.92, source=Source.USER_STATED
-    )
+    mem.state.personal.name = FieldMeta(value="Mike", confidence=0.92, source=Source.USER_STATED)
 
     result = await svc.handle_inject_facts(
         ChatFactsRequest(

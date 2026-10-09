@@ -98,8 +98,7 @@ async def test_service_keyword_detection(
 ) -> None:
     detected = await _services(preprocessor, text)
     assert expected_service.value in detected, (
-        f"Expected {expected_service.value!r} in detected services for {text!r}, "
-        f"got {detected}"
+        f"Expected {expected_service.value!r} in detected services for {text!r}, got {detected}"
     )
 
 
@@ -221,6 +220,4 @@ def test_new_services_have_human_readable_names() -> None:
         ServiceCategory.SPECIAL_COLLECTOR_EDITIONS,
     ):
         name = _human_service_name(svc.value)
-        assert name and name != svc.value, (
-            f"No human name mapped for {svc.value!r} (got {name!r})"
-        )
+        assert name and name != svc.value, f"No human name mapped for {svc.value!r} (got {name!r})"

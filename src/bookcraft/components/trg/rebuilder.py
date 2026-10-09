@@ -4,9 +4,9 @@ Used in cold-start paths when the Redis hot graph has expired and persisted
 semantic facts alone are insufficient to reconstruct full conversation context
 (questions, answers, contradictions, service shifts).
 """
+
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -15,7 +15,6 @@ import structlog
 
 from bookcraft.components.trg.engine import TemporalRelationGraphEngine
 from bookcraft.components.trg.schemas import TemporalRelationGraph
-
 
 logger = structlog.get_logger(__name__)
 
@@ -116,12 +115,14 @@ def _extract_turns(
                 pending_deltas.extend(intent_data["state_deltas"])
 
         elif etype == "assistant.response" and pending_user is not None:
-            turns.append({
-                "user_text": pending_user.get("text", ""),
-                "assistant_text": payload.get("preview", ""),
-                "sequence": (pending_sequence + evt.get("sequence", 0)) // 2 or len(turns) + 1,
-                "state_deltas": list(pending_deltas),
-            })
+            turns.append(
+                {
+                    "user_text": pending_user.get("text", ""),
+                    "assistant_text": payload.get("preview", ""),
+                    "sequence": (pending_sequence + evt.get("sequence", 0)) // 2 or len(turns) + 1,
+                    "state_deltas": list(pending_deltas),
+                }
+            )
             pending_user = None
             pending_deltas = []
 

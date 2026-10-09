@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-import structlog
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
+import structlog
 
 from bookcraft.components.consultations.holidays import is_blackout_date
 from bookcraft.components.consultations.repository import ConsultationRepositoryProtocol
@@ -155,9 +155,7 @@ class ConsultationActionService:
             houston_display_time=record.houston_display_time,
             customer_display_time=record.customer_display_time,
             status=record.status,
-            customer_safe_summary=(
-                f"{summary_lead} {record.houston_display_time} Houston time."
-            ),
+            customer_safe_summary=(f"{summary_lead} {record.houston_display_time} Houston time."),
             metadata=record.metadata_,
         )
 
@@ -180,6 +178,8 @@ class ConsultationActionService:
         but a direct call guarantees the consultation shows on the CSR dashboard
         even if the event sync chain fails.
         """
+        if not self.csr_node_api_url:
+            return
         url = f"{self.csr_node_api_url.rstrip('/')}/api/consultations"
         # No auth header — CSR Node.js has no token-based auth.
         # This is server-to-server (localhost), so CORS doesn't apply.
@@ -336,9 +336,7 @@ def _parse_requested_start(
     # land on a holiday is rolled forward by _normalize_to_business_window below,
     # mirroring how weekends and after-hours are handled.
     if kind == "explicit" and target_date is not None and is_blackout_date(target_date):
-        raise HolidayError(
-            f"requested date {target_date.isoformat()} is a business holiday"
-        )
+        raise HolidayError(f"requested date {target_date.isoformat()} is a business holiday")
 
     requested_time = _time_from_text(lowered)
     has_explicit_time = requested_time is not None
@@ -358,8 +356,7 @@ def _parse_requested_start(
         if kind == "explicit":
             # The customer literally named a date (and/or time) that has passed.
             raise RequestedTimeInPastError(
-                f"requested datetime {candidate.isoformat()} is in the past "
-                f"(now={now.isoformat()})"
+                f"requested datetime {candidate.isoformat()} is in the past (now={now.isoformat()})"
             )
         # Inferred (e.g. a bare clock time earlier today): roll forward one day.
         target_date = target_date + timedelta(days=1)
@@ -619,4 +616,4 @@ def _normalize_to_business_window(
 
 
 def _display_time(value: datetime) -> str:
-    return value.strftime("%A, %B %-d, %Y at %-I:%M %p %Z")
+    return f"{value:%A, %B} {value.day}, {value:%Y} at {value.hour % 12 or 12}:{value:%M %p %Z}"

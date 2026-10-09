@@ -9,10 +9,10 @@ Run only when you want to validate before a production deploy:
 
 Requires ANTHROPIC_API_KEY in .env.
 """
+
 from __future__ import annotations
 
 import os
-import sys
 
 import pytest
 
@@ -41,10 +41,12 @@ def _make_live_extractor():
 
 def _empty_state():
     from bookcraft.domain.state import ThreadState
+
     return ThreadState()
 
 
 # ─── Scenario 1: Babar Azam — name + phone provided in separate messages ───
+
 
 @pytest.mark.asyncio
 async def test_extracts_name_babar_azam():
@@ -86,6 +88,7 @@ async def test_extracts_phone_888_765_4321():
 
 # ─── Scenario 2: Cameroon Green — full message with name ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_name_cameroon_green():
     extractor = _make_live_extractor()
@@ -95,12 +98,13 @@ async def test_extracts_name_cameroon_green():
         state=_empty_state(),
     )
     names = [d for d in result.state_deltas if d.path == "personal.name"]
-    assert names, f"No name extracted."
+    assert names, "No name extracted."
     assert "cameroon" in names[0].value.lower() or "green" in names[0].value.lower()
     print(f"\n✓ name extracted: '{names[0].value}'")
 
 
 # ─── Scenario 3: "Babar Azam is my name" — clarifying restatement ───
+
 
 @pytest.mark.asyncio
 async def test_extracts_name_from_clarifying_restatement():
@@ -118,19 +122,23 @@ async def test_extracts_name_from_clarifying_restatement():
 
 # ─── Scenario 4: Timezone "eastern" / "central time" ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_timezone_eastern():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="eastern",
-        assistant_text="What timezone are you in so we can schedule the call at a good time for you?",
+        assistant_text=(
+            "What timezone are you in so we can schedule the call at a good time for you?"
+        ),
         state=_empty_state(),
     )
     tzs = [d for d in result.state_deltas if d.path == "personal.timezone"]
     assert tzs, f"No timezone extracted. Deltas: {result.state_deltas}"
     val = tzs[0].value
-    assert "new_york" in val.lower() or "eastern" in val.lower() or "america" in val.lower(), \
+    assert "new_york" in val.lower() or "eastern" in val.lower() or "america" in val.lower(), (
         f"Unexpected timezone value: {val}"
+    )
     print(f"\n✓ timezone extracted: '{val}'")
 
 
@@ -151,6 +159,7 @@ async def test_extracts_timezone_central_time():
 
 # ─── Scenario 5: Preferred call time "8 jun 3 PM" ───
 
+
 @pytest.mark.asyncio
 async def test_no_crash_on_preferred_time():
     """
@@ -160,7 +169,10 @@ async def test_no_crash_on_preferred_time():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="8 jun 3 PM",
-        assistant_text="What day and time works best for a call? Our specialists are available Monday-Friday, 10 AM to 7 PM Central Time.",
+        assistant_text=(
+            "What day and time works best for a call? Our specialists are avai"
+            "lable Monday-Friday, 10 AM to 7 PM Central Time."
+        ),
         state=_empty_state(),
     )
     # Should not raise; may extract nothing or manuscript_status etc.
@@ -169,12 +181,15 @@ async def test_no_crash_on_preferred_time():
 
 # ─── Scenario 6: Email extraction ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_email():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="cameroon.green@gmail.com",
-        assistant_text="Perfect, Cameroon - what's the best email to send your consultation details to?",
+        assistant_text=(
+            "Perfect, Cameroon - what's the best email to send your consultation details to?"
+        ),
         state=_empty_state(),
     )
     emails = [d for d in result.state_deltas if d.path == "personal.email"]
@@ -185,12 +200,14 @@ async def test_extracts_email():
 
 # ─── Scenario 7: The Solarian Chronicles — genre and manuscript_status ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_genre_from_long_message():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text=(
-            "The Solarian Chronicles is an epic fantasy and science-fiction saga set in the world of Solaria. "
+            "The Solarian Chronicles is an epic fantasy and science-fiction sa"
+            "ga set in the world of Solaria. "
             "I have lore, character arcs, how the main saga ends... just no middle part."
         ),
         assistant_text="Welcome to BookCraft! What are you working on?",
@@ -199,8 +216,9 @@ async def test_extracts_genre_from_long_message():
     deltas_by_path = {d.path: d for d in result.state_deltas}
     print(f"\n✓ Long message deltas: {list(deltas_by_path.keys())}")
     # Genre should be extracted
-    assert "project.genre" in deltas_by_path, \
+    assert "project.genre" in deltas_by_path, (
         f"No genre extracted. Got: {list(deltas_by_path.keys())}"
+    )
     genre_val = deltas_by_path["project.genre"].value
     assert "fantasy" in genre_val.lower() or "fiction" in genre_val.lower()
     print(f"  genre: '{genre_val}'")
@@ -208,12 +226,16 @@ async def test_extracts_genre_from_long_message():
 
 # ─── Scenario 8: Manuscript status "I started from scratch" ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_manuscript_status_from_scratch():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="Starting from scratch, haven't written anything yet",
-        assistant_text="Where does the project stand right now - do you have an outline, some draft chapters, or are you starting from scratch?",
+        assistant_text=(
+            "Where does the project stand right now - do you have an outline, "
+            "some draft chapters, or are you starting from scratch?"
+        ),
         state=_empty_state(),
     )
     statuses = [d for d in result.state_deltas if d.path == "project.manuscript_status"]
@@ -224,12 +246,16 @@ async def test_extracts_manuscript_status_from_scratch():
 
 # ─── Scenario 9: "My name is Jake Biddulph and I prefer email" ───
 
+
 @pytest.mark.asyncio
 async def test_extracts_name_and_preferred_contact_from_compound_message():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="My name is Jake Biddulph and I prefer email",
-        assistant_text="To connect you with the right specialist, what's your name and the best way to reach you?",
+        assistant_text=(
+            "To connect you with the right specialist, what's your name and th"
+            "e best way to reach you?"
+        ),
         state=_empty_state(),
     )
     deltas_by_path = {d.path: d for d in result.state_deltas}
@@ -251,12 +277,13 @@ async def test_extracts_name_and_preferred_contact_from_compound_message():
 
 # ─── Scenario 10: Full flow with state already having phone ───
 
+
 @pytest.mark.asyncio
 async def test_does_not_reextract_known_facts():
     """Once phone is in state, the extractor should not re-extract it."""
-    from bookcraft.domain.state import ThreadState
-    from bookcraft.domain.meta import FieldMeta
     from bookcraft.domain.enums import Source
+    from bookcraft.domain.meta import FieldMeta
+    from bookcraft.domain.state import ThreadState
 
     state = ThreadState()
     state.personal.phone = FieldMeta(
@@ -276,17 +303,18 @@ async def test_does_not_reextract_known_facts():
 
 # ─── Scenario 11: Validate model_validator coerces bare strings (no real API needed) ───
 
+
 def test_model_validator_bare_string_coercion_no_api():
     """Verify our fix handles bare strings without calling the API."""
     from bookcraft.components.extraction.llm_schemas import LLMExtractedFacts
 
     # Simulate what Claude returns when it ignores the schema
     raw = {
-        "name": "Babar Azam",           # bare string — was causing ValidationError
-        "phone": "888 765 4321",        # bare string
+        "name": "Babar Azam",  # bare string — was causing ValidationError
+        "phone": "888 765 4321",  # bare string
         "genre": {
             "value": "epic fantasy",
-            "confidence": "0.92",       # string confidence — was causing ValidationError
+            "confidence": "0.92",  # string confidence — was causing ValidationError
             "source_quote": "epic fantasy saga",
         },
         "unexpected_top_field": "ignored",  # should be ignored

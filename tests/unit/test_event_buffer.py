@@ -1,12 +1,11 @@
 """Tests for the _EventBuffer class and batch event processing."""
+
 from __future__ import annotations
 
 import inspect
-
-import pytest
 from uuid import uuid4
 
-from bookcraft.services.chat import _EventBuffer, _IMMEDIATE_EVENT_TYPES
+from bookcraft.services.chat import _IMMEDIATE_EVENT_TYPES, _EventBuffer
 
 
 class TestEventBuffer:
@@ -157,14 +156,17 @@ class TestAppendEventsBatch:
 
     def test_batch_method_exists(self):
         from bookcraft.components.storage.thread_repository import ThreadRepository
+
         assert hasattr(ThreadRepository, "append_events_batch")
 
     def test_batch_signature(self):
         from bookcraft.components.storage.thread_repository import ThreadRepository
+
         sig = inspect.signature(ThreadRepository.append_events_batch)
         assert "thread_id" in sig.parameters
         assert "events" in sig.parameters
 
     def test_batch_method_is_coroutine(self):
         from bookcraft.components.storage.thread_repository import ThreadRepository
+
         assert inspect.iscoroutinefunction(ThreadRepository.append_events_batch)

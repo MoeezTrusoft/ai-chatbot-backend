@@ -1,4 +1,5 @@
 """P4-T2 foundation — TurnContext + staged pipeline runner."""
+
 from __future__ import annotations
 
 from uuid import uuid4

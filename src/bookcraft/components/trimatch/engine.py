@@ -144,9 +144,7 @@ class TriMatchEngine:
         )
         if use_semantic_compiled:
             semantic_rules = [
-                rule
-                for rule in self.rule_pack.rules
-                if rule.layer == TriMatchLayer.SEMANTIC
+                rule for rule in self.rule_pack.rules if rule.layer == TriMatchLayer.SEMANTIC
             ]
             for sem_ev in self._match_semantic_compiled(message, semantic_rules):
                 evidence.append(sem_ev)
@@ -255,7 +253,7 @@ class TriMatchEngine:
             if idx is None:
                 continue
             _, rule_emb = self.compiled_pack.semantic_embeddings[idx]
-            cosine = sum(a * b for a, b in zip(query_unit, rule_emb))
+            cosine = sum(a * b for a, b in zip(query_unit, rule_emb, strict=True))
             if cosine >= 0.6:  # threshold: ~36° angle
                 damped_confidence, flags = dampen_confidence(
                     processed_message.normalized[:100],

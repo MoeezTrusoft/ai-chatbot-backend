@@ -18,7 +18,6 @@ All fake PII: Maya Author / maya@example.com / +1 555 987 6543
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -68,7 +67,7 @@ def _turn(n: int, msg: str, body: dict, trace: dict) -> dict:
         "lead": lead.get("objective_move"),
         "intent": intent.get("query_primary"),
         "secondary": intent.get("query_secondary") or [],
-        "action": f"{action.get('action_type','')}/{action.get('status','')}",
+        "action": f"{action.get('action_type', '')}/{action.get('status', '')}",
         "contact": contact.get("lead_contact_ready"),
         "persona_name": persona.get("representative_name"),
         "persona_identity_q": persona.get("is_identity_question"),
@@ -89,9 +88,9 @@ _CRITICAL = {
 
 def _print_thread(name: str, turns: list[dict], analysis: list[str]) -> None:
     w = 110
-    print(f"\n{'█'*w}")
+    print(f"\n{'█' * w}")
     print(f"  THREAD: {name}")
-    print(f"{'█'*w}")
+    print(f"{'█' * w}")
     for t in turns:
         q = "✓" if t["q_pass"] else f"✗{t['q_fail'][:1]}"
         c = "📧" if t["contact"] else ""
@@ -105,7 +104,7 @@ def _print_thread(name: str, turns: list[dict], analysis: list[str]) -> None:
     print("\n  ANALYSIS:")
     for a in analysis:
         print(f"    {a}")
-    print(f"{'─'*w}")
+    print(f"{'─' * w}")
 
 
 # ===========================================================================
@@ -113,6 +112,7 @@ def _print_thread(name: str, turns: list[dict], analysis: list[str]) -> None:
 #            cover design → formatting → publishing (10 turns)
 #            Tests: workflow sequencing advice, context retention, TRG
 # ===========================================================================
+
 
 def test_thread1_full_publishing_pipeline_10turns() -> None:
     """Full book pipeline from idea to publishing. Tests workflow advisor,
@@ -156,7 +156,9 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
 
     # T1: welcome first, no contact ask
     assert turns[0]["lead"] != "ask_contact", "T1 must welcome, not demand contact"
-    assert turns[0]["goal"] == "greeting_welcome", f"T1 must be greeting_welcome, got: {turns[0]['goal']}"
+    assert turns[0]["goal"] == "greeting_welcome", (
+        f"T1 must be greeting_welcome, got: {turns[0]['goal']}"
+    )
 
     # T3: successor service advice — after ghostwriting, editing is next
     # The response_hint should contain workflow advice
@@ -170,12 +172,8 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
     assert turns[7]["contact"] is True, "T8: contact must be ready after providing info"
 
     # T9: identity question — persona triggered
-    assert turns[8]["persona_identity_q"] is True, (
-        "T9: identity question must be detected"
-    )
-    assert turns[8]["persona_name"] is not None, (
-        "T9: representative name must be assigned"
-    )
+    assert turns[8]["persona_identity_q"] is True, "T9: identity question must be detected"
+    assert turns[8]["persona_name"] is not None, "T9: representative name must be assigned"
     bot_resp_t9 = turns[8]["text"].lower()
     assert "ai" not in bot_resp_t9 or "not" in bot_resp_t9, (
         f"T9: must not claim to be AI, got: {turns[8]['text'][:100]}"
@@ -185,9 +183,7 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
     # T10: same name persists
     t9_name = turns[8]["persona_name"]
     t10_name = turns[9]["persona_name"]
-    assert t9_name == t10_name, (
-        f"T10: name must persist — T9={t9_name}, T10={t10_name}"
-    )
+    assert t9_name == t10_name, f"T10: name must persist — T9={t9_name}, T10={t10_name}"
     analysis.append(f"T10 name persisted: {t10_name} ✓")
 
     # No critical failures
@@ -201,6 +197,7 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
 #            Tests: secondary intent, pricing, NDA, portfolio together,
 #            word count extraction, consultation booking
 # ===========================================================================
+
 
 def test_thread2_multi_intent_pricing_nda_consultation_10turns() -> None:
     """Tests secondary intent surfacing, context extraction (word count,
@@ -283,6 +280,7 @@ def test_thread2_multi_intent_pricing_nda_consultation_10turns() -> None:
 #            contradiction handling, backoff, TRG tracking
 # ===========================================================================
 
+
 def test_thread3_identity_plus_contradiction_and_backoff_10turns() -> None:
     """Tests persona name persistence, fact contradiction handling,
     backoff after deflection, and TRG signal usage."""
@@ -301,7 +299,10 @@ def test_thread3_identity_plus_contradiction_and_backoff_10turns() -> None:
             # T4: deflect contact ask
             "Not ready to share my details yet. Tell me more about the editing process first.",
             # T5: fact contradiction
-            "Actually my book isn't fantasy. It's a business memoir. I gave you wrong info earlier.",
+            (
+                "Actually my book isn't fantasy. It's a business memoir. I gave yo"
+                "u wrong info earlier."
+            ),
             # T6: ask about the corrected genre
             "For a business memoir, what type of editing do I need?",
             # T7: manuscript status update
@@ -361,6 +362,7 @@ def test_thread3_identity_plus_contradiction_and_backoff_10turns() -> None:
 #            Tests: topic switch clarity, wrong service correction,
 #            service workflow, context coherence, consultation
 # ===========================================================================
+
 
 def test_thread4_topic_switches_and_workflow_12turns() -> None:
     """Tests the bot's ability to handle multiple topic switches, service
@@ -433,6 +435,7 @@ def test_thread4_topic_switches_and_workflow_12turns() -> None:
 #            Tests: off-topic, manuscript status update, long message,
 #            pricing, NDA, contact, consultation, identity, quality
 # ===========================================================================
+
 
 def test_thread5_complete_journey_13turns() -> None:
     """Comprehensive test: off-topic start, redirected, all service types,
@@ -529,6 +532,7 @@ def test_thread5_complete_journey_13turns() -> None:
 # CONSOLIDATED QUALITY REVIEW
 # ===========================================================================
 
+
 def test_quality_review_all_5_threads() -> None:
     """Run all 5 threads and produce a quality review from a user perspective."""
     print("\n\n" + "═" * 110)
@@ -564,7 +568,14 @@ def test_quality_review_all_5_threads() -> None:
     for t in identity_turns:
         assert t["persona_name"] is not None, f"Identity question turn must have name: {t}"
         bot_text = t.get("text", "").lower()
-        for ai_kw in ["i am an ai", "i'm an ai", "i am a bot", "i'm a bot", "chatgpt", "i am claude"]:
+        for ai_kw in [
+            "i am an ai",
+            "i'm an ai",
+            "i am a bot",
+            "i'm a bot",
+            "chatgpt",
+            "i am claude",
+        ]:
             assert ai_kw not in bot_text, (
                 f"Bot admitted AI identity on identity question turn: {t['text'][:100]}"
             )
@@ -573,8 +584,11 @@ def test_quality_review_all_5_threads() -> None:
     for tname, turns in threads.items():
         t1 = turns[0]
         high_intent_intents = {
-            "portfolio_request", "consultation_request", "ready_to_buy",
-            "pricing_question", "nda_request",
+            "portfolio_request",
+            "consultation_request",
+            "ready_to_buy",
+            "pricing_question",
+            "nda_request",
         }
         if t1["intent"] not in high_intent_intents:
             assert t1["lead"] != "ask_contact", (
@@ -596,84 +610,97 @@ def _run_scenario(msgs: list[str]) -> list[dict]:
 
 
 def _run_t1() -> list[dict]:
-    return _run_scenario([
-        "Hi! I have an idea for a self-help book but haven't written anything yet.",
-        "Tell me about your ghostwriting service.",
-        "After ghostwriting is done, what comes next in the process?",
-        "Can I work on cover design while editing is happening?",
-        "What is interior formatting and do I need it?",
-        "What publishing platforms do you distribute to?",
-        "How much does the full package cost — ghostwriting through publishing?",
-        "Maya Author maya@example.com +1 555 987 6543",
-        "By the way, am I talking to a bot or a real person?",
-        "What was your name again?",
-    ])
+    return _run_scenario(
+        [
+            "Hi! I have an idea for a self-help book but haven't written anything yet.",
+            "Tell me about your ghostwriting service.",
+            "After ghostwriting is done, what comes next in the process?",
+            "Can I work on cover design while editing is happening?",
+            "What is interior formatting and do I need it?",
+            "What publishing platforms do you distribute to?",
+            "How much does the full package cost — ghostwriting through publishing?",
+            "Maya Author maya@example.com +1 555 987 6543",
+            "By the way, am I talking to a bot or a real person?",
+            "What was your name again?",
+        ]
+    )
 
 
 def _run_t2() -> list[dict]:
-    return _run_scenario([
-        "I need pricing for editing, thriller cover samples, and an NDA before sharing my manuscript.",
-        "My manuscript is 75,000 words, fully written, thriller.",
-        "Can you also revise Chapter 1? It needs a complete rewrite.",
-        "How do I pay? Do you take PayPal?",
-        "What publishing platforms do you support — KDP, IngramSpark?",
-        "I'd like to book the free consultation.",
-        "Maya Author maya@example.com +1 555 987 6543, Friday at 3pm.",
-        "Is my consultation booked?",
-        "Quick — what's the best way to get reviews on Amazon?",
-        "Ok coming back — I'm ready to start with editing my 75k thriller.",
-    ])
+    return _run_scenario(
+        [
+            (
+                "I need pricing for editing, thriller cover samples, and an NDA be"
+                "fore sharing my manuscript."
+            ),
+            "My manuscript is 75,000 words, fully written, thriller.",
+            "Can you also revise Chapter 1? It needs a complete rewrite.",
+            "How do I pay? Do you take PayPal?",
+            "What publishing platforms do you support — KDP, IngramSpark?",
+            "I'd like to book the free consultation.",
+            "Maya Author maya@example.com +1 555 987 6543, Friday at 3pm.",
+            "Is my consultation booked?",
+            "Quick — what's the best way to get reviews on Amazon?",
+            "Ok coming back — I'm ready to start with editing my 75k thriller.",
+        ]
+    )
 
 
 def _run_t3() -> list[dict]:
-    return _run_scenario([
-        "Wait — am I talking to a real person or a bot?",
-        "I need editing for my fantasy novel, about 90,000 words.",
-        "How much does editing cost?",
-        "Not ready to share details. Tell me more about the editing process first.",
-        "Actually my book isn't fantasy — it's a business memoir. Wrong info earlier.",
-        "For a business memoir, what type of editing do I need?",
-        "I just finished writing the last chapter today!",
-        "What's your name again — I forgot.",
-        "Maya Author maya@example.com +1 555 987 6543 — ready to get a quote.",
-        "Based on everything I've told you, what's the recommended next step?",
-    ])
+    return _run_scenario(
+        [
+            "Wait — am I talking to a real person or a bot?",
+            "I need editing for my fantasy novel, about 90,000 words.",
+            "How much does editing cost?",
+            "Not ready to share details. Tell me more about the editing process first.",
+            "Actually my book isn't fantasy — it's a business memoir. Wrong info earlier.",
+            "For a business memoir, what type of editing do I need?",
+            "I just finished writing the last chapter today!",
+            "What's your name again — I forgot.",
+            "Maya Author maya@example.com +1 555 987 6543 — ready to get a quote.",
+            "Based on everything I've told you, what's the recommended next step?",
+        ]
+    )
 
 
 def _run_t4() -> list[dict]:
-    return _run_scenario([
-        "I want to publish my book on Amazon and get it distributed everywhere.",
-        "Can I just go straight to publishing without doing formatting first?",
-        "My manuscript is 65,000 words, fully written fantasy novel.",
-        "I don't have a cover yet. I need cover design first.",
-        "Can editing and cover design happen at the same time?",
-        "I also want an audiobook version. When should I do that?",
-        "What about marketing — when does that happen in the process?",
-        "Should I get an author website before or after publishing?",
-        "By the way are you a real person at BookCraft?",
-        "I'd like to book a free consultation to plan all of this.",
-        "John Smith john@example.com 5551234567 — Tuesday at 2pm EST works.",
-        "What would you say is the most important first step for me?",
-    ])
+    return _run_scenario(
+        [
+            "I want to publish my book on Amazon and get it distributed everywhere.",
+            "Can I just go straight to publishing without doing formatting first?",
+            "My manuscript is 65,000 words, fully written fantasy novel.",
+            "I don't have a cover yet. I need cover design first.",
+            "Can editing and cover design happen at the same time?",
+            "I also want an audiobook version. When should I do that?",
+            "What about marketing — when does that happen in the process?",
+            "Should I get an author website before or after publishing?",
+            "By the way are you a real person at BookCraft?",
+            "I'd like to book a free consultation to plan all of this.",
+            "John Smith john@example.com 5551234567 — Tuesday at 2pm EST works.",
+            "What would you say is the most important first step for me?",
+        ]
+    )
 
 
 def _run_t5() -> list[dict]:
-    return _run_scenario([
-        "What's the best way to get 5-star reviews on Amazon?",
-        "I don't even know what I need honestly",
-        "I have a thriller novel, 85,000 words, fully written. I need help publishing.",
-        "Quick question — are you ChatGPT or some AI?",
-        "I need editing, cover design, formatting, and publishing together. "
-        "How long and roughly how much? My book launch is in September.",
-        "Before sharing my manuscript I need an NDA. How does that work?",
-        "Actually my launch is October not September. I was wrong earlier.",
-        "My beta readers just said they loved the manuscript!",
-        "That seems expensive. Can you guarantee I'll make my money back?",
-        "I'd like a free consultation to discuss all of this.",
-        "Maya Author maya@example.com +1 555 987 6543",
-        "Monday afternoon works best, I'm in PST.",
-        "What was your name? I want to know who I'm working with.",
-    ])
+    return _run_scenario(
+        [
+            "What's the best way to get 5-star reviews on Amazon?",
+            "I don't even know what I need honestly",
+            "I have a thriller novel, 85,000 words, fully written. I need help publishing.",
+            "Quick question — are you ChatGPT or some AI?",
+            "I need editing, cover design, formatting, and publishing together. "
+            "How long and roughly how much? My book launch is in September.",
+            "Before sharing my manuscript I need an NDA. How does that work?",
+            "Actually my launch is October not September. I was wrong earlier.",
+            "My beta readers just said they loved the manuscript!",
+            "That seems expensive. Can you guarantee I'll make my money back?",
+            "I'd like a free consultation to discuss all of this.",
+            "Maya Author maya@example.com +1 555 987 6543",
+            "Monday afternoon works best, I'm in PST.",
+            "What was your name? I want to know who I'm working with.",
+        ]
+    )
 
 
 def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
@@ -682,12 +709,9 @@ def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
     print("═" * 110)
 
     total_turns = len(all_turns)
-    total_critical = sum(
-        1 for t in all_turns if any(f in _CRITICAL for f in t.get("q_fail", []))
-    )
+    total_critical = sum(1 for t in all_turns if any(f in _CRITICAL for f in t.get("q_fail", [])))
     identity_correct = sum(
-        1 for t in all_turns
-        if t.get("persona_identity_q") and t.get("persona_name") is not None
+        1 for t in all_turns if t.get("persona_identity_q") and t.get("persona_name") is not None
     )
     identity_total = sum(1 for t in all_turns if t.get("persona_identity_q"))
     q_passed = sum(1 for t in all_turns if t.get("q_pass"))
@@ -705,11 +729,19 @@ def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
         )
         print(f"     Goals: {', '.join(t_goals)}")
 
-    print(f"\n  ── OVERALL ──────────────────────────────────────────────────────")
+    print("\n  ── OVERALL ──────────────────────────────────────────────────────")
     print(f"  Total turns           : {total_turns}")
-    print(f"  Quality gate pass     : {q_passed}/{total_turns} ({100*q_passed//total_turns}%)")
-    print(f"  Critical failures     : {total_critical}  {'✓ none' if total_critical == 0 else '✗ FAILURES'}")
-    print(f"  Identity Q handled    : {identity_correct}/{identity_total}  {'✓' if identity_correct == identity_total else '✗'}")
+    print(f"  Quality gate pass     : {q_passed}/{total_turns} ({100 * q_passed // total_turns}%)")
+    print(
+        f"  Critical failures     : {total_critical}  {
+            '✓ none' if total_critical == 0 else ('✗ FAILURES')
+        }"
+    )
+    print(
+        f"  Identity Q handled    : {identity_correct}/{identity_total}  {
+            ('✓') if identity_correct == identity_total else '✗'
+        }"
+    )
 
     # Failure breakdown
     all_failures: dict[str, int] = {}

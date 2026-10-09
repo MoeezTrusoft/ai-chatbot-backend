@@ -44,11 +44,9 @@ def _fiction_cue_is_idiomatic(text: str, match: re.Match[str]) -> bool:
     if word == "story":
         before = text[: match.start()]
         after = text[match.end() :]
-        return bool(
-            _STORY_IDIOM_BEFORE_RE.search(before)
-            or _STORY_IDIOM_AFTER_RE.match(after)
-        )
+        return bool(_STORY_IDIOM_BEFORE_RE.search(before) or _STORY_IDIOM_AFTER_RE.match(after))
     return False
+
 
 GENRE_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("memoir", ("memoir",)),

@@ -350,8 +350,12 @@ SERVICE_METADATA_REGISTRY: dict[str, dict[str, dict[str, Any]]] = {
     "special_collector_editions": {
         "edition_type": {
             "accepted": [
-                "signed", "limited_numbered", "deluxe",
-                "boxed_set", "anniversary", "not_sure",
+                "signed",
+                "limited_numbered",
+                "deluxe",
+                "boxed_set",
+                "anniversary",
+                "not_sure",
             ],
             "priority": 1,
         },

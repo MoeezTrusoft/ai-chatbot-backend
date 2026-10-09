@@ -21,7 +21,6 @@ from bookcraft.components.trg import (
 )
 from bookcraft.components.trg.engine import extract_questions
 
-
 # ---------------------------------------------------------------------------
 # TestQuestionResolution
 #
@@ -331,9 +330,7 @@ class TestCompactionScoring:
         graph = await repository.load(thread_id)
         assert graph is not None
 
-        singleton_count = sum(
-            1 for v in graph.repetition_counters.values() if v == 1
-        )
+        singleton_count = sum(1 for v in graph.repetition_counters.values() if v == 1)
         assert singleton_count <= 50, (
             f"Expected at most 50 singleton entries; got {singleton_count}."
         )

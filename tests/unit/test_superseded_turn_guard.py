@@ -1,6 +1,7 @@
 """Superseded-turn guard: a turn whose token is below the thread's persisted latest
 must not overwrite the newer turn's state. The decision is made against the SHARED
 persisted state.latest_turn_token, so it is correct across multiple uvicorn workers."""
+
 from __future__ import annotations
 
 from bookcraft.components.response.chat_schemas import ChatTurnRequest

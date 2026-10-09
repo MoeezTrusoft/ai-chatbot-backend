@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CsrCommitment:
-    commitment_type: str   # "price_quoted" | "timeline_promised" | "discount_offered"
-    text: str              # verbatim snippet from CSR message
+    commitment_type: str  # "price_quoted" | "timeline_promised" | "discount_offered"
+    text: str  # verbatim snippet from CSR message
 
 
 _PRICE_RE = re.compile(
