@@ -83,7 +83,9 @@ def test_shortcut_application_keeps_sensitive_cases_blocked() -> None:
 
 
 def test_shortcut_application_does_not_bypass_critical_systems() -> None:
-    chat_service = (ROOT / "src" / "bookcraft" / "services" / "chat.py").read_text(encoding="utf-8")
+    chat_service = (
+        ROOT / "src" / "bookcraft" / "services" / "turn" / "intent_policy.py"
+    ).read_text(encoding="utf-8")
 
     shortcut_start = chat_service.index("def _apply_shortcut_to_intent(")
     shortcut_end = chat_service.index("def _primary_shortcut_evidence(")

@@ -211,6 +211,7 @@ async def book(thread_id: UUID, payload: BookingInput, request: Request) -> dict
         record.csr_id, record.csr_name = csr.csr_id, csr.name
         record.priority_rank = csr.priority_rank
         record.starts_at_utc = local.astimezone(UTC).replace(tzinfo=None)
+        record.requested_time_text = payload.starts_at.isoformat()
         record.ends_at_utc = record.starts_at_utc + timedelta(minutes=30)
         record.customer_timezone = payload.customer_timezone
         record.houston_display_time = local.isoformat()

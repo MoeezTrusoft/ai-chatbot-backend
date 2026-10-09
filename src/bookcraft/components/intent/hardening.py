@@ -61,10 +61,13 @@ def harden_intent_from_message(
     detected_query = _query_from_message(message)
     if re.search(
         r"\b(?:finished|completed)\b.*\b(?:final chapter|last chapter|manuscript|draft)\b", text
-    ) and not re.search(r"\b(?:how|what|when|can you|cost|price)\b", text):
+    ) and not re.search(
+        r"\b(?:how|what|when|can you|cost|price|publish|edit|design|need|want|help)\b", text
+    ):
         detected_query = QueryIntentType.MANUSCRIPT_STATUS_UPDATE
     if re.search(r"\b(?:don['’]?t|do not)(?: even)? know what i(?:['’]?m| am) asking\b", text):
         detected_query = QueryIntentType.UNCLEAR
+        evidence.append("explicit_unclear_request")
     if (
         service == ServiceCategory.MARKETING_PROMOTION
         and "rush editing" in text
@@ -91,7 +94,11 @@ def harden_intent_from_message(
         query = QueryIntentType.SERVICE_QUESTION
         evidence.append("deterministic_query_signal:service_question_from_discovery_cues")
 
-    if query == intent.query_primary and service == intent.service_primary:
+    if (
+        query == intent.query_primary
+        and service == intent.service_primary
+        and evidence == intent.evidence
+    ):
         return intent
 
     return intent.model_copy(

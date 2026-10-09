@@ -34,6 +34,7 @@ async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
         async with factory() as session:
             row = SalesConsultationRecord(
                 customer_name="Synthetic",
+                requested_time_text=at.isoformat(),
                 csr_id=csr,
                 csr_name="Test",
                 starts_at_utc=at,
@@ -59,6 +60,56 @@ async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
         await insert(start + timedelta(minutes=30))
         with pytest.raises(IntegrityError):
             await insert(start + timedelta(minutes=1))
+    finally:
+        await engine.dispose()
+
+
+async def test_migrated_booking_api_rejects_race_without_partial_state():
+    import httpx
+    from fastapi import FastAPI
+    from sqlmodel import select
+
+    from bookcraft.api.appointments import router
+    from bookcraft.components.consultations.holidays import set_holiday_cache
+    from bookcraft.components.storage.models import DeliveryOutboxRecord, ThreadRecord
+    from bookcraft.infra.config import Settings
+    from tests.integration.test_management_features import booking_payload
+
+    engine = create_async_engine(os.environ["TEST_POSTGRES_URL"])
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    app = FastAPI()
+    app.state.settings = Settings(app_env="test", api_auth_mode="off", csr_node_api_url="")
+    app.state.session_factory = factory
+    app.include_router(router)
+    tids = [uuid4(), uuid4()]
+    async with factory() as session:
+        session.add_all([ThreadRecord(id=tid) for tid in tids])
+        await session.commit()
+    set_holiday_cache([])
+    payload = booking_payload()
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            responses = await asyncio.gather(
+                *[
+                    client.post(
+                        f"/api/v1/customer/threads/{tid}/appointments",
+                        json={**payload, "appointment_id": str(uuid4())},
+                    )
+                    for tid in tids
+                ]
+            )
+            assert sorted(r.status_code for r in responses) == [200, 409], [
+                r.text for r in responses
+            ]
+            loser = tids[
+                next(i for i, response in enumerate(responses) if response.status_code == 409)
+            ]
+            async with factory() as session:
+                assert (await session.get(ThreadRecord, loser)).version == 0
+                rows = (await session.execute(select(DeliveryOutboxRecord))).scalars().all()
+                assert not any(row.payload.get("threadId") == str(loser) for row in rows)
     finally:
         await engine.dispose()
 

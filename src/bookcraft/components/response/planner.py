@@ -295,6 +295,7 @@ class ResponsePlanner:
         if (
             intent.query_primary == QueryIntentType.UNCLEAR
             and intent.needs_clarification
+            and "explicit_unclear_request" in intent.evidence
             and goal not in {"safe_blocked_action", "clarify_intent", "clarify_project_scope"}
         ):
             goal, nq = "gentle_clarify", "how_can_we_help"
@@ -555,7 +556,10 @@ def _primary_goal(
         return "clarify_project_scope"
     if intent.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE:
         return "celebrate_and_advance"
-    if intent.query_primary == QueryIntentType.UNCLEAR and intent.needs_clarification:
+    if (
+        intent.query_primary == QueryIntentType.UNCLEAR
+        and "explicit_unclear_request" in intent.evidence
+    ):
         return "gentle_clarify"
     # Robustness path: a confident, cue-based narrative signal (chat 6688) beats a
     # low-signal intent label. Computed once; applied only after the hard overrides

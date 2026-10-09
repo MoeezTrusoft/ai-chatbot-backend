@@ -162,7 +162,7 @@ class LeadObjectiveEngine:
             r"\b(?:you can|please|i agree to)\s+(?:contact|call|email)\s+me\b", message, re.I
         ):
             state.contact_capture_declined = False
-        if getattr(state, "contact_capture_declined", False):
+        if getattr(state, "contact_capture_declined", False) is True:
             return LeadObjectiveDecision(
                 stage="engaging",
                 objective_move="continue_light_discovery",
