@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.preprocessor.detectors.document_request_detector import (
     has_agreement_request,
@@ -57,14 +59,32 @@ def harden_intent_from_message(
         )
 
     detected_query = _query_from_message(message)
+    if re.search(
+        r"\b(?:finished|completed)\b.*\b(?:final chapter|last chapter|manuscript|draft)\b", text
+    ) and not re.search(r"\b(?:how|what|when|can you|cost|price)\b", text):
+        detected_query = QueryIntentType.MANUSCRIPT_STATUS_UPDATE
+    if re.search(r"\b(?:don['’]?t|do not)(?: even)? know what i(?:['’]?m| am) asking\b", text):
+        detected_query = QueryIntentType.UNCLEAR
+    if (
+        service == ServiceCategory.MARKETING_PROMOTION
+        and "rush editing" in text
+        and "marketing" not in text
+    ):
+        service = ServiceCategory.EDITING_PROOFREADING
+    if detected_query in {QueryIntentType.MANUSCRIPT_STATUS_UPDATE, QueryIntentType.UNCLEAR}:
+        query = detected_query
 
     if detected_query is not None and _should_upgrade_query(query, detected_query, text):
         query = detected_query
         evidence.append(f"deterministic_query_signal:{detected_query.value}")
-    elif query == QueryIntentType.UNCLEAR and service is not None:
+    elif query == QueryIntentType.UNCLEAR and detected_query is None and service is not None:
         query = QueryIntentType.SERVICE_QUESTION
         evidence.append("deterministic_query_signal:service_question_from_service")
-    elif query == QueryIntentType.UNCLEAR and _has_service_discovery_cues(text):
+    elif (
+        query == QueryIntentType.UNCLEAR
+        and detected_query is None
+        and _has_service_discovery_cues(text)
+    ):
         # Service-eligibility / advisory questions with no specific service
         # noun ("do you work with first-time authors", "suggest the best
         # BookCraft service") still belong in SERVICE_QUESTION.

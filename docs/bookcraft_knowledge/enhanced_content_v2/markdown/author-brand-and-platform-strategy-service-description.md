@@ -1,7 +1,11 @@
 ---
-source_id: author_brand_platform
+title: Author Brand and Platform Strategy at BookCraft
+source_id: author_brand_and_platform_strategy_service_description
 service_category: author_brand_platform
-title: "Author Brand and Platform Strategy at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [author_brand_platform, overview, rag]
 ---
 
 # Author Brand & Platform Strategy

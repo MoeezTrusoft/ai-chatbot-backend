@@ -35,8 +35,13 @@ def test_service_request_asks_contact_instead_of_over_discovery() -> None:
 
     ro = t.get("lead_objective") or {}
     rp = t.get("response_plan") or {}
-    assert ro.get("stop_discovery") is True
-    assert rp.get("next_question") in {"name_and_email_or_phone", "consultation_interest"}
+    assert ro.get("stop_discovery") is False
+    assert ro.get("objective_move") == "continue_light_discovery"
+    assert rp.get("next_question") not in {
+        "name_and_email_or_phone",
+        "missing_phone",
+        "missing_email",
+    }
 
 
 def test_name_plus_email_creates_lead() -> None:
@@ -81,11 +86,11 @@ def test_lead_created_response_has_no_more_discovery_question() -> None:
         t = _trace(client, thread_id)
 
     assert (t.get("response_plan") or {}).get("primary_goal") == "lead_created_confirmation"
-    assert (t.get("response_plan") or {}).get("next_question") is None
+    assert (t.get("response_plan") or {}).get("next_question") == "missing_phone"
     assert "word count" not in _text(r2).lower()
 
 
-def test_intake_form_rich_segment_present_when_contact_missing() -> None:
+def test_pricing_answer_defers_contact_form() -> None:
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
     with TestClient(app) as client:
         body = _chat(client, "How much does ghostwriting cost?")
@@ -93,7 +98,8 @@ def test_intake_form_rich_segment_present_when_contact_missing() -> None:
     segments = []
     for bubble in body.get("bubbles", []):
         segments.extend(bubble.get("rich_segments", []))
-    assert any(seg.get("type") == "lead_intake_form" for seg in segments)
+    assert "consultation" in _text(body).lower()
+    assert not any(seg.get("type") == "lead_intake_form" for seg in segments)
 
 
 def test_claude_only_contract_holds() -> None:

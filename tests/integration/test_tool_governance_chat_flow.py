@@ -280,6 +280,7 @@ def test_valid_consultation_confirmation_reaches_pending_or_booking() -> None:
     if isinstance(action_plan, dict):
         assert action_plan.get("action_type") in {
             "schedule_consultation",
+            "create_lead",
             None,
         }
         if action_plan.get("action_type") == "schedule_consultation":

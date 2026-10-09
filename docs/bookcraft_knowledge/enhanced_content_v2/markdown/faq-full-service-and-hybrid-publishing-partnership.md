@@ -1,7 +1,11 @@
 ---
-source_id: publishing_partnership
+title: Publishing Partnership FAQ at BookCraft
+source_id: faq_full_service_and_hybrid_publishing_partnership
 service_category: publishing_partnership
-title: "Publishing Partnership FAQ at BookCraft"
+section: faq
+content_version: v1
+allowed_for_response: true
+tags: [publishing_partnership, faq, rag]
 ---
 
 __Full-Service & Hybrid Publishing Partnership__

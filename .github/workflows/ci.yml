@@ -55,7 +55,11 @@ jobs:
       - run: make install
       - run: uv run --frozen alembic upgrade head
       - run: uv run --frozen pytest tests/integration/test_postgres_hardening.py
-      - run: uv run --frozen alembic downgrade -1
+      - run: uv run --frozen alembic downgrade 20261010_0001
       - run: uv run --frozen alembic upgrade head
   image:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/cd.yml

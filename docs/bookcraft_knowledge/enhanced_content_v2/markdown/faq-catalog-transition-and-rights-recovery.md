@@ -1,7 +1,11 @@
 ---
-source_id: catalog_transition
+title: Catalog Transition FAQ at BookCraft
+source_id: faq_catalog_transition_and_rights_recovery
 service_category: catalog_transition
-title: "Catalog Transition FAQ at BookCraft"
+section: faq
+content_version: v1
+allowed_for_response: true
+tags: [catalog_transition, faq, rag]
 ---
 
 __Catalog Transition & Rights Recovery__

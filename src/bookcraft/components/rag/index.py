@@ -31,6 +31,7 @@ def rag_index_mapping(dimensions: int = 384) -> dict[str, Any]:
                 "source_filename": {"type": "keyword"},
                 "checksum": {"type": "keyword"},
                 "allowed_for_response": {"type": "boolean"},
+                "expires_at": {"type": "date"},
                 "created_at": {"type": "date"},
                 "updated_at": {"type": "date"},
             }
@@ -99,7 +100,9 @@ def _chunk_source(chunk: RagChunk) -> dict[str, object]:
         "section": metadata.section,
         "source_filename": metadata.source_filename,
         "checksum": chunk.checksum,
+        "content_version": metadata.content_version,
         "allowed_for_response": chunk.allowed_for_response,
+        "expires_at": chunk.expires_at.isoformat() if chunk.expires_at else None,
         "created_at": chunk.created_at.isoformat(),
         "updated_at": chunk.updated_at.isoformat(),
     }

@@ -63,10 +63,6 @@ async def test_embedding_uses_cached_value_when_tei_is_down() -> None:
 
     keys = CacheKeyBuilder(environment="test")
     text = "hello"
-    import hashlib
-
-    text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    await cache.set(keys.embedding("en", text_hash), "1.0,2.0,3.0", ex=60)
     client = EmbeddingClient(
         tei_url="http://127.0.0.1:9",
         timeout_seconds=0.01,
@@ -76,6 +72,7 @@ async def test_embedding_uses_cached_value_when_tei_is_down() -> None:
         keys=keys,
     )
 
+    await cache.set(keys.embedding("en", client.cache_digest(text, "en")), "1.0,2.0,3.0", ex=60)
     assert await client.embed(text, "en") == [1.0, 2.0, 3.0]
 
 

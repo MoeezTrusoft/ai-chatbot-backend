@@ -167,7 +167,8 @@ def test_quality_gate_response_plan_reflects_gate_state() -> None:
     assert "passed" in rq
     assert "audit" in rq
 
-    # When response_plan has max_questions=1, gate should not see too-many-questions.
+    # The draft may fail; the final response must respect the question limit.
+    rq = trace["response_quality_final"]
     if rp.get("max_questions") == 1:
         assert not any("too_many_questions" in f for f in rq["failures"])
 

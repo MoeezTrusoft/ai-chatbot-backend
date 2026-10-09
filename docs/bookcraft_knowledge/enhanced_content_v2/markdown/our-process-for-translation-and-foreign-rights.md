@@ -1,7 +1,11 @@
 ---
-source_id: translation_foreign_rights
+title: Translation and Foreign Rights Process at BookCraft
+source_id: our_process_for_translation_and_foreign_rights
 service_category: translation_foreign_rights
-title: "Translation and Foreign Rights Process at BookCraft"
+section: process
+content_version: v1
+allowed_for_response: true
+tags: [translation_foreign_rights, process, rag]
 ---
 
 # Translation & Foreign-Rights / Localization Process

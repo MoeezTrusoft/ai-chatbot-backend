@@ -1,7 +1,11 @@
 ---
-source_id: publishing_partnership
+title: Publishing Partnership Service at BookCraft
+source_id: full_service_and_hybrid_publishing_partnership_service_description
 service_category: publishing_partnership
-title: "Publishing Partnership Service at BookCraft"
+section: pricing_context
+content_version: v1
+allowed_for_response: true
+tags: [publishing_partnership, pricing_context, rag]
 ---
 
 # Full-Service & Hybrid Publishing Partnership

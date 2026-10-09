@@ -31,10 +31,9 @@ def test_pricing_request_with_missing_sizing_asks_for_word_count() -> None:
     assert response.status_code == 200
     text = " ".join(bubble["text"] for bubble in response.json()["bubbles"])
     assert "$" not in text
-    # The response must ask for word/page count. Exact phrasing may vary.
-    assert any(kw in text.lower() for kw in ("word", "page", "count", "length")), (
-        f"Expected word/page count question; got: {text[:200]}"
-    )
+    # Consultation-first policy defers detailed quote scoping to the specialist.
+    assert "consultation" in text.lower()
+    assert response.json()["intent"]["query_primary"] == "pricing_question"
 
 
 def test_pricing_request_with_hidden_defaults_asks_for_confirmation() -> None:

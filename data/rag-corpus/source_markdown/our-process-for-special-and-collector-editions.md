@@ -1,7 +1,11 @@
 ---
-source_id: special_collector_editions
+title: Special and Collector Editions Process at BookCraft
+source_id: our_process_for_special_and_collector_editions
 service_category: special_collector_editions
-title: "Special and Collector Editions Process at BookCraft"
+section: process
+content_version: v1
+allowed_for_response: true
+tags: [special_collector_editions, process, rag]
 ---
 
 # Special & Collector Editions Process

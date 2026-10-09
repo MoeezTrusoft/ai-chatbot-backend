@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -165,7 +166,8 @@ async def test_outbox_retries_with_stable_delivery_key(factory):
 
     def respond(request):
         requests.append(request)
-        return httpx.Response(503 if len(requests) == 1 else 200)
+        payload = json.loads(request.content)
+        return httpx.Response(503 if len(requests) == 1 else 200, json=payload)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         worker = CsrOutboxWorker(factory, "https://csr.example", client)
@@ -280,7 +282,7 @@ async def test_outbox_preserves_aggregate_order_without_blocking_other_bookings(
 
     def respond(request):
         requests.append(request)
-        return httpx.Response(200)
+        return httpx.Response(200, json=json.loads(request.content))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         worker = CsrOutboxWorker(factory, "https://csr.example", client)

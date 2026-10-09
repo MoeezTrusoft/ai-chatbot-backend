@@ -128,6 +128,17 @@ def reciprocal_rank_fusion(
 
 def _filters(service: ServiceCategory | None) -> list[dict[str, object]]:
     filters: list[dict[str, object]] = [{"term": {"allowed_for_response": True}}]
+    filters.append(
+        {
+            "bool": {
+                "minimum_should_match": 1,
+                "should": [
+                    {"bool": {"must_not": [{"exists": {"field": "expires_at"}}]}},
+                    {"range": {"expires_at": {"gt": "now"}}},
+                ],
+            }
+        }
+    )
     if service is not None:
         filters.append({"term": {"service_category": service.value}})
     return filters

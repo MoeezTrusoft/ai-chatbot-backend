@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from bookcraft.components.leads.contact import ContactCaptureResult
+from bookcraft.components.sales.current_question_priority import _CONTACT_REFUSAL_RE
 from bookcraft.domain.enums import QueryIntentType
 
 # Detects that the user's message is itself a direct question the bot should answer.
@@ -155,6 +156,22 @@ class LeadObjectiveEngine:
         turn_count: int = 0,
     ) -> LeadObjectiveDecision:
         audit: list[str] = []
+        if _CONTACT_REFUSAL_RE.search(message):
+            state.contact_capture_declined = True
+        elif re.search(
+            r"\b(?:you can|please|i agree to)\s+(?:contact|call|email)\s+me\b", message, re.I
+        ):
+            state.contact_capture_declined = False
+        if getattr(state, "contact_capture_declined", False):
+            return LeadObjectiveDecision(
+                stage="engaging",
+                objective_move="continue_light_discovery",
+                reason="Customer declined contact capture; continue without a contact ask.",
+                stop_discovery=False,
+                recommended_primary_goal="answer_current_question",
+                next_question=None,
+                audit=["signal:contact_capture_declined"],
+            )
 
         # ── Gather signals ────────────────────────────────────────────────
         # Step 4: lead_created loop guard — after acknowledgment, resume normal help.

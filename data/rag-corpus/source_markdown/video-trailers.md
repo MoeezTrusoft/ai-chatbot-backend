@@ -1,7 +1,11 @@
 ---
+title: Video Trailers at BookCraft
 source_id: video_trailers
 service_category: video_trailer
-title: "Video Trailers at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [video_trailer, overview, rag]
 ---
 
 # Video Book Trailer

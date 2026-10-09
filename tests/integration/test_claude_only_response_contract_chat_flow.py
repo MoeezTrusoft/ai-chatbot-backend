@@ -71,7 +71,7 @@ class FakeClaudeResponseGenerator:
 
 
 def test_normal_service_question_uses_claude_source_when_adapter_available() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -91,7 +91,7 @@ def test_normal_service_question_uses_claude_source_when_adapter_available() -> 
 
 
 def test_forced_bad_claude_response_triggers_repair_path() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -116,7 +116,7 @@ def test_forced_bad_claude_response_triggers_repair_path() -> None:
 
 
 def test_bad_response_does_not_return_quality_fallback_in_production_like_mode() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
     app.state.chat_service.environment = "prod"
 
     with TestClient(app) as client:
@@ -138,7 +138,7 @@ def test_bad_response_does_not_return_quality_fallback_in_production_like_mode()
 
 
 def test_portfolio_request_does_not_return_portfolio_engine_quality_fallback() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -162,7 +162,7 @@ def test_portfolio_request_does_not_return_portfolio_engine_quality_fallback() -
 
 
 def test_greeting_does_not_return_deterministic_greeting_in_production_like_mode() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
     app.state.chat_service.environment = "prod"
 
     class _GreetingGenerator(FakeClaudeResponseGenerator):
@@ -184,7 +184,7 @@ def test_greeting_does_not_return_deterministic_greeting_in_production_like_mode
 
 
 def test_trace_includes_customer_response_contract() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -201,7 +201,7 @@ def test_trace_includes_customer_response_contract() -> None:
 
 
 def test_final_response_has_no_internal_terms_when_possible() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -224,7 +224,7 @@ def test_final_response_has_no_internal_terms_when_possible() -> None:
 
 
 def test_production_contract_passed_true_for_claude_source() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -245,8 +245,8 @@ def test_production_contract_passed_true_for_claude_source() -> None:
 
 def test_dev_fallback_marked_not_production_compliant_in_trace() -> None:
     """When the default (no-adapter) generator runs in test env, trace must reflect
-    that the final source is a dev fallback — not production-compliant."""
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    that the final source is a dev fallback â€” not production-compliant."""
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         resp = _chat(client, "I need ghostwriting for my novel.")
@@ -262,7 +262,7 @@ def test_dev_fallback_marked_not_production_compliant_in_trace() -> None:
 
 
 def test_claude_repair_source_passes_production_contract() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -271,7 +271,7 @@ def test_claude_repair_source_passes_production_contract() -> None:
                 source="claude_sonnet",
             ),
             repair=ResponseDraft(
-                text="I can help you with cover design — what style are you thinking?",
+                text="I can help you with cover design â€” what style are you thinking?",
                 source="claude_sonnet_repair",
             ),
         )
@@ -287,7 +287,7 @@ def test_no_assistant_source_starts_with_deterministic_prefix() -> None:
     """Ensure no real-world chat turn emits a deterministic source as final response."""
     from bookcraft.components.response.contracts import _DETERMINISTIC_PREFIXES
 
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
     messages = [
         "I don't need ghostwriting, I need editing.",
         "Show me some samples.",
@@ -329,7 +329,7 @@ def test_production_like_settings_with_api_key_wires_anthropic_adapter() -> None
 
 
 def test_test_env_always_uses_no_adapter_even_with_api_key() -> None:
-    """Test env must always use the mock regardless of API key — unit test isolation."""
+    """Test env must always use the mock regardless of API key â€” unit test isolation."""
     settings = Settings(
         app_env="test",
         anthropic_api_key="test-key-not-real",
@@ -340,14 +340,14 @@ def test_test_env_always_uses_no_adapter_even_with_api_key() -> None:
 
 
 def test_missing_api_key_in_test_env_allows_template_fallback() -> None:
-    """No API key in test env → mock generator (no RuntimeError)."""
-    settings = Settings(app_env="test", api_auth_mode="off")
+    """No API key in test env â†’ mock generator (no RuntimeError)."""
+    settings = Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True)
     gen = build_response_generator(settings)
     assert gen.adapter is None
 
 
 def test_missing_api_key_in_production_raises() -> None:
-    """No API key in production-like env → RuntimeError on startup."""
+    """No API key in production-like env â†’ RuntimeError on startup."""
     settings = Settings(
         app_env="production",
         anthropic_api_key=None,
@@ -359,7 +359,7 @@ def test_missing_api_key_in_production_raises() -> None:
 
 
 def test_missing_api_key_in_prod_with_mock_mode_raises() -> None:
-    """No API key + production env → RuntimeError regardless of mock mode."""
+    """No API key + production env â†’ RuntimeError regardless of mock mode."""
     settings = Settings(
         app_env="production",
         anthropic_api_key=None,
@@ -372,7 +372,7 @@ def test_missing_api_key_in_prod_with_mock_mode_raises() -> None:
 
 def test_chat_with_fake_anthropic_adapter_returns_claude_sonnet_source() -> None:
     """Wire a fake LLM adapter at the chat service level; verify final source."""
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -392,7 +392,7 @@ def test_chat_with_fake_anthropic_adapter_returns_claude_sonnet_source() -> None
 
 def test_non_null_adapter_in_production_does_not_report_production_contract_false() -> None:
     """With a properly wired Claude adapter, production_contract_passed must be True."""
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(

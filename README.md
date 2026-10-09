@@ -77,3 +77,8 @@ JSON, Markdown, and Word `.docx` reports are written to `reports/chat-diagnostic
 - `docs/architecture/architecture-reference.md`
 - `docs/architecture/architecture-amendments.md`
 - `docs/implementation/bookcraft_ai_chatbot_ultimate_implementation_guide.md`
+# Staff workspace and customer workflows
+
+See [workspace and receiver operations](docs/workspace-and-receiver.md) for the
+staff UI, appointment portal, companion CSR receiver, knowledge releases,
+manuscript progress, feedback, export, deletion, and migration requirements.

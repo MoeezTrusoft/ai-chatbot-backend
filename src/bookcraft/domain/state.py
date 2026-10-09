@@ -216,6 +216,7 @@ class ThreadState(BaseModel):
     # provide it) is sticky and lets a consultation proceed on the other channel.
     contact_status: dict[str, str] = Field(default_factory=dict)
     lead_created: bool = False
+    contact_capture_declined: bool = False
     lead_id: str | None = None
     lead_intake_payload: dict[str, Any] = Field(default_factory=dict)
     # Language guard — segments ignored due to non-English content in mixed messages.

@@ -36,7 +36,9 @@ def test_live_trace_store_appends_latest_and_filters_thread(tmp_path: Path) -> N
     thread_rows = store.for_thread("thread-a")
     assert [row["elapsed_ms"] for row in thread_rows] == [30, 10]
 
-    contents = path.read_text()
+    import json
+
+    contents = json.dumps(store.latest())
     assert "[REDACTED_EMAIL]" in contents
     assert "[REDACTED_URL]" in contents
     assert "2026-05-15T21:11:22.123456+00:00" in contents

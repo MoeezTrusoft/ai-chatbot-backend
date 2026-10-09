@@ -168,7 +168,7 @@ class ResponsePlanner:
         # P4-T4: TRG context for contradiction-confirmation flow.
         trg_context: TRGContext | None = None,
     ) -> ResponsePlan:
-        del state, action_plan  # all project state surfaces via context_pack
+        del action_plan  # project state surfaces via context_pack
 
         facts = _acknowledge_facts(context_pack)
         forbidden = _must_not_mention(
@@ -275,6 +275,29 @@ class ResponsePlanner:
             for _cf in _complaint_forbidden:
                 if _cf not in forbidden:
                     forbidden.append(_cf)
+
+        if getattr(state, "contact_capture_declined", False):
+            nq = None
+            for field in (
+                "name_and_email_or_phone",
+                "missing_phone",
+                "missing_email",
+                "consultation_interest",
+            ):
+                if field not in forbidden:
+                    forbidden.append(field)
+        if context_pack.project_event == "ambiguous_project_reference" and goal not in {
+            "safe_blocked_action",
+            "clarify_intent",
+        }:
+            goal, nq = "clarify_project_scope", _PROJECT_CLARIFICATION_QUESTION
+
+        if (
+            intent.query_primary == QueryIntentType.UNCLEAR
+            and intent.needs_clarification
+            and goal not in {"safe_blocked_action", "clarify_intent", "clarify_project_scope"}
+        ):
+            goal, nq = "gentle_clarify", "how_can_we_help"
 
         facts_tag = (
             f"planner:acknowledge_facts:{len(facts)}" if facts else "planner:acknowledge_facts:none"
@@ -522,6 +545,18 @@ def _primary_goal(
     narrative_sharing_decision: Any | None = None,
 ) -> str:
     """Determine the high-level goal for this response turn."""
+    if tool_governance is not None and not tool_governance.allowed:
+        return (
+            "clarify_intent"
+            if "counterfactual" in tool_governance.reason
+            else "safe_blocked_action"
+        )
+    if context_pack.project_event == "ambiguous_project_reference":
+        return "clarify_project_scope"
+    if intent.query_primary == QueryIntentType.MANUSCRIPT_STATUS_UPDATE:
+        return "celebrate_and_advance"
+    if intent.query_primary == QueryIntentType.UNCLEAR and intent.needs_clarification:
+        return "gentle_clarify"
     # Robustness path: a confident, cue-based narrative signal (chat 6688) beats a
     # low-signal intent label. Computed once; applied only after the hard overrides
     # below (active consultation scheduling, lead-created, safety/governance,
@@ -709,6 +744,8 @@ def _next_question(
     # Blocked or ambiguous turns: do not auto-issue a follow-up question.
     if primary_goal in {"safe_blocked_action", "clarify_intent"}:
         return None
+    if primary_goal == "clarify_project_scope":
+        return _PROJECT_CLARIFICATION_QUESTION
 
     # PR 2 — Consultation-first next questions.
     if primary_goal == "consultation_handoff_confirmation":

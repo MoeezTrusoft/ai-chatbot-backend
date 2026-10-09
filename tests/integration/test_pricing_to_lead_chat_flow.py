@@ -64,7 +64,7 @@ def test_timeline_request_does_not_invent_timeline_and_moves_toward_contact() ->
 
     txt = _text(body)
     assert "within 2" not in txt
-    assert (t.get("lead_objective") or {}).get("stop_discovery") is True
+    assert (t.get("lead_objective") or {}).get("objective_move") == "answer_then_consultation"
 
 
 def test_samples_request_can_move_toward_lead_capture_after_portfolio_fallback() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Coroutine
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from bookcraft.components.storage.thread_repository import local_thread_lock
+from bookcraft.infra.observability import STAGE_LATENCY
 
 if TYPE_CHECKING:
     from bookcraft.services.chat import ChatService
@@ -55,7 +57,9 @@ def serialized_mutation[ResultT](
         repository = self.thread_repository
         lock = repository.serialize(thread_id) if repository else local_thread_lock(thread_id)
         async with asyncio.timeout(self.turn_timeout_seconds):
+            waiting_at = time.perf_counter()
             async with lock:
+                STAGE_LATENCY.labels(stage="lock_wait").observe(time.perf_counter() - waiting_at)
                 work = TurnWork()
                 token = _work.set(work)
                 try:

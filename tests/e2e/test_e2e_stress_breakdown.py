@@ -141,6 +141,10 @@ def test_stress_contradiction_changing_facts() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -195,6 +199,10 @@ def test_stress_repeated_contact_deflections() -> None:
         tid = None
         ask_contact_count = 0
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -243,6 +251,10 @@ def test_stress_guarantee_pressure() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -343,6 +355,10 @@ def test_stress_insult_escalation() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -466,6 +482,10 @@ def test_stress_service_correction() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -503,6 +523,10 @@ def test_stress_contact_info_as_first_message() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -549,6 +573,10 @@ def test_stress_payment_question_late_funnel() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -593,6 +621,10 @@ def test_stress_hard_no_to_contact() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -662,6 +694,10 @@ def _run_scenario(msgs: list[str]) -> dict:
     with _client() as client:
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                rejected = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert rejected.status_code == 422
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]

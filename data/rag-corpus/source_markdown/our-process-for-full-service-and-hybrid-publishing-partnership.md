@@ -1,7 +1,11 @@
 ---
-source_id: publishing_partnership
+title: Publishing Partnership Process at BookCraft
+source_id: our_process_for_full_service_and_hybrid_publishing_partnership
 service_category: publishing_partnership
-title: "Publishing Partnership Process at BookCraft"
+section: process
+content_version: v1
+allowed_for_response: true
+tags: [publishing_partnership, process, rag]
 ---
 
 # Full-Service & Hybrid Publishing Partnership Process

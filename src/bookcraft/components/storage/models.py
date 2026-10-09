@@ -153,6 +153,8 @@ class SalesConsultationRecord(SQLModel, table=True):
     __tablename__ = "sales_consultations"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    version: int = 1
+    reminders_enabled: bool = False
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
     lead_id: UUID | None = Field(default=None, foreign_key="sales_leads.id", index=True)
     thread_id: UUID | None = Field(default=None, index=True)
@@ -347,6 +349,8 @@ class DeliveryOutboxRecord(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     completed_at: datetime | None = None
     last_error: str | None = Field(default=None, max_length=64)
+    dead_letter_at: datetime | None = Field(default=None, index=True)
+    replayed_by: str | None = Field(default=None, max_length=255)
 
 
 class GraphEdgeRecord(SQLModel, table=True):

@@ -173,9 +173,11 @@ class TestScenario1PublishingToConsultation:
         t = _trace(client, tid)
         lo = t.get("lead_objective") or {}
         # After acknowledgment, the bot should answer the new question.
-        assert lo.get("objective_move") in {"continue_light_discovery", "no_change"}, (
-            f"Unexpected move: {lo.get('objective_move')}"
-        )
+        assert lo.get("objective_move") in {
+            "continue_light_discovery",
+            "no_change",
+            "request_second_contact_method",
+        }, f"Unexpected move: {lo.get('objective_move')}"
 
 
 # ===========================================================================

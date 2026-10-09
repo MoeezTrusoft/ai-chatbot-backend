@@ -10,19 +10,25 @@ import structlog
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.api.admin_analysis import router as admin_analysis_router
+from bookcraft.api.appointments import router as appointments_router
 from bookcraft.api.chat import router as chat_router
 from bookcraft.api.correlation import sanitize_correlation_id
+from bookcraft.api.customer_data import router as customer_data_router
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.holidays import router as holidays_router
+from bookcraft.api.intake import router as intake_router
+from bookcraft.api.knowledge import router as knowledge_router
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
+from bookcraft.api.workspace import router as workspace_router
 from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
 from bookcraft.components.consultations import (
@@ -108,6 +114,7 @@ from bookcraft.tools import (
     ToolRegistry,
 )
 from bookcraft.workers.csr_outbox import CsrOutboxWorker
+from bookcraft.workers.maintenance import run_maintenance
 
 REQUESTS_TOTAL = Counter(
     "chatbot_http_requests_total",
@@ -136,7 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_tracing(app, resolved_settings)
-        chat_service = getattr(app.state, "chat_service", None)
+        chat_service: ChatService = app.state.chat_service
         gen = getattr(chat_service, "response_generator", None)
         adapter = getattr(gen, "adapter", None)
         structlog.get_logger(__name__).info(
@@ -201,11 +208,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 resolved_settings.csr_node_api_url,
                 outbox_client,
                 resolved_settings.csr_node_api_token,
+                max_attempts=resolved_settings.csr_outbox_max_attempts,
             )
             outbox_task = asyncio.create_task(worker.run())
+        maintenance_task = None
+        if session_factory is not None and chat_service.trace_store is not None:
+            maintenance_task = asyncio.create_task(
+                run_maintenance(
+                    session_factory,
+                    resolved_settings,
+                    chat_service.trace_store,
+                    chat_service.preprocessor.embedding_client.cache,
+                )
+            )
         try:
             yield
         finally:
+            if maintenance_task is not None:
+                maintenance_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await maintenance_task
+            await chat_service.preprocessor.embedding_client.aclose()
             if outbox_task is not None:
                 outbox_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -317,6 +340,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
     app.include_router(holidays_router)
+    app.state.session_factory = session_factory
+    app.include_router(appointments_router)
+    app.include_router(customer_data_router)
+    app.include_router(intake_router)
+    app.include_router(knowledge_router)
+    app.include_router(workspace_router)
+    workspace_assets = Path(__file__).with_name("static")
+    app.mount("/workspace-assets", StaticFiles(directory=workspace_assets), name="workspace-assets")
+
+    @app.get("/workspace", include_in_schema=False)
+    @app.get("/portal", include_in_schema=False)
+    async def workspace_page() -> FileResponse:
+        return FileResponse(
+            workspace_assets / "workspace.html",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": "default-src 'self'; script-src 'self'; "
+                "style-src 'self'; "
+                "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
 
     @app.middleware("http")
     async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -345,6 +390,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         response.headers["x-correlation-id"] = correlation_id
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     if resolved_settings.app_env == "test":
@@ -414,6 +461,8 @@ def build_chat_service(
         tei_url=settings.tei_url,
         timeout_seconds=settings.tei_timeout_seconds,
         dimensions=settings.embedding_dimensions,
+        model_revision=settings.embedding_model_revision,
+        preprocessing_version=settings.embedding_preprocessing_version,
         offline=settings.app_env == "test",
         degraded_mode_enabled=settings.tei_degraded_mode_enabled,
         cache=cache_client,
@@ -594,7 +643,9 @@ def build_chat_service(
             agreement_action_service=agreement_action_service,
             app_env=settings.app_env,
         ),
-        trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
+        trace_store=LiveTraceStore(
+            Path("reports/live_traces/chat_turns.jsonl"), settings.trace_retention_days
+        ),
         thread_repository=thread_repository,
     )
 

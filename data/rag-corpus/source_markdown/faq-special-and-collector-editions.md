@@ -1,7 +1,11 @@
 ---
-source_id: special_collector_editions
+title: Special and Collector Editions FAQ at BookCraft
+source_id: faq_special_and_collector_editions
 service_category: special_collector_editions
-title: "Special and Collector Editions FAQ at BookCraft"
+section: faq
+content_version: v1
+allowed_for_response: true
+tags: [special_collector_editions, faq, rag]
 ---
 
 __Special & Collector Editions__

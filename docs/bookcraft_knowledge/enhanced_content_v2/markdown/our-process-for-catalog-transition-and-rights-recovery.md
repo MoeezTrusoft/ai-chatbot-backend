@@ -1,7 +1,11 @@
 ---
-source_id: catalog_transition
+title: Catalog Transition Process at BookCraft
+source_id: our_process_for_catalog_transition_and_rights_recovery
 service_category: catalog_transition
-title: "Catalog Transition Process at BookCraft"
+section: process
+content_version: v1
+allowed_for_response: true
+tags: [catalog_transition, process, rag]
 ---
 
 # Catalog Transition & Rights Recovery Process

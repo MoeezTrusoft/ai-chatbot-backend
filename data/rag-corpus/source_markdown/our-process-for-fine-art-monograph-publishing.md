@@ -1,7 +1,11 @@
 ---
-source_id: fine_art_monograph
+title: Fine-Art Monograph Publishing Process at BookCraft
+source_id: our_process_for_fine_art_monograph_publishing
 service_category: fine_art_monograph
-title: "Fine-Art Monograph Publishing Process at BookCraft"
+section: process
+content_version: v1
+allowed_for_response: true
+tags: [fine_art_monograph, process, rag]
 ---
 
 # Fine-Art & Premium Monograph Publishing Process

@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     tei_batch_size: int = 128
     tei_degraded_mode_enabled: bool = True
     embedding_dimensions: int = 384
+    embedding_model_revision: str = "default"
+    embedding_preprocessing_version: str = "1"
+    attachment_cleanup_url: str | None = None
+    attachment_cleanup_token: str | None = None
+    trace_retention_days: int = Field(default=30, ge=1)
+    conversation_retention_days: int = Field(default=365, ge=1)
+    csr_outbox_max_attempts: int = Field(default=12, ge=1, le=100)
+    reminder_smtp_host: str | None = None
+    reminder_smtp_port: int = 587
+    reminder_smtp_username: str | None = None
+    reminder_smtp_password: str | None = None
+    reminder_sender_email: str | None = None
 
     anthropic_api_key: str | None = None
     anthropic_base_url: str = "https://api.anthropic.com"

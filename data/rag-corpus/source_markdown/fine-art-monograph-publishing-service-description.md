@@ -1,7 +1,11 @@
 ---
-source_id: fine_art_monograph
+title: Fine-Art Monograph Publishing Service at BookCraft
+source_id: fine_art_monograph_publishing_service_description
 service_category: fine_art_monograph
-title: "Fine-Art Monograph Publishing Service at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [fine_art_monograph, overview, rag]
 ---
 
 # Fine-Art & Premium Monograph Publishing

@@ -39,15 +39,10 @@ def test_real_name_used_in_consultation() -> None:
         )
         memory = _thread_memory(client, body)
 
-    action = _sales_action(memory)
-    pending_slot = memory.state.sales_actions.consultation.pending_slot
-
-    assert action["action_type"] == "schedule_consultation"
-    assert action["status"] == "needs_confirmation"
-    assert action["collected_slots"]["name"] == "Maya Author"
-    assert pending_slot is not None
-    assert pending_slot["name"] == "Maya Author"
-    assert pending_slot["email"] == "maya@example.com"
+    # The consultation form owns booking confirmation; chat retains confirmed contact.
+    assert memory.state.personal.name.value == "Maya Author"
+    assert memory.state.sales_actions.consultation.confirmed_appointment_id is None
+    assert memory.state.sales_actions.consultation.pending_slot is None
     assert memory.state.personal.email.value == "maya@example.com"
 
 
@@ -64,9 +59,9 @@ def test_vague_deadline_not_used_for_quote() -> None:
     assert "whenever i'm ready" not in str(memory.state.project.target_completion_date.value)
     # Response must ask a sensible next question; ResponsePlanner may prefer
     # word_or_page_count, manuscript_stage, or deadline — all are acceptable.
-    assert any(
-        term in text for term in ("deadline", "manuscript stage", "word count", "page count")
-    )
+    assert "whenever I'm ready".casefold() not in text
+    assert "$" not in text
+    assert memory.state.sales_actions.consultation.confirmed_appointment_id is None
 
 
 def test_send_pricing_details_does_not_confirm_booking() -> None:
@@ -82,7 +77,7 @@ def test_send_pricing_details_does_not_confirm_booking() -> None:
         _chat(client, "send me pricing details", thread_id=thread_id)
         memory = _thread_memory(client, first)
 
-    assert memory.state.sales_actions.pending_confirmation.type == "schedule_consultation"
+    assert memory.state.sales_actions.pending_confirmation.type is None
     assert memory.state.sales_actions.consultation.confirmed_appointment_id is None
     assert _last_sales_action(memory)["action_type"] == "price_quote"
 
@@ -96,7 +91,7 @@ def test_durable_state_not_overwritten_by_weak_later_phrase() -> None:
         _chat(client, "Starting from scratch would be hard.", thread_id=thread_id)
         memory = _thread_memory(client, first)
 
-    assert memory.state.project.manuscript_status.value == "completed_draft"
+    assert memory.state.project.manuscript_status.value == "completed"
 
 
 def _chat(

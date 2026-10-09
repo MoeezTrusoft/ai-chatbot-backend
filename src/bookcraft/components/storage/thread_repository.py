@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
@@ -31,6 +31,7 @@ class ThreadAccessDeniedError(PermissionError):
 # Weak values avoid retaining one lock per conversation forever.
 
 _local_locks: WeakValueDictionary[tuple[int, UUID], asyncio.Lock] = WeakValueDictionary()
+_lock_slots: WeakValueDictionary[int, asyncio.Semaphore] = WeakValueDictionary()
 
 
 @asynccontextmanager
@@ -54,7 +55,6 @@ class LoadedThread:
 @dataclass(slots=True)
 class ThreadRepository:
     session_factory: async_sessionmaker[AsyncSession]
-    _lock_slots: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(4))
 
     @asynccontextmanager
     async def serialize(self, thread_id: UUID) -> AsyncIterator[None]:
@@ -63,7 +63,8 @@ class ThreadRepository:
         SQLite is supported for local tests with a process-local lock. Production
         uses a transaction advisory lock, released on cancellation/connection loss.
         """
-        async with local_thread_lock(thread_id), self._lock_slots:
+        slots = _lock_slots.setdefault(id(asyncio.get_running_loop()), asyncio.Semaphore(4))
+        async with local_thread_lock(thread_id), slots:
             async with self.session_factory() as session:
                 if session.get_bind().dialect.name != "postgresql":
                     yield
@@ -138,6 +139,8 @@ class ThreadRepository:
                 event_count = 0
                 last_hash = None
             else:
+                if record.deleted_at is not None:
+                    raise ThreadAccessDeniedError("Thread is not accessible")
                 if customer_id is not None and record.customer_id != customer_id:
                     raise ThreadAccessDeniedError("Thread is not accessible")
                 event_count, last_hash = await self._event_tail(session, resolved_thread_id)
@@ -224,6 +227,7 @@ class ThreadRepository:
                 update(ThreadRecord)
                 .where(col(ThreadRecord.id) == thread_id)
                 .where(col(ThreadRecord.version) == expected_version)
+                .where(col(ThreadRecord.deleted_at).is_(None))
                 .values(
                     state=sanitize_thread_state_for_persistence(state),
                     version=expected_version + 1,

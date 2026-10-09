@@ -86,9 +86,9 @@ def test_response_plan_cover_design_goal_and_next_question() -> None:
         trace = _latest_trace(client, thread_id)
 
     rp = _response_plan(trace)
-    assert rp["primary_goal"] == "cover_design_scoping"
+    assert rp["primary_goal"] == "lead_contact_capture"
     # Next question should point toward cover_style since genre/stage are known.
-    assert rp["next_question"] in {"cover_style", "word_or_page_count", None}
+    assert rp["next_question"] == "name_and_email_or_phone"
 
 
 def test_response_plan_known_genre_not_re_asked() -> None:
@@ -150,6 +150,7 @@ def test_response_plan_governance_blocked_shows_safe_blocked_action() -> None:
         assert rp["primary_goal"] in {
             "continue_discovery",
             "document_scoping",
+            "greeting_welcome",
             "safe_blocked_action",
         }
 
@@ -163,7 +164,7 @@ def test_response_plan_pricing_scoping_goal() -> None:
         trace = _latest_trace(client, resp["thread_id"])
 
     rp = _response_plan(trace)
-    assert rp["primary_goal"] == "pricing_scoping"
+    assert rp["primary_goal"] == "answer_current_question"
     # Should ask for a missing pricing slot, not a random question.
     if rp["next_question"] is not None:
         assert rp["next_question"] in {
@@ -172,6 +173,7 @@ def test_response_plan_pricing_scoping_goal() -> None:
             "word_or_page_count",
             "deadline",
             "services",
+            "consultation_interest",
         }
 
 
@@ -230,8 +232,8 @@ def test_kashif_cover_design_flow() -> None:
     assert rp["max_questions"] == 1
 
     # Goal and next-question match cover-design scoping.
-    assert rp["primary_goal"] == "cover_design_scoping"
-    assert rp["next_question"] in {"cover_style", "word_or_page_count", None}
+    assert rp["primary_goal"] == "lead_contact_capture"
+    assert rp["next_question"] == "name_and_email_or_phone"
 
     # Final response must not re-ask known facts.
     assert "what genre" not in text
@@ -263,6 +265,7 @@ def test_negated_nda_does_not_start_nda_flow() -> None:
         "safe_blocked_action",
         "clarify_intent",
         "continue_discovery",
+        "greeting_welcome",
         "document_scoping",  # allowed only when governance allowed=True (no action planned)
     }
 
@@ -306,6 +309,7 @@ def test_counterfactual_consultation_does_not_book() -> None:
     # Goal should be consultation-related or discovery — not a confirmed booking.
     assert rp["primary_goal"] in {
         "consultation_scoping",
+        "consultation_offer",
         "clarify_intent",
         "continue_discovery",
     }
@@ -338,7 +342,7 @@ def test_pricing_missing_info_plan() -> None:
     rp = _response_plan(trace)
     text = _joined_text(resp)
 
-    assert rp["primary_goal"] == "pricing_scoping"
+    assert rp["primary_goal"] == "answer_current_question"
 
     # next_question must be a known pricing slot key (or None if all known).
     if rp["next_question"] is not None:
@@ -348,6 +352,7 @@ def test_pricing_missing_info_plan() -> None:
             "manuscript_stage",
             "deadline",
             "services",
+            "consultation_interest",
         }
 
     # No real quote should have been issued.

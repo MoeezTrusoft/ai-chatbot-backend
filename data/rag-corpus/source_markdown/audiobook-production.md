@@ -1,7 +1,11 @@
 ---
+title: Audiobook Production at BookCraft
 source_id: audiobook_production
 service_category: audiobook_production
-title: "Audiobook Production at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [audiobook_production, overview, rag]
 ---
 
 # Audiobook Production

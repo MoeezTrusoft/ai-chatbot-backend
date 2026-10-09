@@ -32,7 +32,7 @@ def test_context_pack_is_recorded_and_guides_response() -> None:
     # ContextPack recorded in trace with correct derived fields.
     assert pack["active_service"] == "cover_design_illustration"
     assert pack["active_genre"] in {"children's book", "children's fiction"}
-    assert pack["manuscript_status"] == "completed_draft"
+    assert pack["manuscript_status"] == "completed"
     assert "genre" in pack["forbidden_reasks"]
     assert (
         "manuscript_stage" in pack["forbidden_reasks"] or "draft status" in pack["forbidden_reasks"]

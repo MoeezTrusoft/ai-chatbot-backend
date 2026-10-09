@@ -19,7 +19,6 @@ from uuid import UUID, uuid4
 import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-from weasyprint import HTML
 
 
 @dataclass(slots=True)
@@ -997,6 +996,8 @@ def write_outputs(report: dict[str, Any], *, output_dir: Path, write_pdf: bool) 
     md_path.write_text(markdown(report), encoding="utf-8")
     html_path.write_text(render_html(report), encoding="utf-8")
     if write_pdf:
+        from weasyprint import HTML
+
         HTML(
             string=html_path.read_text(encoding="utf-8"),
             base_url=str(output_dir),

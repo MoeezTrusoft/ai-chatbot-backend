@@ -1,7 +1,11 @@
 ---
+title: Publishing and Distribution at BookCraft
 source_id: publishing_distribution
 service_category: publishing_distribution
-title: "Publishing and Distribution at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [publishing_distribution, overview, rag]
 ---
 
 # Publishing & Distribution

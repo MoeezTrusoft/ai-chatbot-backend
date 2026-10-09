@@ -129,6 +129,7 @@ def run_context_candidate_eval(_: None = Depends(require_admin)) -> dict[str, An
 @router.get("/traces/latest")
 def latest_live_traces(
     limit: int = Query(default=50, ge=1, le=500),
+    before_id: int | None = Query(default=None, ge=1),
     source: str | None = None,
     query_primary: str | None = None,
     service_primary: str | None = None,
@@ -139,7 +140,8 @@ def latest_live_traces(
     _: None = Depends(require_admin),
 ) -> dict[str, Any]:
     store = LiveTraceStore(LIVE_TRACE_PATH)
-    rows = store.latest(limit=500)
+    scanned = store.latest(limit=500, before_id=before_id)
+    rows = scanned
     rows = _filter_trace_rows(
         rows,
         source=source,
@@ -150,10 +152,16 @@ def latest_live_traces(
         has_forbid_markers=has_forbid_markers,
         has_negated_terms=has_negated_terms,
     )
+    cursor = (
+        rows[limit - 1]["trace_id"]
+        if len(rows) >= limit
+        else (scanned[-1]["trace_id"] if len(scanned) == 500 else None)
+    )
     rows = rows[:limit]
     return {
         "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
         "count": len(rows),
+        "next_before_id": cursor,
         "filters": _trace_filter_payload(
             source=source,
             query_primary=query_primary,
@@ -171,6 +179,7 @@ def latest_live_traces(
 def thread_live_traces(
     thread_id: str,
     limit: int = Query(default=100, ge=1, le=500),
+    before_id: int | None = Query(default=None, ge=1),
     source: str | None = None,
     query_primary: str | None = None,
     service_primary: str | None = None,
@@ -181,7 +190,8 @@ def thread_live_traces(
     _: None = Depends(require_admin),
 ) -> dict[str, Any]:
     store = LiveTraceStore(LIVE_TRACE_PATH)
-    rows = store.for_thread(thread_id=thread_id, limit=500)
+    scanned = store.for_thread(thread_id=thread_id, limit=500, before_id=before_id)
+    rows = scanned
     rows = _filter_trace_rows(
         rows,
         source=source,
@@ -192,11 +202,17 @@ def thread_live_traces(
         has_forbid_markers=has_forbid_markers,
         has_negated_terms=has_negated_terms,
     )
+    cursor = (
+        rows[limit - 1]["trace_id"]
+        if len(rows) >= limit
+        else (scanned[-1]["trace_id"] if len(scanned) == 500 else None)
+    )
     rows = rows[:limit]
     return {
         "trace_path": str(LIVE_TRACE_PATH.relative_to(PROJECT_ROOT)),
         "thread_id": thread_id,
         "count": len(rows),
+        "next_before_id": cursor,
         "filters": _trace_filter_payload(
             source=source,
             query_primary=query_primary,

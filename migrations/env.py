@@ -9,8 +9,12 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
-from bookcraft.components.storage import models  # noqa: F401
+from bookcraft.components.storage import (
+    management_models,  # noqa: F401
+    models,  # noqa: F401
+)
 from bookcraft.infra.config import get_settings
+from bookcraft.receiver import models as receiver_models  # noqa: F401
 
 config = context.config
 

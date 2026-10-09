@@ -19,6 +19,50 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
+    from datetime import datetime, timedelta
+
+    from sqlalchemy.exc import IntegrityError
+
+    from bookcraft.components.storage.models import SalesConsultationRecord
+
+    engine = create_async_engine(os.environ["TEST_POSTGRES_URL"])
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    csr, start = str(uuid4()), datetime(2030, 1, 7, 16)
+
+    async def insert(at):
+        async with factory() as session:
+            row = SalesConsultationRecord(
+                customer_name="Synthetic",
+                csr_id=csr,
+                csr_name="Test",
+                starts_at_utc=at,
+                ends_at_utc=at + timedelta(minutes=30),
+                houston_display_time="Test",
+            )
+            session.add(row)
+            await session.commit()
+            return row.id
+
+    try:
+        results = await asyncio.gather(
+            insert(start), insert(start + timedelta(minutes=15)), return_exceptions=True
+        )
+        assert sum(isinstance(row, IntegrityError) for row in results) == 1
+        winner = next(row for row in results if not isinstance(row, Exception))
+        async with factory() as session:
+            row = await session.get(SalesConsultationRecord, winner)
+            row.status = "cancelled"
+            session.add(row)
+            await session.commit()
+        await insert(start)
+        await insert(start + timedelta(minutes=30))
+        with pytest.raises(IntegrityError):
+            await insert(start + timedelta(minutes=1))
+    finally:
+        await engine.dispose()
+
+
 async def test_migrated_postgres_ownership_concurrency_and_idempotency():
     engine = create_async_engine(os.environ["TEST_POSTGRES_URL"])
     factory = async_sessionmaker(engine, expire_on_commit=False)

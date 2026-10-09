@@ -69,7 +69,7 @@ _IDENTITY_QUESTION_RE = re.compile(
     r"are\s+you\s+(?:chat)?gpt|are\s+you\s+claude|are\s+you\s+powered\s+by|"
     rf"is\s+(?:this|there|it)\s+(?:an?\s+)?{_HUMAN_ADJ}\s+{_HUMAN_NOUN}|"
     rf"is\s+(?:this|there|it)\s+(?:an?\s+)?{_HUMAN_NOUN}|"
-    rf"(?:talk|speak|chat|texting|connect)\s+(?:to|with)\s+(?:an?\s+)?(?:{_HUMAN_ADJ}\s+)?{_HUMAN_NOUN}|"
+    rf"(?:talk(?:ing)?|speak(?:ing)?|chat(?:ting)?|texting|connect)\s+(?:to|with)\s+(?:an?\s+)?(?:{_HUMAN_ADJ}\s+)?{_HUMAN_NOUN}|"
     rf"not\s+(?:talking|chatting|speaking)\s+(?:to|with)\s+(?:an?\s+)?{_AI_NOUN}"
     r")\b",
     re.IGNORECASE,

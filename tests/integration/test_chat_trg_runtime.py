@@ -32,6 +32,7 @@ class FailingTrgEngine:
         previous_state: object | None = None,
         state_deltas: object = (),
         arbiter_signals: object = None,
+        preloaded_graph: object = None,
     ) -> object:
         del (
             thread_id,
@@ -41,6 +42,7 @@ class FailingTrgEngine:
             previous_state,
             state_deltas,
             arbiter_signals,
+            preloaded_graph,
         )
         self.calls += 1
         raise RuntimeError("trg backend unavailable author@example.com")

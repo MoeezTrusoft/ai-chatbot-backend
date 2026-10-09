@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +21,8 @@ def test_production_component_report_requires_setup_values() -> None:
         text=True,
         capture_output=True,
         check=False,
-        env={},
+        # Preserve OS loader requirements without forwarding application credentials.
+        env={key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR", "PATH") if key in os.environ},
     )
 
     assert result.returncode == 1

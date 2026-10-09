@@ -4,6 +4,8 @@ on:
   workflow_call:
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 jobs:
   image:
     runs-on: ubuntu-latest
@@ -17,6 +19,23 @@ jobs:
           load: true
           push: false
           tags: bookcraft:validated
+      - name: Generate final image SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          image: bookcraft:validated
+          format: spdx-json
+          output-file: image.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Scan OS and application packages
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2
+        id: scan
+        with:
+          sbom: image.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: json
       - name: Smoke test
         run: |
           docker run -d --name bookcraft-smoke -p 127.0.0.1:8000:8000 -e APP_ENV=test bookcraft:validated
@@ -28,16 +47,51 @@ jobs:
           curl --fail http://127.0.0.1:8000/readyz
           docker exec bookcraft-smoke python -c "import os; assert os.getuid() != 0"
           docker exec bookcraft-smoke alembic heads
+      - name: Smoke test companion receiver
+        run: |
+          docker run -d --name receiver-smoke -p 127.0.0.1:8001:8000 \
+            -e APP_ENV=test -e CSR_NODE_API_TOKEN="$(openssl rand -hex 32)" \
+            bookcraft:validated uvicorn bookcraft.receiver.main:app --host 0.0.0.0 --port 8000
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8001/healthz; then break; fi
+            sleep 2
+          done
+          curl --fail http://127.0.0.1:8001/healthz
+          curl --fail http://127.0.0.1:8000/workspace
       - name: Export validated image
-        run: docker save bookcraft:validated | gzip > bookcraft-image.tar.gz
+        run: |
+          docker save bookcraft:validated | gzip > bookcraft-image.tar.gz
+          sha256sum bookcraft-image.tar.gz > SHA256SUMS
+          docker image inspect bookcraft:validated > image-metadata.json
+      - name: Attest image provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: bookcraft-image.tar.gz
+      - name: Attest image SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: bookcraft-image.tar.gz
+          sbom-path: image.spdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: bookcraft-image-${{ github.sha }}
-          path: bookcraft-image.tar.gz
+          path: |
+            bookcraft-image.tar.gz
+            SHA256SUMS
+            image-metadata.json
+            image.spdx.json
           retention-days: 7
+      - name: Save image security findings
+        if: always() && steps.scan.outputs.json != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-security-findings
+          path: ${{ steps.scan.outputs.json }}
       - name: Container logs
         if: always()
         run: docker logs bookcraft-smoke || true
       - name: Cleanup
         if: always()
-        run: docker rm -f bookcraft-smoke || true
+        run: docker rm -f bookcraft-smoke receiver-smoke || true

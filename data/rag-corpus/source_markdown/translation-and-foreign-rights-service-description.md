@@ -1,7 +1,11 @@
 ---
-source_id: translation_foreign_rights
+title: Translation and Foreign Rights Service at BookCraft
+source_id: translation_and_foreign_rights_service_description
 service_category: translation_foreign_rights
-title: "Translation and Foreign Rights Service at BookCraft"
+section: overview
+content_version: v1
+allowed_for_response: true
+tags: [translation_foreign_rights, overview, rag]
 ---
 
 # Translation & Foreign-Rights / Localization

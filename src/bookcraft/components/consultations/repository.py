@@ -4,10 +4,25 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col, select
 
 from bookcraft.components.storage.models import DeliveryOutboxRecord, SalesConsultationRecord
+
+
+class AppointmentConflictError(ValueError):
+    """The requested CSR slot is no longer available."""
+
+
+async def commit_appointment(session: AsyncSession) -> None:
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if "consultation_no_overlap" in str(exc.orig):
+            raise AppointmentConflictError("requested_slot_no_longer_available") from exc
+        raise
 
 
 class ConsultationRepositoryProtocol(Protocol):
@@ -82,6 +97,9 @@ class ConsultationRepository:
                 topic="consultation.upsert",
                 payload={
                     "externalAppointmentId": str(record.id),
+                    "version": record.version,
+                    "status": record.status,
+                    "remindersEnabled": record.reminders_enabled,
                     "startsAtUtc": record.starts_at_utc.replace(tzinfo=UTC).isoformat(),
                     "endsAtUtc": record.ends_at_utc.replace(tzinfo=UTC).isoformat(),
                     "customerId": str(record.customer_id) if record.customer_id else None,
@@ -150,7 +168,7 @@ class ConsultationRepository:
         async with self.session_factory() as session:
             session.add(record)
             self._enqueue(session, record)
-            await session.commit()
+            await commit_appointment(session)
             await session.refresh(record)
             return record
 
@@ -221,7 +239,9 @@ class ConsultationRepository:
         metadata: dict[str, Any],
     ) -> SalesConsultationRecord:
         async with self.session_factory() as session:
-            record = await session.get(SalesConsultationRecord, appointment_id)
+            record = await session.get(
+                SalesConsultationRecord, appointment_id, with_for_update=True
+            )
             if record is None:  # pragma: no cover - defensive
                 raise ValueError(f"appointment {appointment_id} not found")
             record.requested_time_text = requested_time_text
@@ -232,12 +252,32 @@ class ConsultationRepository:
             record.houston_display_time = houston_display_time
             record.customer_display_time = customer_display_time
             record.status = "scheduled"
+            record.cancelled_at = None
+            record.version += 1
             record.metadata_ = metadata
             record.updated_at = datetime.now(UTC).replace(tzinfo=None)
             session.add(record)
             self._enqueue(session, record)
-            await session.commit()
+            await commit_appointment(session)
             await session.refresh(record)
+            return record
+
+    async def cancel(self, appointment_id: UUID) -> SalesConsultationRecord:
+        async with self.session_factory() as session:
+            record = await session.get(
+                SalesConsultationRecord, appointment_id, with_for_update=True
+            )
+            if record is None:
+                raise ValueError("appointment_not_found")
+            if record.status != "cancelled":
+                record.status = "cancelled"
+                record.cancelled_at = datetime.now(UTC).replace(tzinfo=None)
+                record.updated_at = record.cancelled_at
+                record.version += 1
+                session.add(record)
+                self._enqueue(session, record)
+                await session.commit()
+                await session.refresh(record)
             return record
 
 

@@ -51,12 +51,15 @@ class _FakeGenerator:
 # ---------------------------------------------------------------------------
 
 
-def test_directed_abuse_blocks_without_assistant_response() -> None:
-    """Directed insult must block — no Claude, no bubbles, system_message returned."""
+def test_directed_abuse_warns_then_blocks_without_assistant_response() -> None:
+    """The first insult warns; repeated directed abuse blocks further responses."""
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
 
     with TestClient(app) as client:
         body = _chat(client, "You are fucking stupid.")
+        assert body.get("blocked") is False
+        assert _trace(client, body["thread_id"])["input_safety"]["action"] == "warn"
+        body = _chat(client, "You are fucking stupid.", thread_id=body["thread_id"])
 
     assert body.get("blocked") is True
     assert body.get("bubbles") == []

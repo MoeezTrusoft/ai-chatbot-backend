@@ -168,6 +168,7 @@ class ConsultationCancelledRequest(BaseModel):
 
     thread_id: UUID
     appointment_id: str | None = Field(default=None, max_length=128)
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class ConsultationCancelledResponse(BaseModel):

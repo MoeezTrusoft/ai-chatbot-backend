@@ -1,7 +1,11 @@
 ---
+title: Ghostwriting at BookCraft
 source_id: ghostwriting
 service_category: ghostwriting
-title: "Ghostwriting at BookCraft"
+section: timeline_context
+content_version: v1
+allowed_for_response: true
+tags: [ghostwriting, timeline_context, rag]
 ---
 
 # Ghostwriting at BookCraft

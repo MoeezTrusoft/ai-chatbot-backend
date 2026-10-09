@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from bookcraft.components.rag.pipeline import SERVICE_BY_FILE
 from bookcraft.domain.enums import ServiceCategory
 from bookcraft.infra.config import Settings
 
@@ -125,10 +126,24 @@ def build_repair_item(path: Path, *, source_dir: Path) -> dict[str, Any]:
 
     title = existing_metadata.get("title") or infer_title(path=path, body=body or raw)
     source_id = existing_metadata.get("source_id") or slugify(path.stem)
+    duplicates = sum(
+        parse_front_matter(other.read_text(encoding="utf-8"))[0].get("source_id") == source_id
+        for other in source_dir.glob("**/*.md")
+    )
+    if duplicates > 1:
+        source_id = slugify(path.stem)
     service_category, confidence, matched_keywords = infer_service_category(
         path=path,
         text=f"{relative_path}\n{body or raw}",
     )
+    # Curated metadata and the canonical filename registry outrank broad body keywords.
+    existing_service = existing_metadata.get("service_category")
+    if existing_service in {item.value for item in ServiceCategory}:
+        service_category = ServiceCategory(existing_service)
+        confidence = "curated"
+    elif path.name in SERVICE_BY_FILE:
+        service_category = SERVICE_BY_FILE[path.name]
+        confidence = "canonical_filename"
     section = existing_metadata.get("section") or infer_section(path=path, body=body or raw)
     content_version = existing_metadata.get("content_version") or "v1"
 
@@ -138,7 +153,7 @@ def build_repair_item(path: Path, *, source_dir: Path) -> dict[str, Any]:
         "service_category": service_category.value,
         "section": section,
         "content_version": content_version,
-        "allowed_for_response": "true",
+        "allowed_for_response": existing_metadata.get("allowed_for_response", "true"),
         "tags": build_tags(service_category=service_category, section=section),
     }
 
