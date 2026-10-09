@@ -30,8 +30,13 @@ The repository fails closed for:
 - Prompt pack pricing, timeline, legal, or sample hallucination instructions.
 - Eval corpus schema errors.
 
-## Deployment
+## Image Validation and Deployment Handoff
 
-CD is intentionally a skeleton until packaging and infrastructure are approved.
-The workflow documents the expected staging path: build image, run migrations,
-deploy staging, smoke test, then require a manual production gate.
+The image workflow builds a non-root container, runs health/readiness and migration
+head smoke checks, and exports the image as a seven-day GitHub Actions artifact.
+It does not publish to a registry or deploy; deployment is managed separately.
+
+The deployment system must apply the database migration and validate authenticated
+chat and CSR integration before routing traffic. Follow
+[backend hardening and rollout](../backend-hardening.md), especially token scopes,
+legacy conversation ownership and the receiver's idempotency contract.

@@ -108,9 +108,8 @@ def _print_report(label: str, turns: list[dict], findings: list[str]) -> None:
             icons.append("✓Q")
         icon_str = " ".join(icons)
         print(
-            f"  T{t['turn']:02d} [{t[('intent')]:25s}] goal={t['goal']:28s} lead={t['lead']:28s} {
-                icon_str
-            }"
+            f"  T{t['turn']:02d} [{str(t['intent']):25s}] "
+            f"goal={str(t['goal']):28s} lead={str(t['lead']):28s} {icon_str}"
         )
         print(f"       User: {t['msg']}")
         print(f"       Bot : {t['text']}")
@@ -276,14 +275,14 @@ def test_stress_guarantee_pressure() -> None:
 
 
 def test_stress_empty_and_emoji_messages() -> None:
-    """Empty, emoji-only, and whitespace messages must not error or block."""
+    """Reject blank input with 422; accept emoji and normal conversation turns."""
     label = "S4: Empty/Emoji/Whitespace Edge Cases"
     turns = []
     findings = []
 
     with _client() as client:
         msgs = [
-            " ",  # single space (API min_length=1; trivial message)
+            " ",  # Whitespace without an attachment is rejected by the API.
             "🎉🎊👏",  # emoji only
             "   ",  # whitespace only (3 spaces)
             "I need editing help.",  # first real message
@@ -292,6 +291,11 @@ def test_stress_empty_and_emoji_messages() -> None:
         ]
         tid = None
         for i, msg in enumerate(msgs, 1):
+            if not msg.strip():
+                response = client.post("/api/v1/chat/turn", json={"message": msg})
+                assert response.status_code == 422
+                findings.append(f"T{i}: blank input rejected with 422")
+                continue
             r = _chat(client, msg, thread_id=tid)
             if not tid:
                 tid = r["thread_id"]
@@ -307,10 +311,10 @@ def test_stress_empty_and_emoji_messages() -> None:
             f"T{t['turn']}: blocked without safety reason"
         )
 
-    # Empty/emoji messages must be allowed (safety=allow)
-    for i in [0, 1, 2, 4]:
-        assert turns[i]["safety"] in {"allow", None}, (
-            f"T{i + 1}: empty/emoji should be allow, got safety={turns[i]['safety']}"
+    # Emoji-only messages remain valid conversation turns.
+    for turn in [turn for turn in turns if turn["turn"] in {2, 5}]:
+        assert turn["safety"] in {"allow", None}, (
+            f"Emoji should be allowed, got safety={turn['safety']}"
         )
 
     _no_critical_failures(turns, label)

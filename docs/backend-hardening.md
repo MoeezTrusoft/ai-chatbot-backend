@@ -118,3 +118,35 @@ head, and uploads bookcraft-image-COMMIT for seven days. It never pushes to a re
 or deploys. Run environment-specific dependency readiness and authenticated chat/CSR
 smoke tests in the separate deployment pipeline before routing traffic.
 
+
+## Validation snapshot — 2026-10-10
+
+Runtime implementation commit: 913564d028fa989688f928877e650691a8bb8e22.
+[GitHub Actions evidence](https://github.com/MoeezTrusoft/ai-chatbot-backend/actions/runs/37996771047).
+
+- Lint, strict typing, secret scanning, dependency auditing, corpus/configuration
+  verifiers and migrated PostgreSQL concurrency tests passed in CI.
+- The non-root image built, passed its smoke checks and was exported successfully.
+  The run contains the downloadable bookcraft-image artifact. Nothing was deployed.
+- The initial complete CI test run reported 2,510 passed, 38 failed, 27 skipped and
+  21 setup errors. CI remains a blocking gate; failures have not been suppressed.
+- All 38 assertion failures reproduced on base commit
+  6bd26a0a96ad043f85dd92fd56f057d3d30b173e in local comparisons. Those comparisons
+  used the same patched dependency environment, offline zero embeddings, and
+  Windows-compatible date formatting to isolate conversation behavior.
+- The malformed YAML responsible for the 21 setup errors was repaired. All 22
+  conversation fixtures now parse; all 21 evaluation tests pass locally.
+- Two stress-test defects were repaired: whitespace correctly expects HTTP 422,
+  and the report renderer accepts missing fields on blocked turns. Both tests pass.
+- A separate 46-test regression selection passes with the updated dependencies,
+  covering authorization, durable retries, outbox delivery/order, concurrent state
+  writes, event chains, cancellation, retrieval filters and provider usage accounting.
+
+A fully green suite and production acceptance remain outstanding. Existing failures
+include conversation/lead-policy expectations, intent and project routing, response
+planning, manuscript-status naming and RAG metadata readiness. Reconcile those
+expectations with the approved product rules and curated source metadata before merge.
+Live provider latency/quality and the external CSR receiver contract require staging
+validation; the local mock tests do not establish those results.
+
+
