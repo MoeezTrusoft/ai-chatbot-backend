@@ -139,10 +139,15 @@ class SalesService:
             "customer_display_time": row.startTime.astimezone(
                 ZoneInfo(row.userTimezone)
             ).isoformat(),
-            "houston_display_time": row.startTime.astimezone(ZoneInfo(row.timezone)).isoformat(),
+            # Preserve the meaning of this legacy chat-state field even when
+            # the Sales tenant operates in a different business timezone.
+            "houston_display_time": row.startTime.astimezone(
+                ZoneInfo("America/Chicago")
+            ).isoformat(),
+            "business_display_time": row.startTime.astimezone(ZoneInfo(row.timezone)).isoformat(),
             "business_timezone": row.timezone,
             "csr_id": row.ownerId,
-            "csr_name": "Assigned Sales specialist",
+            "csr_name": "Assigned Sales specialist" if row.ownerId else "Sales team",
             "offer_expires_at": row.offerExpiresAt.isoformat() if row.offerExpiresAt else None,
             "reminders_enabled": False,
             "source": "erp_sales",

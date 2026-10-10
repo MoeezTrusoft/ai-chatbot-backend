@@ -247,6 +247,8 @@ async def test_sales_policy_schedule_reschedule_cancel_and_no_standalone_writes(
     assert row["status"] == "scheduled"
     assert row["csr_id"] == "real-csr"
     assert row["source"] == "erp_sales"
+    assert row["business_display_time"].endswith("+05:00")
+    assert row["houston_display_time"].endswith("-05:00")
     response = await client.post(
         base,
         json=booking(
