@@ -76,6 +76,7 @@ class SonnetResponseGenerator:
     known_facts_render_cap: int = 0
     # Advisory item 4: collapse duplicate/near-duplicate RAG chunk text within a prompt.
     rag_within_prompt_dedup: bool = True
+    sales_mode: bool = False
 
     async def generate(
         self,
@@ -219,6 +220,8 @@ class SonnetResponseGenerator:
                 context_pack=context_pack,
                 response_plan=response_plan,
             )
+            if self.sales_mode:
+                template_fallback = sales_safe_response(template_fallback)
 
             if self.adapter is None:
                 return ResponseDraft(text=template_fallback, source="template_no_adapter")
@@ -479,6 +482,8 @@ class SonnetResponseGenerator:
             active_service=context_pack.active_service if context_pack is not None else None,
             persona_decision=persona_decision,
         )
+        if self.sales_mode:
+            system = sales_system_prompt(system)
         user = _response_user_prompt(
             message=message,
             state=state,
@@ -592,6 +597,8 @@ class SonnetResponseGenerator:
             active_service=context_pack.active_service if context_pack is not None else None,
             persona_decision=persona_decision,
         )
+        if self.sales_mode:
+            system = sales_system_prompt(system)
         user = _response_user_prompt(
             message=message,
             state=state,
@@ -2350,3 +2357,33 @@ def _portfolio_response_as_facts(
         "(use only these; do NOT invent additional links):\n" + "\n".join(sample_lines)
     )
     return facts, approved_urls
+
+
+def sales_safe_response(text: str) -> str:
+    """Remove the standalone hours from fallback and quality-repair copy."""
+    return re.sub(
+        r"(?:Our specialists are available |We're available )?Monday[–-]Friday, "
+        r"10 AM to 7 PM Central(?: Time)?",
+        "Current available times are shown in the booking form",
+        text,
+    )
+
+
+def sales_system_prompt(prompt: str) -> str:
+    start = prompt.find("When an author asks to schedule a consultation")
+    end = prompt.find("After a lead is created:", start)
+    if start >= 0 and end >= 0:
+        prompt = prompt[:start] + prompt[end:]
+    prompt = prompt.replace(
+        "Collect their details here and schedule it directly.",
+        "Use the booking form to select a time.",
+    )
+    return sales_safe_response(prompt) + (
+        "\nSALES BOOKING RULES: The Sales booking form owns appointment scheduling. "
+        "Invite the customer to use it, including saving their name and international E.164 "
+        "phone number. Email alone cannot satisfy Sales contact requirements. Never invent "
+        "opening hours, dates, available staff, reminder delivery, or appointment confirmation. "
+        "Only a verified Scheduled appointment in known facts is booked. A Proposed offer is "
+        "not booked and requires explicit acceptance of its displayed time. Appointment "
+        "cancellation and rescheduling must succeed in Sales before claiming success."
+    )

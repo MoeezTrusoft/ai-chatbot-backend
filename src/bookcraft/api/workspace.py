@@ -12,6 +12,7 @@ from sqlalchemy import func
 from sqlmodel import col, select
 
 from bookcraft.api.management_access import factory, owned_thread, staff
+from bookcraft.api.sales_access import sales_access, sales_enabled
 from bookcraft.components.storage.management_models import FeedbackRecord, WorkflowRecord
 from bookcraft.components.storage.models import (
     DeliveryOutboxRecord,
@@ -83,6 +84,10 @@ async def threads(
 @router.get("/staff/threads/{thread_id}")
 async def summary(thread_id: UUID, request: Request) -> dict[str, Any]:
     staff(request)
+    sales_bookings = None
+    if sales_enabled(request):
+        async with sales_access(request, thread_id) as sales:
+            sales_bookings = await sales.appointments(thread_id)
     async with factory(request)() as session:
         thread = await owned_thread(request, session, thread_id)
         bookings = (
@@ -134,7 +139,9 @@ async def summary(thread_id: UUID, request: Request) -> dict[str, Any]:
             "open_questions": state.get("pending_slots", []),
             "pending_question": state.get("pending_question", {}),
             "requested_services": state.get("service_metadata", {}),
-            "appointments": [row.model_dump(mode="json") for row in bookings],
+            "appointments": sales_bookings
+            if sales_bookings is not None
+            else [row.model_dump(mode="json") for row in bookings],
             "failed_actions": [row.model_dump(mode="json") for row in failures],
             "intake": [row.model_dump(mode="json") for row in intake],
         }
@@ -175,6 +182,8 @@ async def deliveries(
 @router.post("/staff/deliveries/{delivery_id}/replay")
 async def replay(delivery_id: UUID, request: Request) -> dict[str, str]:
     principal = staff(request)
+    if sales_enabled(request):
+        raise HTTPException(409, "standalone_deliveries_disabled_in_sales_mode")
     async with factory(request)() as session:
         row = await session.get(DeliveryOutboxRecord, delivery_id, with_for_update=True)
         if row is None:
@@ -232,4 +241,12 @@ async def analytics(
             if result["conversations"]
             else None
         )
+        if sales_enabled(request):
+            result.update(
+                leads=None,
+                consultations=None,
+                booked_conversations=None,
+                consultation_conversion=None,
+                sales_metrics_source="erp_sales",
+            )
         return result

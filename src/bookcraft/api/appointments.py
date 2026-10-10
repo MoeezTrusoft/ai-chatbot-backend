@@ -11,6 +11,7 @@ from sqlmodel import col, select
 
 from bookcraft.api.chat import ConsultationConfirmedRequest
 from bookcraft.api.management_access import factory, owned_thread
+from bookcraft.api.sales_access import sales_access, sales_enabled
 from bookcraft.components.consultations.holidays import is_blackout_date
 from bookcraft.components.consultations.repository import (
     AppointmentConflictError,
@@ -19,6 +20,7 @@ from bookcraft.components.consultations.repository import (
 )
 from bookcraft.components.consultations.schemas import CSRProfile
 from bookcraft.components.consultations.service import DEFAULT_CSR_ROSTER
+from bookcraft.components.storage.management_models import WorkflowRecord
 from bookcraft.components.storage.models import SalesConsultationRecord, utc_now
 from bookcraft.components.storage.thread_repository import ThreadRepository
 from bookcraft.domain.enums import ServiceCategory
@@ -32,10 +34,11 @@ BUSINESS_TZ = ZoneInfo("America/Chicago")
 class BookingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     appointment_id: UUID
+    request_id: UUID | None = None
     expected_version: int = Field(default=0, ge=0)
     starts_at: datetime
     customer_timezone: str = Field(max_length=64)
-    csr_id: str = Field(max_length=128)
+    csr_id: str = Field(max_length=200)
     name: str = Field(min_length=1, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=50)
@@ -85,6 +88,9 @@ async def availability(
     thread_id: UUID, request: Request, day: date, timezone: str = "America/Chicago"
 ) -> list[dict[str, Any]]:
     zone = customer_zone(timezone)
+    if sales_enabled(request):
+        async with sales_access(request, thread_id) as sales:
+            return await sales.availability(thread_id, day, timezone)
     roster, opening, closing = booking_policy(request)
     if day < datetime.now(BUSINESS_TZ).date() or day > datetime.now(BUSINESS_TZ).date() + timedelta(
         days=180
@@ -137,6 +143,9 @@ async def availability(
 
 @router.get("/appointments")
 async def appointments(thread_id: UUID, request: Request) -> list[dict[str, Any]]:
+    if sales_enabled(request):
+        async with sales_access(request, thread_id) as sales:
+            return await sales.appointments(thread_id)
     async with factory(request)() as session:
         await owned_thread(request, session, thread_id)
         records = (
@@ -156,6 +165,31 @@ async def appointments(thread_id: UUID, request: Request) -> list[dict[str, Any]
 
 @router.post("/appointments")
 async def book(thread_id: UUID, payload: BookingInput, request: Request) -> dict[str, Any]:
+    if sales_enabled(request):
+        customer_zone(payload.customer_timezone)
+        if payload.starts_at.tzinfo is None:
+            raise HTTPException(422, "timezone_required")
+        if payload.reminders_enabled:
+            raise HTTPException(422, "reminders_managed_by_sales_communication")
+        if payload.expected_version and payload.request_id is None:
+            raise HTTPException(422, "request_id_required")
+        arguments: dict[str, Any] = {
+            "startTime": payload.starts_at.isoformat(),
+            "userTimezone": payload.customer_timezone,
+        }
+        if payload.csr_id:
+            arguments["preferredOwnerId"] = payload.csr_id
+        if payload.expected_version:
+            arguments.update(
+                consultationId=str(payload.appointment_id), expectedVersion=payload.expected_version
+            )
+        async with sales_access(request, thread_id) as sales:
+            return await sales.mutate(
+                thread_id,
+                payload.request_id or payload.appointment_id,
+                "reschedule" if payload.expected_version else "schedule",
+                arguments,
+            )
     roster, opening, closing = booking_policy(request)
     local = valid_slot(payload.starts_at, opening, closing)
     zone = customer_zone(payload.customer_timezone)
@@ -253,7 +287,23 @@ async def cancel(
     appointment_id: UUID,
     request: Request,
     expected_version: int = Query(ge=1),
+    request_id: UUID | None = None,
+    reason: str = Query(default="Customer requested cancellation", min_length=1, max_length=1000),
 ) -> dict[str, Any]:
+    if sales_enabled(request):
+        if request_id is None:
+            raise HTTPException(422, "request_id_required")
+        async with sales_access(request, thread_id) as sales:
+            return await sales.mutate(
+                thread_id,
+                request_id,
+                "cancel",
+                {
+                    "consultationId": str(appointment_id),
+                    "expectedVersion": expected_version,
+                    "reason": reason,
+                },
+            )
     sessions = factory(request)
     async with ThreadRepository(sessions).serialize(thread_id), sessions() as session:
         thread = await owned_thread(request, session, thread_id)
@@ -278,3 +328,124 @@ async def cancel(
         ConsultationRepository(sessions, enqueue_csr_sync=True)._enqueue(session, record)
         await session.commit()
         return record.model_dump(mode="json")
+
+
+class ConfirmInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    expected_version: int = Field(ge=1)
+
+
+class SalesContactInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=255)
+    phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
+    email: str | None = Field(default=None, max_length=255)
+
+
+@router.get("/appointments/policy")
+async def policy(thread_id: UUID, request: Request) -> dict[str, Any]:
+    async with factory(request)() as session:
+        await owned_thread(request, session, thread_id)
+    if sales_enabled(request):
+        async with sales_access(request, thread_id) as sales:
+            return await sales.policy()
+    return {"mode": "standalone", "reminders": "email_opt_in"}
+
+
+@router.get("/appointments/contact")
+async def sales_contact(thread_id: UUID, request: Request) -> dict[str, Any]:
+    if not sales_enabled(request):
+        raise HTTPException(404, "sales_mode_required")
+    async with sales_access(request, thread_id) as sales:
+        profile = await sales.profile(thread_id)
+        return {key: profile.get(key) for key in ("name", "email", "phone")}
+
+
+@router.post("/appointments/contact")
+async def save_sales_contact(
+    thread_id: UUID,
+    payload: SalesContactInput,
+    request: Request,
+) -> dict[str, str]:
+    if not sales_enabled(request):
+        raise HTTPException(404, "sales_mode_required")
+    if not payload.name.strip():
+        raise HTTPException(422, "name_required")
+    async with sales_access(request, thread_id) as sales:
+        return await sales.contact(
+            thread_id, payload.model_dump(exclude_unset=True, exclude_none=True)
+        )
+
+
+@router.post("/appointments/{appointment_id}/confirm")
+async def confirm_sales_offer(
+    thread_id: UUID,
+    appointment_id: UUID,
+    payload: ConfirmInput,
+    request: Request,
+) -> dict[str, Any]:
+    if not sales_enabled(request):
+        raise HTTPException(404, "sales_mode_required")
+    async with sales_access(request, thread_id) as sales:
+        return await sales.mutate(
+            thread_id,
+            payload.request_id,
+            "confirm",
+            {
+                "consultationId": str(appointment_id),
+                "expectedVersion": payload.expected_version,
+            },
+        )
+
+
+@router.get("/appointments/operations")
+async def pending_sales_operations(thread_id: UUID, request: Request) -> list[dict[str, Any]]:
+    async with factory(request)() as session:
+        await owned_thread(request, session, thread_id)
+        rows = (
+            (
+                await session.execute(
+                    select(WorkflowRecord).where(
+                        WorkflowRecord.thread_id == thread_id,
+                        WorkflowRecord.kind == "sales_operation",
+                        WorkflowRecord.status == "pending",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "request_id": str(row.id),
+                "status": row.status,
+                "action": row.payload["request"]["tool"],
+            }
+            for row in rows
+        ]
+
+
+@router.post("/appointments/operations/{request_id}/retry")
+async def retry_sales_operation(
+    thread_id: UUID,
+    request_id: UUID,
+    request: Request,
+) -> dict[str, Any]:
+    if not sales_enabled(request):
+        raise HTTPException(404, "sales_mode_required")
+    async with sales_access(request, thread_id) as sales:
+        async with factory(request)() as session:
+            row = await session.get(WorkflowRecord, request_id)
+            if row is None or row.thread_id != thread_id or row.kind != "sales_operation":
+                raise HTTPException(404, "sales_operation_not_found")
+            intent = row.payload["request"]
+            arguments = {
+                k: v for k, v in intent["arguments"].items() if k not in {"requestId", "leadId"}
+            }
+        return await sales.mutate(
+            thread_id,
+            request_id,
+            intent["tool"].removeprefix("sales_consultation_"),
+            arguments,
+        )

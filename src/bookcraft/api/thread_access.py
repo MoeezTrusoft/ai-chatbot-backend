@@ -26,6 +26,8 @@ async def authorize_chat(
     resolved_id = thread_id or uuid4()
     if settings.api_auth_mode == "off" or "chat:manage" in principal.scopes:
         return resolved_id, customer_id or principal.customer_id
+    if settings.sales_integration_mode == "erp_mcp" and principal.customer_id is None:
+        raise HTTPException(403, "sales_customer_identity_required")
     if customer_id is not None and customer_id != principal.customer_id:
         raise HTTPException(status_code=403, detail={"error": "customer_identity_mismatch"})
     customer_id = principal.customer_id

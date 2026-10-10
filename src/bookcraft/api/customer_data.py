@@ -7,11 +7,18 @@ from fastapi import APIRouter, Query, Request
 from sqlmodel import col, select
 
 from bookcraft.api.management_access import factory, owned_thread
+from bookcraft.api.sales_access import sales_enabled
 from bookcraft.components.storage.management_models import WorkflowRecord
 from bookcraft.components.storage.models import ThreadEvent, utc_now
 from bookcraft.components.storage.thread_repository import ThreadRepository
 
 router = APIRouter(prefix="/api/v1/customer/threads/{thread_id}", tags=["customer-data"])
+
+
+def deletion_scope(request: Request) -> dict[str, str]:
+    if sales_enabled(request):
+        return {"scope": "chatbot_conversation", "sales_records": "retained_in_sales"}
+    return {}
 
 
 @router.get("/export")
@@ -77,12 +84,16 @@ async def delete_thread(thread_id: UUID, request: Request) -> dict[str, str]:
             .first()
         )
         if existing:
-            return {"request_id": str(existing.id), "status": existing.status}
+            return {
+                "request_id": str(existing.id),
+                "status": existing.status,
+                **deletion_scope(request),
+            }
         thread.deleted_at, thread.deletion_reason = utc_now(), "customer_request"
         record = WorkflowRecord(thread_id=thread_id, kind="deletion", status="queued")
         session.add_all([thread, record])
         await session.commit()
-        return {"request_id": str(record.id), "status": "queued"}
+        return {"request_id": str(record.id), "status": "queued", **deletion_scope(request)}
 
 
 @router.get("/deletion")
@@ -100,4 +111,4 @@ async def deletion_status(thread_id: UUID, request: Request) -> dict[str, str]:
             .scalars()
             .first()
         )
-        return {"status": record.status if record else "not_requested"}
+        return {"status": record.status if record else "not_requested", **deletion_scope(request)}

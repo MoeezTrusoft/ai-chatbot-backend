@@ -90,7 +90,9 @@ class ThreadRepository:
             async with self.session_factory() as session:
                 record = await session.get(ThreadRecord, thread_id)
                 if record is not None:
-                    owned = record.owner_subject == subject
+                    owned = record.owner_subject == subject and (
+                        customer_id is None or record.customer_id == customer_id
+                    )
                     legacy_owned = (
                         record.owner_subject is None
                         and customer_id is not None

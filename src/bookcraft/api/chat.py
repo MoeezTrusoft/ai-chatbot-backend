@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from bookcraft.api.auth import authenticate_websocket, require_http_auth, require_scope
 from bookcraft.api.correlation import sanitize_correlation_id
+from bookcraft.api.sales_access import sales_access, sales_enabled, sales_service
 from bookcraft.api.security import is_origin_allowed
 from bookcraft.api.thread_access import authorize_chat
 from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
@@ -303,8 +304,26 @@ async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> Chat
     capture — are refused and return ``fields_applied: []``.
     """
     settings = request.app.state.settings
-    require_scope(request, settings, "chat:manage")
+    principal = require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
+    if sales_enabled(request) and principal.subject == settings.sales_website_subject:
+        require_scope(request, settings, "chat:turn")
+        await authorize_chat(principal, settings, service, payload.thread_id, principal.customer_id)
+        profile = await sales_service(request).profile(payload.thread_id)
+        # The bridge may send facts before the first turn. Resolve its signed
+        # customer, and use authoritative Sales fields, never the submitted body.
+        fields = ("name", "email", "phone")
+        payload = payload.model_copy(
+            update={
+                **{
+                    key: profile.get(key) if profile.get("status") != "Visitor" else None
+                    for key in fields
+                },
+                "source_label": "crm_sync",
+            }
+        )
+    else:
+        require_scope(request, settings, "chat:manage")
     return ChatFactsResponse.model_validate(await service.handle_inject_facts(payload))
 
 
@@ -323,6 +342,10 @@ async def chat_consultation_confirmed(
     settings = request.app.state.settings
     require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
+    if sales_enabled(request):
+        async with sales_access(request, payload.thread_id) as sales:
+            await sales.callback(payload.thread_id, payload.appointment_id, "Scheduled")
+        return ConsultationConfirmedResponse(thread_id=payload.thread_id, confirmed=True)
     return ConsultationConfirmedResponse.model_validate(
         await service.handle_consultation_confirmed(payload)
     )
@@ -342,6 +365,10 @@ async def chat_consultation_cancelled(
     settings = request.app.state.settings
     require_scope(request, settings, "chat:manage")
     service: ChatService = request.app.state.chat_service
+    if sales_enabled(request):
+        async with sales_access(request, payload.thread_id) as sales:
+            await sales.callback(payload.thread_id, payload.appointment_id, "Canceled")
+        return ConsultationCancelledResponse(thread_id=payload.thread_id, cancelled=True)
     return ConsultationCancelledResponse.model_validate(
         await service.handle_consultation_cancelled(payload)
     )

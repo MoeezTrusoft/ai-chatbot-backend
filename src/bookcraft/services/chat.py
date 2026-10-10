@@ -440,6 +440,10 @@ class ChatService:
     async def handle_turn(self, payload: ChatTurnRequest) -> ChatTurnResponse:
         from bookcraft.api.chat import ChatTurnResponse
 
+        sales = getattr(self.action_dispatcher, "sales_service", None)
+        if sales is not None and payload.thread_id is not None:
+            await sales.appointments(payload.thread_id)
+
         # Attachment-only turn (file uploaded with no typed text): synthesize a
         # message so the whole pipeline (safety, preprocessing, intent, attachment
         # intake) has text to work with and the bot acknowledges the upload by name
@@ -1757,6 +1761,10 @@ class ChatService:
             # Step 8 (Batch 1): Use final_draft approved_urls, not original draft.
             # If repair/fallback changed the draft, the URLs must come from the
             # final version — not the original potentially-blocked draft.
+            if getattr(self.action_dispatcher, "sales_service", None) is not None:
+                from bookcraft.components.response.generator import sales_safe_response
+
+                final_text = sales_safe_response(final_text)
             bubbles = self.formatter.format(
                 final_text, approved_urls=set(final_draft.approved_urls)
             )

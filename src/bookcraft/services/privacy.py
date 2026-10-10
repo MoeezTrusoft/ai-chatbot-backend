@@ -33,7 +33,7 @@ async def erase_thread(
         thread = await session.get(models.ThreadRecord, thread_id)
         if thread is None or thread.deleted_at is None:
             return
-        if settings.csr_node_api_url:
+        if settings.csr_node_api_url and settings.sales_integration_mode == "standalone":
             response = await client.delete(
                 settings.csr_node_api_url.rstrip("/") + f"/api/threads/{thread_id}/data",
                 headers={"Authorization": f"Bearer {settings.csr_node_api_token}"},
@@ -139,7 +139,7 @@ async def erase_thread(
         thread.state = ThreadState().model_dump(mode="json")
         # Legacy threads use the customer UUID as their sole ownership key.
         # Retain that minimal tombstone key so the owner can verify erasure.
-        if thread.owner_subject is not None:
+        if thread.owner_subject is not None and settings.sales_integration_mode == "standalone":
             thread.customer_id = None
         thread.version += 1
         session.add(thread)

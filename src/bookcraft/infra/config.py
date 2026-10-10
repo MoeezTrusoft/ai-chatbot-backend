@@ -1,7 +1,9 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
+from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -112,9 +114,16 @@ class Settings(BaseSettings):
     # email is already captured (the customer can still decline and proceed email-only).
     consultation_require_phone: bool = True
 
-    # CSR Node.js backend — direct API call after consultation is booked so the
-    # appointment always appears on the CSR dashboard regardless of action-event sync.
-    # Both services run on the same server → use localhost + CSR Node port (5050).
+    # Standalone receiver and ERP Sales are distinct protocols. Never fall back
+    # to local scheduling when ERP is unavailable.
+    sales_integration_mode: Literal["standalone", "erp_mcp"] = "standalone"
+    sales_mcp_url: str | None = None
+    sales_mcp_internal_secret: str | None = Field(default=None, repr=False)
+    sales_service_jwt_file: str | None = None
+    sales_tenant_id: str | None = None
+    sales_actor_id: str | None = None
+    sales_website_subject: str = "sales-website-bridge"
+    sales_timeout_seconds: float = Field(default=30, gt=0, le=60, allow_inf_nan=False)
     csr_node_api_url: str = "http://localhost:5050"
     csr_node_api_token: str | None = None
     csr_node_consultation_timeout_seconds: float = 10.0
@@ -222,6 +231,39 @@ class Settings(BaseSettings):
     jwt_ttl_hours: int = 24
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     rate_limit_per_ip_per_minute: int = 30
+
+    @model_validator(mode="after")
+    def validate_sales_connection(self) -> "Settings":
+        if self.sales_integration_mode != "erp_mcp":
+            return self
+        if self.api_auth_mode != "jwt" or not self.jwt_signing_key:
+            raise ValueError("ERP Sales requires authenticated customer JWTs")
+        if not all(
+            (
+                self.sales_mcp_url,
+                self.sales_mcp_internal_secret,
+                self.sales_service_jwt_file,
+                self.sales_tenant_id,
+                self.sales_actor_id,
+            )
+        ):
+            raise ValueError(
+                "ERP Sales requires URL, internal secret, token file, tenant and actor"
+            )
+        self.sales_tenant_id = str(UUID(str(self.sales_tenant_id)))
+        url = urlsplit(str(self.sales_mcp_url))
+        if (
+            url.scheme not in {"https", "http"}
+            or not url.hostname
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
+            or url.path != "/mcp"
+            or (url.scheme == "http" and url.hostname not in {"localhost", "127.0.0.1", "::1"})
+        ):
+            raise ValueError("Use an HTTPS Sales /mcp URL (HTTP allowed only on loopback)")
+        return self
 
 
 @lru_cache

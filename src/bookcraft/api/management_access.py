@@ -30,7 +30,13 @@ async def owned_thread(
         raise HTTPException(404, "thread_not_found")
     if request.app.state.settings.api_auth_mode == "off" or "chat:manage" in principal.scopes:
         return record
-    if record.owner_subject == principal.subject:
+    if request.app.state.settings.sales_integration_mode == "erp_mcp" and (
+        principal.customer_id is None or record.customer_id != principal.customer_id
+    ):
+        raise HTTPException(403, "thread_not_accessible")
+    if record.owner_subject == principal.subject and (
+        principal.customer_id is None or record.customer_id == principal.customer_id
+    ):
         return record
     if (
         record.owner_subject is None

@@ -102,8 +102,10 @@ from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter, RedisRateLimitStore
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.redaction import redact_text
+from bookcraft.infra.sales_mcp import SalesError, SalesMcpClient
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
+from bookcraft.services.sales import SalesService
 from bookcraft.tools import (
     DbToolAuditSink,
     IdempotencyStore,
@@ -199,7 +201,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         outbox_task: asyncio.Task[None] | None = None
         outbox_client: httpx.AsyncClient | None = None
-        if session_factory is not None and resolved_settings.csr_node_api_url:
+        if (
+            session_factory is not None
+            and resolved_settings.csr_node_api_url
+            and resolved_settings.sales_integration_mode == "standalone"
+        ):
             outbox_client = httpx.AsyncClient(
                 timeout=resolved_settings.csr_node_consultation_timeout_seconds
             )
@@ -224,6 +230,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            sales = getattr(app.state, "sales_service", None)
+            if sales is not None:
+                await sales.client.aclose()
             if maintenance_task is not None:
                 maintenance_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -295,7 +304,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory = create_session_factory(db_engine)
         thread_repository = ThreadRepository(session_factory=session_factory)
         app.state.db_engine = db_engine
-        app.state.holiday_repository = HolidayRepository(session_factory=session_factory)
+        if resolved_settings.sales_integration_mode == "standalone":
+            app.state.holiday_repository = HolidayRepository(session_factory=session_factory)
 
         elasticsearch_client = AsyncElasticsearch(
             hosts=[resolved_settings.elasticsearch_url],
@@ -326,6 +336,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate_limit_client is not None
         else None,
     )
+    if resolved_settings.sales_integration_mode == "erp_mcp":
+        if session_factory is None:
+            raise RuntimeError("ERP Sales mode requires persistent storage")
+        app.state.sales_service = SalesService(SalesMcpClient(resolved_settings), session_factory)
+        app.state.chat_service.action_dispatcher.sales_service = app.state.sales_service
+        app.state.readiness_checker.sales_client = app.state.sales_service.client
+
+    @app.exception_handler(SalesError)
+    async def sales_error_handler(request: Request, exc: SalesError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            content={
+                "detail": exc.code,
+                "retry_same_request": exc.uncertain,
+            },
+        )
 
     @app.exception_handler(TimeoutError)
     async def turn_timeout_handler(request: Request, exc: TimeoutError) -> JSONResponse:
@@ -339,7 +365,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
-    app.include_router(holidays_router)
+    if resolved_settings.sales_integration_mode == "standalone":
+        app.include_router(holidays_router)
     app.state.session_factory = session_factory
     app.include_router(appointments_router)
     app.include_router(customer_data_router)
@@ -540,7 +567,7 @@ def build_chat_service(
     )
     consultation_action_service = (
         None
-        if session_factory is None
+        if session_factory is None or settings.sales_integration_mode == "erp_mcp"
         else ConsultationActionService(
             repository=ConsultationRepository(
                 session_factory=session_factory, enqueue_csr_sync=bool(settings.csr_node_api_url)
@@ -550,6 +577,7 @@ def build_chat_service(
         )
     )
     response_generator = build_response_generator(settings)
+    response_generator.sales_mode = settings.sales_integration_mode == "erp_mcp"
     _rg_adapter = getattr(response_generator, "adapter", None)
     # Extraction + CSR summarization run on a cheaper model than response generation
     # (which is now Opus). Build a dedicated adapter so a single env/config change does

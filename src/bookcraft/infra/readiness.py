@@ -9,12 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from bookcraft.infra.config import Settings
+from bookcraft.infra.sales_mcp import SalesError, SalesMcpClient
 from bookcraft.infra.schemas import DependencyStatus, ReadinessResponse
 
 
 @dataclass(slots=True)
 class ReadinessChecker:
     settings: Settings
+    sales_client: SalesMcpClient | None = None
 
     async def check(self) -> ReadinessResponse:
         if not self.settings.readiness_check_externals:
@@ -28,16 +30,30 @@ class ReadinessChecker:
                 },
             )
 
-        checks = await asyncio.gather(
+        pending = [
             self._check_postgres(),
             self._check_redis(),
             self._check_elasticsearch(),
             self._check_tei(),
-        )
+        ]
+        if self.settings.sales_integration_mode == "erp_mcp":
+            pending.append(self._check_sales())
+        checks = await asyncio.gather(*pending)
         dependencies = {name: status for name, status in checks}
         all_dependencies_ok = all(item.status == "ok" for item in dependencies.values())
         overall = "ready" if all_dependencies_ok else "not_ready"
         return ReadinessResponse(status=overall, dependencies=dependencies)
+
+    async def _check_sales(self) -> tuple[str, DependencyStatus]:
+        client = self.sales_client or SalesMcpClient(self.settings)
+        try:
+            await client.call("sales_consultation_config_get", {})
+            return "sales", DependencyStatus(status="ok")
+        except SalesError:
+            return "sales", DependencyStatus(status="error", detail="sales_unavailable")
+        finally:
+            if self.sales_client is None:
+                await client.aclose()
 
     async def _check_postgres(self) -> tuple[str, DependencyStatus]:
         engine = create_async_engine(self.settings.database_url, pool_pre_ping=True)

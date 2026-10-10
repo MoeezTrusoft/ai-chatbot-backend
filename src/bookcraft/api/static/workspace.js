@@ -2,7 +2,22 @@
 let token = "",
     threadId = "",
     bookingRecord = null;
+let salesMode = false;
+const operationIds = new Map();
 const $ = id => document.getElementById(id);
+
+function operationId(key) {
+    if (!operationIds.has(key)) operationIds.set(key, crypto.randomUUID());
+    return operationIds.get(key);
+}
+
+async function saveSalesContact() {
+    return api("/customer/threads/" + threadId + "/appointments/contact", {
+        method: "POST",
+        body: JSON.stringify({name: $("name").value.trim(), phone: $("phone").value.trim(),
+            email: $("email").value.trim() || null})
+    });
+}
 
 function notice(message, error = false) {
     $("notice").textContent = message;
@@ -103,6 +118,8 @@ async function loadAnalytics() {
     const data = await api("/staff/analytics"),
         area = clear("analytics-data");
     text(area, "Last " + data.days + " days", "h3");
+    if (data.sales_metrics_source === "erp_sales")
+        text(area, "Sales lead and appointment totals are available in the Sales reporting workspace.");
     factList(area, {
         conversations: data.conversations,
         leads: data.leads,
@@ -213,21 +230,66 @@ async function openCustomer(id) {
     $("thread-id").value = id;
     switchTab("customer");
     $("customer-detail").hidden = false;
+    const policy = await api("/customer/threads/" + id + "/appointments/policy");
+    salesMode = policy.mode === "erp_mcp";
+    $("sales-contact").hidden = !salesMode;
+    $("phone").parentElement.hidden = !salesMode;
+    $("phone").required = salesMode;
+    $("email").required = !salesMode;
+    $("reminders").parentElement.hidden = salesMode;
+    if (salesMode) {
+        $("reminders").checked = false;
+        const profile = await api("/customer/threads/" + id + "/appointments/contact");
+        for (const field of ["name", "email", "phone"]) $(field).value = profile[field] || "";
+    }
+    $("booking-policy").textContent = salesMode ?
+        "Sales controls availability (" + policy.policy.timezone + ", " +
+        policy.policy.durationMinutes + " minutes). Times are suggestions until booked. " +
+        "A name and international phone number are required. Reminders are managed by Sales." :
+        "Choose an available appointment time.";
     const rows = await api("/customer/threads/" + id + "/appointments");
     bookingRecord = rows.find(row => row.status === "scheduled") || null;
     const area = clear("bookings");
     for (const row of rows) {
         text(area, row.customer_display_time + " · " + row.csr_name + " · " + row.status);
-        if (row.status === "scheduled") button(area, "Cancel appointment", async () => {
+        if (["scheduled", "proposed"].includes(row.status)) button(area, "Cancel appointment", async () => {
             if (!confirm("Cancel this consultation?")) return;
-            await api("/customer/threads/" + id + "/appointments/" + row.id + "?expected_version=" + row.version, {
+            const key = id + ":cancel:" + row.id + ":" + row.version;
+            await api("/customer/threads/" + id + "/appointments/" + row.id + "?expected_version=" + row.version +
+                (salesMode ? "&request_id=" + operationId(key) : ""), {
                 method: "DELETE"
             });
+            operationIds.delete(key);
             notice("Appointment cancelled.");
             await openCustomer(id);
         });
+        if (row.status === "proposed") {
+            text(area, "Alternative time offered; not booked. Expires " + row.offer_expires_at);
+            button(area, "Accept this offered time", async () => {
+                const key = id + ":confirm:" + row.id + ":" + row.version;
+                const result = await api("/customer/threads/" + id + "/appointments/" + row.id + "/confirm", {
+                    method: "POST", body: JSON.stringify({
+                        expected_version: row.version, request_id: operationId(key)
+                    })
+                });
+                operationIds.delete(key);
+                notice("Appointment " + result.status + ".");
+                await openCustomer(id);
+            });
+        }
     }
-    if (bookingRecord) {
+    if (salesMode) {
+        for (const pending of await api("/customer/threads/" + id + "/appointments/operations")) {
+            text(area, "An appointment request needs reconciliation: " + pending.action);
+            button(area, "Check and retry original request", async () => {
+                const result = await api("/customer/threads/" + id + "/appointments/operations/" +
+                    pending.request_id + "/retry", {method: "POST"});
+                notice("Appointment " + result.status + ".");
+                await openCustomer(id);
+            });
+        }
+    }
+    if (bookingRecord && !salesMode) {
         $("name").value = bookingRecord.customer_name;
         $("email").value = bookingRecord.customer_email || "";
         $("timezone").value = bookingRecord.customer_timezone;
@@ -294,13 +356,21 @@ $("availability").addEventListener("submit", action(async () => {
         }) + " · " + slot.csr_name;
         select.append(option);
     }
-    if (!slots.length) notice("No available times on that date.");
+    if (!slots.length) notice("No available times found.");
+    else if (salesMode) notice("Showing up to 20 suggestions at or after your selected date.");
+}));
+$("sales-contact").addEventListener("click", action(async () => {
+    await saveSalesContact();
+    notice("Sales contact details saved. You can now find available times.");
 }));
 $("booking").addEventListener("submit", action(async () => {
     if (!$("slot").value) throw Error("Choose an available time first.");
     const slot = JSON.parse($("slot").value);
+    const key = threadId + ":book:" + JSON.stringify([bookingRecord?.id, bookingRecord?.version,
+        slot.starts_at, slot.csr_id, $("timezone").value]);
     const value = {
-        appointment_id: bookingRecord?.id || crypto.randomUUID(),
+        appointment_id: bookingRecord?.id || operationId(key),
+        ...(salesMode ? {request_id: operationId(key)} : {}),
         expected_version: bookingRecord?.version || 0,
         starts_at: slot.starts_at,
         customer_timezone: $("timezone").value,
@@ -310,11 +380,13 @@ $("booking").addEventListener("submit", action(async () => {
         reminders_enabled: $("reminders").checked,
         services: bookingRecord?.services || []
     };
-    await api("/customer/threads/" + threadId + "/appointments", {
+    const result = await api("/customer/threads/" + threadId + "/appointments", {
         method: "POST",
         body: JSON.stringify(value)
     });
-    notice("Appointment saved.");
+    operationIds.delete(key);
+    notice(result.status === "proposed" ? "Sales offered an alternative time. Review and accept it to book." :
+        "Appointment " + result.status + ".");
     await openCustomer(threadId);
 }));
 $("feedback").addEventListener("submit", action(async () => {
@@ -350,7 +422,9 @@ $("export").addEventListener("click", action(async () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }));
 $("delete-data").addEventListener("click", action(async () => {
-    if (!confirm("Delete this conversation and its associated data? This cannot be undone.")) return;
+    if (!confirm(salesMode ?
+        "Delete this chatbot conversation? Sales customer records and appointments remain in Sales. Request account erasure through Sales separately." :
+        "Delete this conversation and its associated data? This cannot be undone.")) return;
     const result = await api("/customer/threads/" + threadId + "/data", {
         method: "DELETE"
     });

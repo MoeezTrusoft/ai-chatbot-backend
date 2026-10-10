@@ -33,6 +33,8 @@ from bookcraft.components.storage.action_idempotency_repository import (
     ActionIdempotencyRepository,
     make_slots_hash,
 )
+from bookcraft.infra.sales_mcp import SalesError
+from bookcraft.services.sales import SalesService
 
 logger = structlog.get_logger(__name__)
 
@@ -67,6 +69,7 @@ class SalesActionDispatcher:
     # can exercise post-lead flows without a real DB.  In production this must be False
     # so a missing lead_service surfaces as a hard failure rather than silent data loss.
     app_env: str = "dev"
+    sales_service: SalesService | None = None
 
     async def dispatch(
         self,
@@ -77,6 +80,42 @@ class SalesActionDispatcher:
     ) -> ActionResult | None:
         if plan.action_type is None or plan.status != ActionStatus.READY:
             return None
+        if self.sales_service is not None and plan.action_type in {
+            ActionType.CREATE_LEAD,
+            ActionType.SCHEDULE_CONSULTATION,
+        }:
+            # Booking is an explicit portal selection. Do not normalize a
+            # natural-language time through standalone hours or manufacture a
+            # local appointment that Sales never accepted.
+            if plan.action_type == ActionType.SCHEDULE_CONSULTATION:
+                return ActionResult(
+                    action_type=plan.action_type,
+                    success=False,
+                    customer_safe_summary=(
+                        "Please choose a time in the booking form. It shows current Sales "
+                        "availability and will ask you to accept any alternative offer."
+                    ),
+                    error_code="sales_booking_confirmation_required",
+                    payload={"booking_url": f"/portal?thread={thread_id}"},
+                )
+            try:
+                _, lead_id = await self.sales_service.lead(thread_id, create=True)
+                return ActionResult(
+                    action_type=plan.action_type,
+                    success=True,
+                    result_id=lead_id,
+                    customer_safe_summary="Your enquiry is linked to your Sales profile.",
+                    payload={"lead_id": lead_id, "source": "erp_sales"},
+                )
+            except SalesError as exc:
+                return ActionResult(
+                    action_type=plan.action_type,
+                    success=False,
+                    error_code=exc.code,
+                    customer_safe_summary=(
+                        "I could not synchronize your Sales profile. Please retry."
+                    ),
+                )
 
         # Build or retrieve idempotency key.
         idem_key = plan.idempotency_key or _make_idempotency_key(

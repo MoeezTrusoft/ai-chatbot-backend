@@ -19,6 +19,64 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+async def test_sales_receipt_recovery_and_concurrent_replay_on_migrated_database(tmp_path):
+    import httpx
+
+    from bookcraft.components.storage.management_models import WorkflowRecord
+    from bookcraft.infra.config import Settings
+    from bookcraft.infra.sales_mcp import SalesError, SalesMcpClient
+    from bookcraft.services.sales import SalesService
+    from tests.integration.test_sales_alignment import CUSTOMER, TENANT, SalesFixture, service_token
+    from tests.unit.test_api_auth_unit import SIGNING_KEY
+
+    engine = create_async_engine(os.environ["TEST_POSTGRES_URL"])
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = ThreadRepository(sessions)
+    thread, operation = uuid4(), uuid4()
+    token_file = tmp_path / "sales.jwt"
+    await asyncio.to_thread(token_file.write_text, service_token(), encoding="utf-8")
+    settings = Settings(
+        app_env="test",
+        api_auth_mode="jwt",
+        jwt_signing_key=SIGNING_KEY,
+        sales_integration_mode="erp_mcp",
+        sales_mcp_url="https://sales.example.invalid/mcp",
+        sales_service_jwt_file=str(token_file),
+        sales_tenant_id=TENANT,
+        sales_actor_id="chatbot",
+        sales_mcp_internal_secret="internal-test-secret",  # noqa: S106 - synthetic credential
+    )
+    from uuid import UUID
+
+    await repository.authorize(thread_id=thread, subject="bridge", customer_id=UUID(CUSTOMER))
+    fixture = SalesFixture()
+    client = SalesMcpClient(settings, httpx.AsyncClient(transport=httpx.MockTransport(fixture)))
+    service = SalesService(client, sessions)
+    arguments = {"startTime": "2030-10-12T22:15:00+05:00", "userTimezone": "Asia/Karachi"}
+
+    async def book():
+        async with repository.serialize(thread):
+            return await service.mutate(thread, operation, "schedule", arguments)
+
+    try:
+        fixture.lose_response = True
+        with pytest.raises(SalesError, match="sales_outcome_unknown"):
+            await book()
+        async with sessions() as session:
+            assert (await session.get(WorkflowRecord, operation)).status == "pending"
+        # New service instance, same persisted database, simultaneous callers.
+        service = SalesService(client, sessions)
+        results = await asyncio.gather(book(), book())
+        assert results[0]["id"] == results[1]["id"]
+        assert len(fixture.rows) == 1
+        assert len([name for name, _ in fixture.calls if name.endswith("_schedule")]) == 2
+        async with sessions() as session:
+            assert (await session.get(WorkflowRecord, operation)).status == "acknowledged"
+    finally:
+        await client.aclose()
+        await engine.dispose()
+
+
 async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
     from datetime import datetime, timedelta
 
