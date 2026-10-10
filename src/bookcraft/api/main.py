@@ -644,6 +644,7 @@ def build_chat_service(
         context_pack_builder=ContextPackBuilder(
             budget_enabled=settings.context_pack_budget_enabled,
             hint_token_budget=settings.context_pack_hint_token_budget,
+            sales_mode=settings.sales_integration_mode == "erp_mcp",
         ),
         rag_retriever=rag_retriever,
         pricing_engine=pricing_engine,

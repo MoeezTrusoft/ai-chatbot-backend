@@ -511,3 +511,70 @@ def test_sales_prompts_do_not_advertise_standalone_hours():
     assert "10 AM" not in sales_safe_response(
         "We're available Monday–Friday, 10 AM to 7 PM Central."
     )
+
+
+def test_sales_context_does_not_offer_standalone_slots(monkeypatch):
+    from bookcraft.components.context import ContextPackBuilder
+    from bookcraft.components.sales.consultation_state import ConsultationStage
+    from bookcraft.domain.state import ThreadState
+    from tests.unit.test_context_pack_builder import _intent
+
+    monkeypatch.setattr(
+        "bookcraft.components.context.pack_builder.suggest_consultation_slot_labels",
+        lambda **kwargs: ["Unverified standalone slot"],
+    )
+    state = ThreadState(consultation_stage=ConsultationStage.REQUESTED_TIME_SLOTS_OFFERED)
+    assert ContextPackBuilder().build(state=state, intent=_intent()).suggested_call_slots
+    assert (
+        not ContextPackBuilder(sales_mode=True)
+        .build(state=state, intent=_intent())
+        .suggested_call_slots
+    )
+
+
+async def test_sales_lead_updates_state_without_becoming_a_local_foreign_key(integration):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from bookcraft.components.pricing_actions.schemas import PricingActionResult
+    from bookcraft.domain.state import ThreadState
+
+    _, tid, app, _, _ = integration
+    dispatcher = app.state.chat_service.action_dispatcher
+    lead = await dispatcher.dispatch(
+        ActionPlan(
+            action_type=ActionType.CREATE_LEAD,
+            status=ActionStatus.READY,
+            collected_slots={},
+            reason="test enquiry",
+        ),
+        thread_id=tid,
+        customer_id=UUID(CUSTOMER),
+    )
+    state = ThreadState()
+    app.state.chat_service._apply_sales_action_result_to_state(state, lead)
+    assert state.lead_id == LEAD and state.lead_created
+    quote = AsyncMock(
+        return_value=PricingActionResult(
+            quote_id=uuid4(),
+            status="needs_input",
+            services=["editing"],
+            customer_safe_summary="Draft estimate",
+            quote_output={},
+        )
+    )
+    dispatcher.pricing_action_service = SimpleNamespace(quote=quote)
+    result = await dispatcher.dispatch(
+        ActionPlan(
+            action_type=ActionType.PRICE_QUOTE,
+            status=ActionStatus.READY,
+            collected_slots={"lead_id": LEAD, "services": ["editing"]},
+            reason="test estimate",
+        ),
+        thread_id=tid,
+        customer_id=UUID(CUSTOMER),
+    )
+    assert result.success
+    request = quote.call_args.args[0]
+    assert request.lead_id is None
+    assert request.collected_slots["lead_id"] == LEAD

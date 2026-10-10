@@ -99,13 +99,20 @@ class SalesActionDispatcher:
                     payload={"booking_url": f"/portal?thread={thread_id}"},
                 )
             try:
-                _, lead_id = await self.sales_service.lead(thread_id, create=True)
+                profile = await self.sales_service.profile(thread_id)
+                _, lead_id = await self.sales_service.lead(thread_id, create=True, profile=profile)
                 return ActionResult(
                     action_type=plan.action_type,
                     success=True,
                     result_id=lead_id,
                     customer_safe_summary="Your enquiry is linked to your Sales profile.",
-                    payload={"lead_id": lead_id, "source": "erp_sales"},
+                    payload={
+                        "lead": {
+                            "id": lead_id,
+                            **{field: profile.get(field) for field in ("name", "email", "phone")},
+                        },
+                        "source": "erp_sales",
+                    },
                 )
             except SalesError as exc:
                 return ActionResult(
@@ -222,6 +229,11 @@ class SalesActionDispatcher:
             )
         return result
 
+    def _local_lead_id(self, value: object) -> UUID | None:
+        # ERP IDs belong to Sales, not to the chatbot's sales_leads foreign key.
+        # Local draft artifacts keep their thread/customer link and source slots.
+        return None if self.sales_service is not None else _uuid_or_none(value)
+
     async def _schedule_consultation(
         self,
         plan: ActionPlan,
@@ -321,7 +333,14 @@ class SalesActionDispatcher:
                     business_timezone=_string_or_none(slots.get("business_timezone"))
                     or "America/Chicago",
                     duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,
-                    metadata={"action_plan_reason": plan.reason},
+                    metadata={
+                        "action_plan_reason": plan.reason,
+                        **(
+                            {"sales_lead_id": str(slots.get("lead_id"))}
+                            if self.sales_service is not None and slots.get("lead_id")
+                            else {}
+                        ),
+                    },
                 )
             )
         except RequestedTimeInPastError as exc:
@@ -518,7 +537,7 @@ class SalesActionDispatcher:
                 AgreementActionRequest(
                     customer_id=customer_id,
                     thread_id=thread_id,
-                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    lead_id=self._local_lead_id(slots.get("lead_id")),
                     quote_id=_uuid_or_none(slots.get("quote_id")),
                     client_full_name=_string_or_none(slots.get("name")) or "",
                     client_phone=_string_or_none(slots.get("phone")) or "",
@@ -528,7 +547,14 @@ class SalesActionDispatcher:
                     signature=_string_or_none(slots.get("signature"))
                     or _string_or_none(slots.get("name")),
                     send_email=bool(slots.get("send_email")),
-                    metadata={"action_plan_reason": plan.reason},
+                    metadata={
+                        "action_plan_reason": plan.reason,
+                        **(
+                            {"sales_lead_id": str(slots.get("lead_id"))}
+                            if self.sales_service is not None and slots.get("lead_id")
+                            else {}
+                        ),
+                    },
                 )
             )
         except Exception as exc:
@@ -583,7 +609,7 @@ class SalesActionDispatcher:
                 NDAActionRequest(
                     customer_id=customer_id,
                     thread_id=thread_id,
-                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    lead_id=self._local_lead_id(slots.get("lead_id")),
                     author_title=_string_or_none(slots.get("author_title")) or "Author",
                     author_full_name=_string_or_none(slots.get("name")) or "",
                     author_phone=_string_or_none(slots.get("phone")) or "",
@@ -592,7 +618,14 @@ class SalesActionDispatcher:
                     signature=_string_or_none(slots.get("signature"))
                     or _string_or_none(slots.get("name")),
                     send_email=bool(slots.get("send_email")),
-                    metadata={"action_plan_reason": plan.reason},
+                    metadata={
+                        "action_plan_reason": plan.reason,
+                        **(
+                            {"sales_lead_id": str(slots.get("lead_id"))}
+                            if self.sales_service is not None and slots.get("lead_id")
+                            else {}
+                        ),
+                    },
                 )
             )
         except Exception as exc:
@@ -722,7 +755,7 @@ class SalesActionDispatcher:
                 PricingActionRequest(
                     customer_id=customer_id,
                     thread_id=thread_id,
-                    lead_id=_uuid_or_none(slots.get("lead_id")),
+                    lead_id=self._local_lead_id(slots.get("lead_id")),
                     services=services,
                     collected_slots=slots,
                     use_default_assumptions=bool(slots.get("use_default_assumptions")),

@@ -14,6 +14,7 @@ from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurn
 from bookcraft.components.storage.thread_repository import ThreadVersionConflictError
 from bookcraft.infra.config import Settings
 from bookcraft.infra.rate_limit import RateLimiter, client_ip_from_scope
+from bookcraft.infra.sales_mcp import SalesError
 from bookcraft.services.chat import ChatService
 
 # Re-export so existing code that imports from bookcraft.api.chat still works.
@@ -453,6 +454,9 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
             except ThreadVersionConflictError:
                 await websocket.send_json({"type": "error", "code": "thread_conflict"})
                 continue
+            except SalesError as exc:
+                await websocket.send_json({"type": "error", "code": exc.code})
+                continue
             for bubble in response.bubbles:
                 await websocket.send_json({"type": "typing_start"})
                 await websocket.send_json({"type": "typing_stop"})
@@ -572,6 +576,9 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
                 continue
             except ThreadVersionConflictError:
                 await websocket.send_json({"type": "error", "code": "thread_conflict"})
+                continue
+            except SalesError as exc:
+                await websocket.send_json({"type": "error", "code": exc.code})
                 continue
 
             if not streaming_enabled:

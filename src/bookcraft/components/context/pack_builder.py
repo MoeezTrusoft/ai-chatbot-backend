@@ -64,9 +64,11 @@ class ContextPackBuilder:
         self,
         budget_enabled: bool = False,
         hint_token_budget: int = 1200,
+        sales_mode: bool = False,
     ) -> None:
         self._budget_enabled = budget_enabled
         self._hint_token_budget = hint_token_budget
+        self._sales_mode = sales_mode
 
     def build(
         self,
@@ -482,7 +484,7 @@ class ContextPackBuilder:
             and bool(state_preferred_call_time)
             and not is_definite_call_time(state_preferred_call_time)
         )
-        if _needs_slots:
+        if _needs_slots and not self._sales_mode:
             suggested_call_slots = suggest_consultation_slot_labels(
                 now=datetime.now(ZoneInfo("America/Chicago")),
                 count=3,

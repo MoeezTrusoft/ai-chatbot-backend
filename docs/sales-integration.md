@@ -34,6 +34,8 @@ prevent tenant/actor drift; Sales verifies the signature and authorizes each too
 Administrative policy, assignments, completion, and privacy approval scopes are
 not required. The adapter sends `X-Service-Authorization` and `X-MCP-Internal`,
 uses a pooled client, disallows redirects, and bounds time and response size.
+Set `READINESS_CHECK_EXTERNALS=true` to include authenticated Sales access in
+readiness checks; failures return a safe dependency error without credentials.
 Configure enabled consultation policy, eligible CSR profiles/skills and the
 corresponding RBAC ownership in Sales before offering appointments.
 
@@ -90,6 +92,11 @@ The appointment request's legacy name/email/phone fields do not overwrite Sales.
 Save contact details explicitly first. Lead creation always attaches to the
 existing authenticated customer. A subsequent read recovers a lead after a lost
 response; it never creates another customer by email or phone.
+
+Sales lead creation updates the chatbot's lead state with the authoritative ID.
+Existing chatbot estimate/document drafts retain their conversation/customer link
+and preserve the Sales lead reference in source slots or metadata. External IDs
+are never written into the chatbot's local `sales_leads` foreign key.
 
 Sales alone decides staff eligibility, times, holidays/policy, overlaps, and status.
 An unavailable exact time may return `proposed`: it is **not booked**. The portal
