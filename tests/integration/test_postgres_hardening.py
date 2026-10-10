@@ -22,8 +22,10 @@ pytestmark = pytest.mark.skipif(
 async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
     from datetime import datetime, timedelta
 
-    from sqlalchemy.exc import IntegrityError
-
+    from bookcraft.components.consultations.repository import (
+        AppointmentConflictError,
+        commit_appointment,
+    )
     from bookcraft.components.storage.models import SalesConsultationRecord
 
     engine = create_async_engine(os.environ["TEST_POSTGRES_URL"])
@@ -42,14 +44,16 @@ async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
                 houston_display_time="Test",
             )
             session.add(row)
-            await session.commit()
+            await commit_appointment(session)
             return row.id
 
     try:
         results = await asyncio.gather(
             insert(start), insert(start + timedelta(minutes=15)), return_exceptions=True
         )
-        assert sum(isinstance(row, IntegrityError) for row in results) == 1
+        assert sum(isinstance(row, AppointmentConflictError) for row in results) == 1, [
+            repr(row) for row in results
+        ]
         winner = next(row for row in results if not isinstance(row, Exception))
         async with factory() as session:
             row = await session.get(SalesConsultationRecord, winner)
@@ -58,7 +62,7 @@ async def test_database_exclusion_blocks_overlap_and_releases_cancelled_slot():
             await session.commit()
         await insert(start)
         await insert(start + timedelta(minutes=30))
-        with pytest.raises(IntegrityError):
+        with pytest.raises(AppointmentConflictError):
             await insert(start + timedelta(minutes=1))
     finally:
         await engine.dispose()

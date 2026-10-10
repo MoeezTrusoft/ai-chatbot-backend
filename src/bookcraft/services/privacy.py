@@ -137,7 +137,10 @@ async def erase_thread(
             )
         )
         thread.state = ThreadState().model_dump(mode="json")
-        thread.customer_id = None
+        # Legacy threads use the customer UUID as their sole ownership key.
+        # Retain that minimal tombstone key so the owner can verify erasure.
+        if thread.owner_subject is not None:
+            thread.customer_id = None
         thread.version += 1
         session.add(thread)
         jobs = (

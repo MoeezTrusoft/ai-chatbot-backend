@@ -25,8 +25,22 @@ WHERE a.status = 'scheduled' AND b.status = 'scheduled'
   AND a.cancelled_at IS NULL AND b.cancelled_at IS NULL;
 ```
 
+Revision `20261010_0004` converts legacy consultation customer, lead and thread
+identifiers from strings to UUID columns, matching the application model.
+Preflight these values before upgrading (PostgreSQL 16 or newer):
+
+```sql
+SELECT id, customer_id, lead_id, thread_id FROM sales_consultations
+WHERE NOT pg_input_is_valid(customer_id, 'uuid')
+   OR NOT pg_input_is_valid(lead_id, 'uuid')
+   OR NOT pg_input_is_valid(thread_id, 'uuid');
+```
+
+Resolve invalid identifiers against their original customer, lead or thread.
+The migration fails atomically on invalid values; it never drops associations.
+
 CI exercises migrated PostgreSQL, concurrent overlapping inserts, cancellation
-and adjacent slots, then downgrades and reapplies both new revisions. Downgrading
+and adjacent slots, then downgrades and reapplies the new revisions. Downgrading
 removes the new workflow and receiver tables; it is a disposable CI check, not
 a production rollback procedure.
 

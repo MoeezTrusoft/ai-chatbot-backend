@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col, select
 
@@ -18,9 +18,12 @@ class AppointmentConflictError(ValueError):
 async def commit_appointment(session: AsyncSession) -> None:
     try:
         await session.commit()
-    except IntegrityError as exc:
+    except DBAPIError as exc:
         await session.rollback()
-        if "consultation_no_overlap" in str(exc.orig):
+        # Concurrent exclusion checks can abort with a deadlock before reporting
+        # an overlap. The caller must refresh and retry the entire booking.
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        if sqlstate in {"40P01", "40001"} or "consultation_no_overlap" in str(exc.orig):
             raise AppointmentConflictError("requested_slot_no_longer_available") from exc
         raise
 

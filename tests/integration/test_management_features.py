@@ -549,6 +549,44 @@ async def test_deletion_blocks_access_before_cleanup_and_erases_traces(client, f
     ] == "completed"
 
 
+async def test_legacy_owner_can_check_completed_deletion(client, factory, tmp_path):
+    from bookcraft.components.storage.models import Customer
+
+    http, tid, app = client
+    cid = uuid4()
+    async with factory() as session:
+        session.add(Customer(id=cid))
+        await session.flush()
+        thread = await session.get(ThreadRecord, tid)
+        thread.owner_subject, thread.customer_id = None, cid
+        session.add(thread)
+        await session.commit()
+    auth = {
+        "Authorization": "Bearer "
+        + make_token(
+            {
+                "sub": "legacy",
+                "customer_id": str(cid),
+                "exp": time.time() + 300,
+            }
+        )
+    }
+    assert (
+        await http.delete(f"/api/v1/customer/threads/{tid}/data", headers=auth)
+    ).status_code == 202
+    async with httpx.AsyncClient() as external:
+        await erase_thread(
+            factory,
+            app.state.settings,
+            LiveTraceStore(tmp_path / "legacy.jsonl"),
+            None,
+            external,
+            tid,
+        )
+    result = await http.get(f"/api/v1/customer/threads/{tid}/deletion", headers=auth)
+    assert result.status_code == 200 and result.json()["status"] == "completed"
+
+
 async def test_embedding_pool_singleflight_and_vector_validation():
     calls = []
 
