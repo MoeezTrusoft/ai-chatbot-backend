@@ -32,8 +32,28 @@ Register the issuer public key in Sales' `SERVICE_JWT_PUBLIC_KEYS_JSON`.
 The chatbot never mints its own privileged identity. Its local token checks
 prevent tenant/actor drift; Sales verifies the signature and authorizes each tool.
 Administrative policy, assignments, completion, and privacy approval scopes are
-not required. The adapter sends `X-Service-Authorization` and `X-MCP-Internal`,
-uses a pooled client, disallows redirects, and bounds time and response size.
+not required. The MCP client sends `X-Service-Authorization` and `X-MCP-Internal`,
+uses a shared HTTP connection pool, disallows redirects, and bounds time and
+response size. The official Python `mcp` SDK owns the Streamable HTTP transport,
+initialization, protocol negotiation, tool discovery, and `call_tool` requests.
+There is no handwritten JSON-RPC request/response implementation or gRPC bridge.
+
+The SDK uses handshake mode for Sales' `2025-06-18` protocol. Each call gets an
+isolated MCP session with a fresh read of the rotated service token, while HTTP
+connections are reused. The allowlisted tool must appear in `tools/list` before
+execution (discovery pagination is bounded). JSON and SSE responses are supported;
+structured results or Sales' JSON text content are decoded at the domain boundary.
+The complete handshake/discovery/call shares the configured timeout. Responses
+are limited to 1 MiB and request uncompressed transfer. Upstream error text and
+SDK payload logs are redacted. Existing Sales domain statuses remain 404/409/422,
+including Sales' `-32000` errors, which overlap an SDK transport error code.
+
+No failed mutation is automatically reissued with a new operation ID. An uncertain
+outcome remains in the durable workflow journal for an explicit retry. The current
+Sales router responds to initialization notifications with a method-not-found body;
+the SDK correctly ignores notification response bodies. No Sales server change is
+needed for this client migration.
+
 Set `READINESS_CHECK_EXTERNALS=true` to include authenticated Sales access in
 readiness checks; failures return a safe dependency error without credentials.
 Configure enabled consultation policy, eligible CSR profiles/skills and the
@@ -135,10 +155,14 @@ Alignment reference: `erp-sales-backend` commit
 `c38bb0d56bad42b8a03381ab2d06bc7326f5e605`.
 Tests cover the real Python transport, customer endpoints, version conflicts,
 proposals, cancellation, contact reuse, shared-subject isolation, token rotation,
-malformed JSON-RPC, and durable lost-response replay.
+malformed JSON-RPC, and durable lost-response replay. Additional SDK tests cover
+handshake ordering, negotiated headers, discovery pagination, JSON/SSE results,
+credential isolation during concurrent calls, cancellation, size limits, log
+redaction, and HTTP errors without redirects or automatic write retries.
 
 An isolated source check is reproducible without generating Prisma. Install the
-trusted Sales checkout's dependencies (and its sibling contracts package), then:
+trusted Sales checkout's dependencies (and its sibling contracts package), using
+Node.js 22.15+ for the isolated module hooks, then:
 
 ```sh
 mkdir -p .review-contract
@@ -147,9 +171,12 @@ node scripts/ops/sales_contract_server.mjs /path/to/erp-sales-backend .review-co
 python scripts/ops/check_sales_contract.py .review-contract/connection.json
 ```
 
-This exercises all 11 allowed adapter calls through Sales' real EdDSA middleware,
-coarse MCP gate, permission map and Zod input schemas. It echoes validated
-arguments; it does not run database business logic. Stop the probe server afterward.
+This exercises all 11 allowed SDK tool calls through Sales' actual MCP router,
+including initialization and discovery, EdDSA middleware, coarse MCP gate,
+permission map and Zod input schemas. Process-local module hooks substitute
+schema-validating echo handlers and the Prisma-dependent error sanitizer only;
+the Sales checkout is not modified. It does not run database business logic or
+validate Prisma error handling. Stop the probe server afterward.
 
 At that Sales commit, committed merge-conflict markers prevent Prisma generation.
 The fresh-database migration chain also calls an undefined

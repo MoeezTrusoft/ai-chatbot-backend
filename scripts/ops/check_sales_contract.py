@@ -45,7 +45,14 @@ async def check(connection: dict[str, str]) -> None:
             result = await client.call(name, arguments)
             assert result["accepted"] is True
             assert result["tenantId"] == connection["sales_tenant_id"]
-        print(json.dumps({"passed": len(payloads), "scope": "actual Sales auth and input schemas"}))
+        print(
+            json.dumps(
+                {
+                    "passed": len(payloads),
+                    "scope": "actual Sales MCP lifecycle, auth and input schemas",
+                }
+            )
+        )
     finally:
         await client.aclose()
 

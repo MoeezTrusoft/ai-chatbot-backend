@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_sales_receipt_recovery_and_concurrent_replay_on_migrated_database(tmp_path):
-    import httpx
+    import httpx2 as httpx
 
     from bookcraft.components.storage.management_models import WorkflowRecord
     from bookcraft.infra.config import Settings
@@ -50,7 +50,7 @@ async def test_sales_receipt_recovery_and_concurrent_replay_on_migrated_database
 
     await repository.authorize(thread_id=thread, subject="bridge", customer_id=UUID(CUSTOMER))
     fixture = SalesFixture()
-    client = SalesMcpClient(settings, httpx.AsyncClient(transport=httpx.MockTransport(fixture)))
+    client = SalesMcpClient(settings, httpx.MockTransport(fixture))
     service = SalesService(client, sessions)
     arguments = {"startTime": "2030-10-12T22:15:00+05:00", "userTimezone": "Asia/Karachi"}
 

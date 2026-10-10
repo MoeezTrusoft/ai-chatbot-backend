@@ -1,4 +1,4 @@
-"""Exercise the real HTTP adapter and API against the Sales MCP wire contract."""
+"""Exercise the official MCP SDK and API against the Sales MCP wire contract."""
 
 import asyncio
 import base64
@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import httpx
+import httpx2 as mcp_http
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
@@ -58,17 +59,60 @@ class SalesFixture:
         self.propose = False
         self.lose_response = False
         self.down = False
+        self.messages = []
 
     def __call__(self, request):
         assert "authorization" not in request.headers
         assert request.headers["x-service-authorization"].startswith("Bearer ")
         assert request.headers["x-mcp-internal"] == "internal-test-secret"
+        if request.method in {"GET", "DELETE"}:
+            return mcp_http.Response(405)
         rpc = json.loads(request.content)
+        self.messages.append(copy.deepcopy(rpc))
+        if rpc["method"] == "initialize":
+            return mcp_http.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": rpc["id"],
+                    "result": {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "erp-sales-backend", "version": "1.0.0"},
+                    },
+                },
+            )
+        if rpc["method"].startswith("notifications/"):
+            # Current Sales returns an ignored JSON-RPC error for notifications.
+            return mcp_http.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32601,
+                        "message": "Method not found",
+                    },
+                },
+            )
+        if rpc["method"] == "tools/list":
+            return mcp_http.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": rpc["id"],
+                    "result": {
+                        "tools": [
+                            {"name": name, "inputSchema": {"type": "object"}}
+                            for name in TOOL_SCOPES
+                        ],
+                    },
+                },
+            )
         assert rpc["method"] == "tools/call"
         tool, args = rpc["params"]["name"], rpc["params"]["arguments"]
         self.calls.append((tool, copy.deepcopy(args)))
         if self.down:
-            return httpx.Response(503)
+            return mcp_http.Response(503)
         value = None
         if tool == "sales_customer_get":
             value = copy.deepcopy(self.profile)
@@ -136,7 +180,7 @@ class SalesFixture:
             else:
                 row = self.rows[args["consultationId"]]
                 if row["version"] != args["expectedVersion"]:
-                    return httpx.Response(
+                    return mcp_http.Response(
                         200,
                         json={
                             "jsonrpc": "2.0",
@@ -159,8 +203,8 @@ class SalesFixture:
                 self.receipts[key] = (copy.deepcopy(fingerprint), copy.deepcopy(value))
             if self.lose_response:
                 self.lose_response = False
-                raise httpx.ReadTimeout("response lost after commit", request=request)
-        return httpx.Response(
+                raise mcp_http.ReadTimeout("response lost after commit", request=request)
+        return mcp_http.Response(
             200,
             json={
                 "jsonrpc": "2.0",
@@ -192,7 +236,7 @@ async def integration(tmp_path):
         await conn.run_sync(SQLModel.metadata.create_all)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     fake = SalesFixture()
-    mcp = SalesMcpClient(settings, httpx.AsyncClient(transport=httpx.MockTransport(fake)))
+    mcp = SalesMcpClient(settings, mcp_http.MockTransport(fake))
     app = create_app(Settings(app_env="test", api_auth_mode="jwt", jwt_signing_key=SIGNING_KEY))
     app.state.settings, app.state.session_factory = settings, sessions
     app.state.sales_service = SalesService(mcp, sessions)
@@ -439,11 +483,15 @@ async def test_rotated_token_must_preserve_tenant_actor_and_permission(integrati
 )
 async def test_invalid_rpc_envelopes_fail_closed(integration, payload):
     _, _, app, _, _ = integration
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
-    async with httpx.AsyncClient(transport=transport) as client:
-        mcp = SalesMcpClient(app.state.settings, client)
-        with pytest.raises(SalesError, match="sales_invalid_response"):
+    transport = mcp_http.MockTransport(lambda request: mcp_http.Response(200, json=payload))
+    settings = app.state.settings.model_copy(update={"sales_timeout_seconds": 0.2})
+    mcp = SalesMcpClient(settings, transport)
+    try:
+        with pytest.raises(SalesError) as error:
             await mcp.call("sales_customer_get", {"customerId": CUSTOMER})
+        assert error.value.uncertain
+    finally:
+        await mcp.aclose()
 
 
 async def test_callback_cannot_confirm_a_proposal_or_another_customer(integration):

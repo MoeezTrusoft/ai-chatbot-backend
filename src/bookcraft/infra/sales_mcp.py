@@ -1,16 +1,23 @@
-"""Sales' internal JSON-RPC transport. Credentials come from the ERP token issuer."""
+"""Sales policy boundary around the official MCP SDK and Streamable HTTP client."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
+import logging
 import time
+from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import httpx
+import httpx2 as httpx
+from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import MCPError
+from mcp_types import CONNECTION_CLOSED, PARSE_ERROR, REQUEST_TIMEOUT, TextContent
 
 from bookcraft.infra.config import Settings
 
@@ -41,18 +48,133 @@ class SalesError(RuntimeError):
         self.uncertain = uncertain
 
 
+MAX_RESPONSE_BYTES = 1_048_576
+
+_sales_call: ContextVar[bool] = ContextVar("sales_mcp_call", default=False)
+
+
+class _SafeSdkLog(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # The SDK's debug messages and parse-error tracebacks contain raw tool
+        # arguments/results. Keep severity/source while removing customer data.
+        if _sales_call.get():
+            record.msg = "Sales MCP protocol event"
+            record.args = ()
+            record.exc_info = record.exc_text = record.stack_info = None
+        return True
+
+
+def _protect_sdk_logs() -> None:
+    for name in (
+        "mcp.client.streamable_http",
+        "mcp.client.client",
+        "client",
+        "mcp.shared.jsonrpc_dispatcher",
+        "mcp.shared.dispatcher",
+        "mcp.shared.tool_name_validation",
+    ):
+        logger = logging.getLogger(name)
+        if not any(isinstance(item, _SafeSdkLog) for item in logger.filters):
+            logger.addFilter(_SafeSdkLog())
+
+
+class _LimitedStream(httpx.AsyncByteStream):
+    """Bound HTTP bodies; JSON-RPC and SSE parsing belong entirely to the SDK."""
+
+    def __init__(self, stream: httpx.AsyncByteStream):
+        self.stream = stream
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        size = 0
+        async for chunk in self.stream:
+            size += len(chunk)
+            if size > MAX_RESPONSE_BYTES:
+                raise SalesError("sales_invalid_response", 502, uncertain=True)
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self.stream.aclose()
+
+
+class _SalesHttpGuard(httpx.AsyncBaseTransport):
+    """Borrow a connection pool and enforce the Sales endpoint's HTTP limits."""
+
+    def __init__(self, pool: httpx.AsyncBaseTransport, url: str):
+        self.pool, self.url = pool, httpx.URL(url)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url != self.url:
+            raise SalesError("sales_endpoint_mismatch", 502)
+        response = await self.pool.handle_async_request(request)
+        code = response.status_code
+        # Sales has no optional GET notification stream or DELETE session endpoint.
+        optional_endpoint = request.method in {"GET", "DELETE"} and code in {404, 405}
+        if not (200 <= code < 300 or optional_endpoint):
+            await response.aclose()
+            raise SalesError(
+                "sales_service_unavailable" if code >= 500 else "sales_request_rejected",
+                503 if code >= 500 or code in {401, 403, 429} else 502,
+                uncertain=code >= 500,
+            )
+        # Request identity encoding so the byte limit also bounds decoded bodies.
+        if response.headers.get("content-encoding", "identity") != "identity":
+            await response.aclose()
+            raise SalesError("sales_invalid_response", 502, uncertain=True)
+        assert isinstance(response.stream, httpx.AsyncByteStream)
+        response.stream = _LimitedStream(response.stream)
+        return response
+
+    # The parent Sales client owns the pool, not an individual MCP session.
+    async def aclose(self) -> None:
+        pass
+
+
+def _public_error(exc: Exception) -> SalesError:
+    if isinstance(exc, ExceptionGroup):
+        # AnyIO owns the SDK's concurrent transport tasks. Preserve a domain/HTTP
+        # failure when it is wrapped during session cleanup.
+        return _public_error(exc.exceptions[0])
+    if isinstance(exc, SalesError):
+        return exc
+    if isinstance(exc, MCPError):
+        data = exc.data if isinstance(exc.data, dict) else {}
+        status = data.get("status")
+        if type(status) is not int:
+            status = None
+        # Sales uses -32000 for domain errors; that value also means connection
+        # closed in the SDK. Its explicit HTTP-style domain status takes priority.
+        if status is None and exc.code in {REQUEST_TIMEOUT, CONNECTION_CLOSED}:
+            return SalesError("sales_outcome_unknown_retry_same_request", uncertain=True)
+        if exc.code == PARSE_ERROR:
+            return SalesError("sales_invalid_response", 502, uncertain=True)
+        return SalesError(
+            {
+                404: "sales_record_not_found",
+                409: "sales_conflict_refresh_required",
+                422: "sales_invalid_request",
+            }.get(status or 0, "sales_request_rejected"),
+            status if status in {404, 409, 422} else 503,
+            uncertain=status is None or status >= 500,
+        )
+    if isinstance(exc, (TimeoutError, httpx.HTTPError)):
+        return SalesError("sales_outcome_unknown_retry_same_request", uncertain=True)
+    return SalesError("sales_invalid_response", 502, uncertain=True)
+
+
 class SalesMcpClient:
-    def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None):
+    """Tenant-bound SDK calls. No custom JSON-RPC framing or automatic write retries."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
         self.settings = settings
-        self.client = client or httpx.AsyncClient(
-            timeout=httpx.Timeout(settings.sales_timeout_seconds, connect=5.0),
+        _protect_sdk_logs()
+        self.transport = transport or httpx.AsyncHTTPTransport(
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-            follow_redirects=False,
+            retries=0,
             trust_env=False,
         )
 
     async def aclose(self) -> None:
-        await self.client.aclose()
+        await self.transport.aclose()
 
     async def _credential(self, tool: str) -> str:
         try:
@@ -96,73 +218,65 @@ class SalesMcpClient:
             raise SalesError("sales_service_credential_unavailable") from exc
 
     async def call(self, tool: str, arguments: dict[str, Any]) -> Any:
-        try:
-            async with asyncio.timeout(self.settings.sales_timeout_seconds):
-                return await self._call(tool, arguments)
-        except TimeoutError as exc:
-            raise SalesError("sales_outcome_unknown_retry_same_request", uncertain=True) from exc
-
-    async def _call(self, tool: str, arguments: dict[str, Any]) -> Any:
         if tool not in TOOL_SCOPES:
             raise SalesError("sales_tool_not_allowed", 403)
-        token = await self._credential(tool)
-        rpc_id = str(uuid4())
+        log_context = _sales_call.set(True)
         try:
-            async with self.client.stream(
-                "POST",
-                str(self.settings.sales_mcp_url),
-                headers={
-                    "X-Service-Authorization": f"Bearer {token}",
-                    "X-MCP-Internal": str(self.settings.sales_mcp_internal_secret),
-                    "X-Correlation-ID": rpc_id,
-                },
-                json={
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "method": "tools/call",
-                    "params": {"name": tool, "arguments": arguments},
-                },
-            ) as response:
-                if response.status_code != 200:
-                    code = response.status_code
-                    raise SalesError(
-                        "sales_service_unavailable" if code >= 500 else "sales_request_rejected",
-                        503 if code >= 500 or code in {401, 403, 429} else 502,
-                        uncertain=code >= 500,
+            async with asyncio.timeout(self.settings.sales_timeout_seconds):
+                token = await self._credential(tool)
+                # Each call owns its MCP session and immutable headers. Concurrent
+                # customers/rotated tokens cannot share session IDs or credentials;
+                # the underlying HTTP connection pool is still reused.
+                async with httpx.AsyncClient(
+                    transport=_SalesHttpGuard(self.transport, str(self.settings.sales_mcp_url)),
+                    timeout=httpx.Timeout(self.settings.sales_timeout_seconds, connect=5.0),
+                    headers={
+                        "X-Service-Authorization": f"Bearer {token}",
+                        "X-MCP-Internal": str(self.settings.sales_mcp_internal_secret),
+                        "X-Correlation-ID": str(uuid4()),
+                        "Accept-Encoding": "identity",
+                    },
+                    follow_redirects=False,
+                    trust_env=False,
+                ) as http_client:
+                    transport = streamable_http_client(
+                        str(self.settings.sales_mcp_url),
+                        http_client=http_client,
+                        max_sse_event_size=MAX_RESPONSE_BYTES,
                     )
-                raw = bytearray()
-                async for chunk in response.aiter_bytes():
-                    raw.extend(chunk)
-                    if len(raw) > 1_048_576:
-                        raise SalesError("sales_invalid_response", 502, uncertain=True)
-            data = json.loads(raw)
-            if (
-                not isinstance(data, dict)
-                or data.get("jsonrpc") != "2.0"
-                or data.get("id") != rpc_id
-            ):
-                raise ValueError("invalid envelope")
-            if "error" in data:
-                error = data["error"]
-                status = (error.get("data") or {}).get("status")
-                public_status = status if status in {404, 409, 422} else 503
-                raise SalesError(
-                    {
-                        404: "sales_record_not_found",
-                        409: "sales_conflict_refresh_required",
-                        422: "sales_invalid_request",
-                    }.get(public_status, "sales_request_rejected"),
-                    public_status,
-                    uncertain=status is None or status >= 500,
-                )
-            result = data["result"]
-            if result.get("isError"):
-                raise ValueError("tool failure")
-            content = result["content"]
-            if len(content) != 1 or content[0].get("type") != "text":
-                raise ValueError("invalid content")
-            return json.loads(content[0]["text"])
-        except httpx.HTTPError as exc:
-            raise SalesError("sales_outcome_unknown_retry_same_request", uncertain=True) from exc
-        except (ValueError, KeyError, TypeError, AttributeError) as exc:
-            raise SalesError("sales_invalid_response", 502, uncertain=True) from exc
+                    # Sales negotiates the 2025-06-18 handshake. Skip the newer
+                    # server/discover probe, which this server does not implement.
+                    async with Client(
+                        transport,
+                        mode="legacy",
+                        cache=None,
+                        read_timeout_seconds=self.settings.sales_timeout_seconds,
+                    ) as mcp:
+                        if mcp.server_capabilities.tools is None:
+                            raise SalesError("sales_tools_unavailable", 503)
+                        cursor = None
+                        for _ in range(20):
+                            listing = await mcp.list_tools(cursor=cursor)
+                            if any(item.name == tool for item in listing.tools):
+                                break
+                            cursor = listing.next_cursor
+                            if cursor is None:
+                                raise SalesError("sales_tool_unavailable", 503)
+                        else:
+                            raise SalesError("sales_invalid_response", 502)
+                        result = await mcp.call_tool(tool, arguments)
+                        if result.is_error:
+                            raise SalesError("sales_request_rejected", 503, uncertain=True)
+                        if result.structured_content is not None:
+                            return result.structured_content
+                        if len(result.content) != 1 or not isinstance(
+                            result.content[0], TextContent
+                        ):
+                            raise SalesError("sales_invalid_response", 502, uncertain=True)
+                        return json.loads(result.content[0].text)
+        except Exception as exc:
+            # Do not expose SDK errors, upstream text, validation payloads or tokens.
+            # CancelledError is a BaseException and deliberately propagates.
+            raise _public_error(exc) from None
+        finally:
+            _sales_call.reset(log_context)

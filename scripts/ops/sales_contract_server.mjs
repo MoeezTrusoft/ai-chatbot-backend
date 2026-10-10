@@ -1,7 +1,7 @@
 // Isolated contract probe using a trusted Sales checkout. No Prisma or business writes.
 // node scripts/ops/sales_contract_server.mjs <sales-checkout> <temporary-output-directory>
 import {generateKeyPairSync, randomUUID} from "node:crypto";
-import {createRequire} from "node:module";
+import {createRequire, registerHooks} from "node:module";
 import {pathToFileURL} from "node:url";
 import {resolve, join} from "node:path";
 import {readFile, writeFile} from "node:fs/promises";
@@ -16,8 +16,6 @@ const {z} = requireSales("zod");
 const {SignJWT} = await import(pathToFileURL(requireSales.resolve("jose")));
 const source = file => import(pathToFileURL(join(sales, file)));
 const {requireInternalService} = await source("src/middleware/internal-service.middleware.js");
-const {requireMcpInternal} = await source("src/mcp/mcp.auth.js");
-const {authorizeTool} = await source("src/mcp/utils/assertSalesPermission.js");
 const {CONSULTATION_SPECS} = await source("src/mcp/consultation-tools.js");
 const {privateKey, publicKey} = generateKeyPairSync("ed25519");
 const tenantId = randomUUID();
@@ -40,25 +38,33 @@ for (const name of ["sales_customer_get", "sales_customer_update", "sales_lead_c
         .replaceAll("\r", "");
     schemas[name] = runInNewContext("(" + expression + ")", {z, uuid: z.string().uuid()});
 }
+// Load Sales' actual router/lifecycle/discovery/authz. Only database handlers and
+// the Prisma-dependent error sanitizer are replaced in this isolated probe.
+const handlersKey = Symbol.for("bookcraft.sales.contract.handlers");
+globalThis[handlersKey] = Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [
+    name, {schema, handler: async (arguments_, ctx) => ({
+        accepted: true, tenantId: ctx.tenantId, tool: name, arguments: arguments_
+    })}
+]));
+const registryUrl = pathToFileURL(join(sales, "src/mcp/toolRegistry.js")).href;
+const sanitizerUrl = pathToFileURL(join(sales, "src/lib/prisma-error.js")).href;
+const hooks = registerHooks({load(url, context, nextLoad) {
+    if (url === registryUrl) return {format: "module", shortCircuit: true, source: `
+        export const TOOL_HANDLERS = globalThis[Symbol.for("bookcraft.sales.contract.handlers")];
+        export const TOOL_NAMES = new Set(Object.keys(TOOL_HANDLERS));
+    `};
+    if (url === sanitizerUrl) return {format: "module", shortCircuit: true, source: `
+        export const isPrismaError = () => false;
+        export const sanitizeError = error => error;
+    `};
+    return nextLoad(url, context);
+}});
+const {createMcpRouter} = await source("src/mcp/mcpRouter.js");
+hooks.deregister();
+delete globalThis[handlersKey];
 const app = express();
 app.use(express.json());
-app.post("/mcp", requireInternalService, (req, res) => {
-    const gate = requireMcpInternal(req);
-    if (!gate.ok) return res.status(gate.status).json({error: "coarse_gate"});
-    const {id, params, method, jsonrpc} = req.body;
-    if (method !== "tools/call" || jsonrpc !== "2.0") return res.status(400).end();
-    const denied = authorizeTool(params.name, req);
-    const parsed = schemas[params.name]?.safeParse(params.arguments);
-    if (denied || !parsed?.success) {
-        return res.json({jsonrpc: "2.0", id, error: {
-            code: -32000, message: "contract rejected", data: {status: denied ? 403 : 422}
-        }});
-    }
-    return res.json({jsonrpc: "2.0", id, result: {content: [{type: "text", text: JSON.stringify({
-        accepted: true, tenantId: req.internalService.tenantId, tool: params.name,
-        arguments: parsed.data
-    })}]}});
-});
+app.use("/mcp", requireInternalService, createMcpRouter());
 const server = app.listen(0, "127.0.0.1");
 await once(server, "listening");
 await writeFile(join(output, "connection.json"), JSON.stringify({
