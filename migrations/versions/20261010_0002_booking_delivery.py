@@ -40,7 +40,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         op.drop_constraint("consultation_positive_duration", "sales_consultations", type_="check")
-        op.drop_constraint("consultation_no_overlap", "sales_consultations", type_="exclude")
+        op.drop_constraint("consultation_no_overlap", "sales_consultations")
     op.drop_index("ix_delivery_outbox_dead_letter_at", table_name="delivery_outbox")
     op.drop_column("delivery_outbox", "replayed_by")
     op.drop_column("delivery_outbox", "dead_letter_at")
