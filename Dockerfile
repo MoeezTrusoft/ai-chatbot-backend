@@ -12,6 +12,7 @@ COPY src ./src
 COPY data ./data
 COPY docs ./docs
 COPY migrations ./migrations
+COPY scripts/ops/check_sales_connection.py ./scripts/ops/check_sales_connection.py
 RUN uv sync --frozen --no-dev --no-editable \
     && mkdir -p reports data/generated \
     && chown -R bookcraft:bookcraft /app

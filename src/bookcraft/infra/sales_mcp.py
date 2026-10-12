@@ -176,7 +176,7 @@ class SalesMcpClient:
     async def aclose(self) -> None:
         await self.transport.aclose()
 
-    async def _credential(self, tool: str) -> str:
+    async def _credential(self, tool: str, *, full_contract: bool = False) -> str:
         try:
             path = Path(self.settings.sales_service_jwt_file or "")
             token = (await asyncio.to_thread(path.read_text, encoding="utf-8")).strip()
@@ -207,7 +207,9 @@ class SalesMcpClient:
                 or not isinstance(claims.get("exp"), (int, float))
                 or claims["exp"] <= time.time() + 5
                 or not isinstance(scopes, list)
-                or TOOL_SCOPES[tool] not in scopes
+                or not (
+                    set(TOOL_SCOPES.values()) if full_contract else {TOOL_SCOPES[tool]}
+                ).issubset(scopes)
             ):
                 raise ValueError("credential context mismatch")
             # This is a trusted local issuer output, not an inbound bearer token.
@@ -218,12 +220,34 @@ class SalesMcpClient:
             raise SalesError("sales_service_credential_unavailable") from exc
 
     async def call(self, tool: str, arguments: dict[str, Any]) -> Any:
+        return await self._call(tool, arguments)
+
+    async def check_connection(self) -> dict[str, Any]:
+        """Read-only preflight for every required tool and credential permission."""
+        result = await self._call("sales_consultation_config_get", {}, full_contract=True)
+        policy = result.get("policy") if isinstance(result, dict) else None
+        if (
+            not isinstance(policy, dict)
+            or type(policy.get("enabled")) is not bool
+            or not isinstance(policy.get("timezone"), str)
+        ):
+            raise SalesError("sales_invalid_response", 502)
+        return {
+            "status": "connected",
+            "required_tools": len(TOOL_SCOPES),
+            "booking_enabled": policy["enabled"],
+            "business_timezone": policy["timezone"],
+        }
+
+    async def _call(
+        self, tool: str, arguments: dict[str, Any], *, full_contract: bool = False
+    ) -> Any:
         if tool not in TOOL_SCOPES:
             raise SalesError("sales_tool_not_allowed", 403)
         log_context = _sales_call.set(True)
         try:
             async with asyncio.timeout(self.settings.sales_timeout_seconds):
-                token = await self._credential(tool)
+                token = await self._credential(tool, full_contract=full_contract)
                 # Each call owns its MCP session and immutable headers. Concurrent
                 # customers/rotated tokens cannot share session IDs or credentials;
                 # the underlying HTTP connection pool is still reused.
@@ -255,9 +279,11 @@ class SalesMcpClient:
                         if mcp.server_capabilities.tools is None:
                             raise SalesError("sales_tools_unavailable", 503)
                         cursor = None
+                        missing = set(TOOL_SCOPES) if full_contract else {tool}
                         for _ in range(20):
                             listing = await mcp.list_tools(cursor=cursor)
-                            if any(item.name == tool for item in listing.tools):
+                            missing.difference_update(item.name for item in listing.tools)
+                            if not missing:
                                 break
                             cursor = listing.next_cursor
                             if cursor is None:

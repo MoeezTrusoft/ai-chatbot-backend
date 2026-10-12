@@ -47,6 +47,7 @@ bookcraft-ai-flow-frontend/node_modules/
 .env*
 !.env.example
 !.env.sample
+!.env.sales.example
 
 # Database dumps — real customer names, emails, and phone numbers.
 backups/

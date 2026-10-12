@@ -49,13 +49,13 @@ SDK payload logs are redacted. Existing Sales domain statuses remain 404/409/422
 including Sales' `-32000` errors, which overlap an SDK transport error code.
 
 No failed mutation is automatically reissued with a new operation ID. An uncertain
-outcome remains in the durable workflow journal for an explicit retry. The current
-Sales router responds to initialization notifications with a method-not-found body;
-the SDK correctly ignores notification response bodies. No Sales server change is
-needed for this client migration.
+outcome remains in the durable workflow journal for an explicit retry. The Sales
+router acknowledges MCP notifications with an empty HTTP 202 and supports `ping`.
 
 Set `READINESS_CHECK_EXTERNALS=true` to include authenticated Sales access in
-readiness checks; failures return a safe dependency error without credentials.
+readiness checks. The check validates all six credential scopes, discovers all
+11 required tools, and reads the consultation policy; it performs no business
+writes. Failures return a safe dependency error without credentials.
 Configure enabled consultation policy, eligible CSR profiles/skills and the
 corresponding RBAC ownership in Sales before offering appointments.
 
@@ -148,11 +148,34 @@ Use Sales' `DataPrivacyRequest` workflow for an explicit customer-account
 does not invent a thread-erasure REST endpoint or report a submitted privacy
 request as completed. Minimal customer ownership remains on the deletion tombstone.
 
-## Validation and current external blockers
+## Deployment preflight
 
-Alignment reference: `erp-sales-backend` commit
-`3468805211d5994fe0d47398dd8e5d04edb2c182`; shared contracts
-`c38bb0d56bad42b8a03381ab2d06bc7326f5e605`.
+Apply `.env.sales.example` over the normal Chatbot environment. Its database stays
+separate from Sales. Mount the credential directory read-only, without a Kubernetes
+`subPath` file mount, so atomic credential rotation becomes visible to new calls.
+Sales must register the issuer's Ed25519 public key under the token's `kid`.
+Keep the verified tenant and service actor unchanged during retries. If Sales uses
+an own/team record policy, give the dedicated chatbot service actor an explicit
+tenant-wide policy: customers and appointments span multiple CSR owners. Do not
+grant administrative tool scopes to accomplish this.
+
+Run this from the Chatbot runtime with its actual environment and credential mount:
+
+```sh
+python scripts/ops/check_sales_connection.py --require-booking
+```
+
+The command returns a nonzero exit status for standalone mode, missing credentials,
+missing scopes/tools, rejected service authentication, malformed policy, or disabled
+booking. Output excludes tokens and customer data. It does not establish that staff
+have availability or that reminders were delivered. Verify those with the booking
+journey and the owning Communication service before rollout.
+
+## Cross-repository verification
+
+The database acceptance suite targets the migrated Sales schema on
+`codex/legacy-sales-migration` (baseline `284da9f`, plus the MCP lifecycle fix).
+Use the sibling `erp-contracts` checkout required by the Sales package manifest.
 Tests cover the real Python transport, customer endpoints, version conflicts,
 proposals, cancellation, contact reuse, shared-subject isolation, token rotation,
 malformed JSON-RPC, and durable lost-response replay. Additional SDK tests cover
@@ -178,10 +201,32 @@ schema-validating echo handlers and the Prisma-dependent error sanitizer only;
 the Sales checkout is not modified. It does not run database business logic or
 validate Prisma error handling. Stop the probe server afterward.
 
-At that Sales commit, committed merge-conflict markers prevent Prisma generation.
-The fresh-database migration chain also calls an undefined
-`sales_current_tenant()`. These independent Sales issues prevent a full live
-database/CSR/Communication acceptance run. Contract/middleware tests and simulated
-appointment responses do not establish that the full Sales deployment works.
-Resolve those issues in Sales, then run the same customer journey against staging
-with real tenant policy, RBAC owners and the Communication consumer before rollout.
+The former Prisma conflict and missing `sales_current_tenant()` migration blockers
+are resolved on that Sales branch. Run the real database suite after installing
+Sales dependencies and generating its Prisma client:
+
+```sh
+export SALES_TEST_CHECKOUT=/path/to/erp-sales-backend
+export SALES_TEST_ADMIN_URL=postgresql://postgres:test-only@127.0.0.1:5432/postgres
+python -m pytest tests/integration/test_sales_database.py -q
+```
+
+The fixture accepts only a loopback PostgreSQL administrator connection. Each test
+creates a uniquely named empty database, replays every Sales migration, seeds
+synthetic customers/staff, and runs Sales with a non-superuser role subject to RLS.
+It uses the actual Sales website token generator, EdDSA middleware, MCP router,
+Prisma services, and the Chatbot's SDK and customer API. It checks contact/lead
+reuse, booking, rescheduling, cancellation, optimistic conflicts, proposals,
+lost-response recovery, durable events, and customer/tenant isolation. The generated
+database and role are removed on normal teardown. The Chatbot journal uses SQLite
+here; its PostgreSQL persistence has a separate integration suite.
+
+These tests use synthetic identities and no live LLM, Redis website session, RBAC
+directory, or Communication provider. They validate the Chatbot/Sales booking
+boundary without claiming that the production deployment or reminder delivery is
+enabled. Missing test environment variables explicitly skip this optional suite.
+
+Sales sites configured with `chatMode: "human"` persist visitor messages for staff
+without calling the Chatbot and do not require a bot URL or signing secret. AI
+sites default to `chatMode: "ai"` and still require both. The public site config
+exposes the selected mode so the widget describes the correct behavior.

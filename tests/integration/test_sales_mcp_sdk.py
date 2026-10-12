@@ -9,6 +9,7 @@ import httpx2 as httpx
 import pytest
 
 from bookcraft.infra.config import Settings
+from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.sales_mcp import MAX_RESPONSE_BYTES, SalesError, SalesMcpClient
 from tests.integration.test_sales_alignment import CUSTOMER, TENANT, SalesFixture, service_token
 
@@ -151,6 +152,63 @@ async def test_missing_tool_fails_before_business_call(endpoint):
     with pytest.raises(SalesError, match="sales_tool_not_allowed"):
         await client.call("sales_consultation_config_update", {})
     assert len([m for m in fixture.messages if m["method"] == "initialize"]) == 1
+
+
+async def test_preflight_requires_write_scopes_even_when_policy_read_is_authorized(endpoint):
+    client, fixture, token_file = endpoint
+    token_file.write_text(service_token(scope="sales.config.read"), encoding="utf-8")
+    assert isinstance(await client.call("sales_consultation_config_get", {}), dict)
+    fixture.calls.clear()
+    with pytest.raises(SalesError, match="sales_service_credential_unavailable"):
+        await client.check_connection()
+    assert not fixture.calls
+    assert (await ReadinessChecker(client.settings, client)._check_sales())[1].status == "error"
+
+
+async def test_preflight_requires_all_tools_and_only_reads_policy(endpoint):
+    client, fixture, _ = endpoint
+    result = await client.check_connection()
+    assert result["required_tools"] == 11
+    assert fixture.calls == [("sales_consultation_config_get", {})]
+
+    def listing(request, rpc, response):
+        if rpc["method"] == "tools/list":
+            data = response.json()
+            data["result"]["tools"] = [
+                tool
+                for tool in data["result"]["tools"]
+                if tool["name"] != "sales_consultation_cancel"
+            ]
+            return httpx.Response(200, json=data)
+        return response
+
+    replace_response(client, fixture, listing)
+    fixture.calls.clear()
+    with pytest.raises(SalesError, match="sales_tool_unavailable"):
+        await client.check_connection()
+    assert not fixture.calls
+
+
+async def test_preflight_rejects_malformed_policy_response(endpoint):
+    client, fixture, _ = endpoint
+
+    def malformed(request, rpc, response):
+        if rpc["method"] == "tools/call":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": rpc["id"],
+                    "result": {
+                        "content": [{"type": "text", "text": "{}"}],
+                    },
+                },
+            )
+        return response
+
+    replace_response(client, fixture, malformed)
+    with pytest.raises(SalesError, match="sales_invalid_response"):
+        await client.check_connection()
 
 
 async def test_paginated_discovery_uses_sdk_cursor(endpoint):

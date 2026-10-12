@@ -8,6 +8,9 @@
 !src/**
 !migrations/
 !migrations/**
+!scripts/
+!scripts/ops/
+!scripts/ops/check_sales_connection.py
 !data/
 !data/**
 !docs/

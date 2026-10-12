@@ -47,7 +47,7 @@ class ReadinessChecker:
     async def _check_sales(self) -> tuple[str, DependencyStatus]:
         client = self.sales_client or SalesMcpClient(self.settings)
         try:
-            await client.call("sales_consultation_config_get", {})
+            await client.check_connection()
             return "sales", DependencyStatus(status="ok")
         except SalesError:
             return "sales", DependencyStatus(status="error", detail="sales_unavailable")
