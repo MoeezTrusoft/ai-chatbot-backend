@@ -34,6 +34,12 @@ class ActionPlan(BaseModel):
     missing_slots: list[str] = Field(default_factory=list)
     recommended_follow_up_slots: list[str] = Field(default_factory=list)
     collected_slots: dict[str, Any] = Field(default_factory=dict)
+    # The thread's funnel stage at planning time, sent to Sales as `stage` on
+    # `sales_lead_create` so a chat lead lands where the conversation actually is
+    # (S6.2.1). Kept OUT of `collected_slots` on purpose: the durable idempotency
+    # key hashes the slots, and a stage that moved during the conversation must
+    # not turn a replay of the same enquiry into a second lead.
+    sales_stage: str | None = None
     confirmation_required: bool = False
     pending_confirmation_key: str | None = None
     customer_safe_prompt: str | None = None

@@ -35,6 +35,7 @@ import structlog
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from bookcraft.domain.enums import SalesStage
 from bookcraft.infra.config import Settings
 
 _logger = structlog.get_logger(__name__)
@@ -293,18 +294,39 @@ def lead_source(site_id: str) -> str:
     return f"{LEAD_SOURCE_CHANNEL}:{site}"
 
 
+# The chatbot's funnel stages, as Sales receives them. Sales owns the frozen
+# translation to a `LeadStage` (`SALES_STAGE_MAP`), so the bot sends its OWN
+# vocabulary and never has to mirror Sales' enum (S6.2.1).
+CHATBOT_SALES_STAGES: Final = frozenset(member.value for member in SalesStage)
+
+
+def lead_stage_value(stage: str) -> str:
+    """The stage value to put on the wire, rejected if it is not one the bot has.
+
+    An unmapped stage would be a hard failure inside Sales' `mapSalesStage`, so it
+    is caught here as a configuration error and the caller degrades locally
+    instead of shipping a lead the bot cannot describe.
+    """
+    value = str(stage).strip().lower()
+    if value not in CHATBOT_SALES_STAGES:
+        raise SalesMcpConfigError(f"cannot send unknown chatbot stage {stage!r} to Sales")
+    return value
+
+
 def lead_create_arguments(
     slots: Mapping[str, Any],
     *,
     binding: TenantBinding,
     customer_id: UUID | None = None,
     request_id: str | None = None,
+    stage: str | None = None,
 ) -> dict[str, Any]:
     """Map dispatcher slots onto `sales_lead_create` (S3.2.2).
 
     `source` and `ownerId` come from the allow-list binding rather than the chat
     payload: Sales' routing owner is a CRM decision, not something a visitor can
-    assert by typing it.
+    assert by typing it. `stage` carries the thread's own funnel position, so a
+    chat lead is not silently filed at Sales' default stage (S6.2.1).
     """
     arguments: dict[str, Any] = {
         "source": lead_source(binding.site_id),
@@ -318,6 +340,8 @@ def lead_create_arguments(
         arguments["customerId"] = str(customer_id)
     if request_id:
         arguments["requestId"] = request_id
+    if stage:
+        arguments["stage"] = lead_stage_value(stage)
     return arguments
 
 

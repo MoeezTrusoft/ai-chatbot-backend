@@ -448,3 +448,48 @@ async def test_a_lead_with_only_one_contact_channel_still_reaches_sales(slot: st
 
     assert result is not None and result.success is True
     assert client.bindings[SITE_ID].owner_id == "owner-1"
+
+
+# ── The thread's funnel stage reaches Sales (S6.2.1) ────────────────────────
+async def test_the_threads_funnel_stage_is_sent_with_the_lead() -> None:
+    fake = FakeSales()
+    _, dispatcher = build(fake)
+
+    plan = lead_plan().model_copy(update={"sales_stage": "scoping"})
+    result = await dispatcher.dispatch(
+        plan, thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    assert result is not None and result.success is True
+    assert fake.calls[0]["arguments"]["stage"] == "scoping"
+
+
+async def test_a_plan_without_a_stage_leaves_the_field_off_the_call() -> None:
+    fake = FakeSales()
+    _, dispatcher = build(fake)
+
+    await dispatcher.dispatch(
+        lead_plan(), thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    # Absent, not null: Sales' own default still governs an unstaged enquiry.
+    assert "stage" not in fake.calls[0]["arguments"]
+
+
+async def test_a_stage_the_contract_cannot_map_degrades_instead_of_reaching_sales() -> None:
+    fake = FakeSales()
+    lead_service = StubLeadService()
+    _, dispatcher = build(fake, lead_service=lead_service)
+
+    plan = lead_plan().model_copy(update={"sales_stage": "not_a_stage"})
+    result = await dispatcher.dispatch(
+        plan, thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    assert fake.calls == []
+    assert result is not None and result.success is True
+    # The enquiry still lands locally, and the recorded reason is the argument
+    # problem — not a tenant refusal the operator would chase in the wrong place.
+    assert result.payload["sales"]["code"] == "sales_invalid_arguments"
+    assert result.payload["sales"]["degraded"] is True
+    assert len(lead_service.requests) == 1

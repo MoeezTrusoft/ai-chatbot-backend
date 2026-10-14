@@ -28,6 +28,17 @@ _EXPIRED_CONFIRMATION_RESPONSE = (
 )
 
 
+def _sales_stage(state: ThreadState | None) -> str | None:
+    """The thread's funnel stage as the value Sales maps (S6.2.1).
+
+    Only the bot's own `SalesStage` vocabulary is sent: Sales owns the frozen
+    translation to a `LeadStage`, and an unset stage (`None`) is left off the
+    call entirely so Sales keeps its default.
+    """
+    stage = getattr(getattr(state, "sales_stage", None), "value", None)
+    return str(stage) if stage is not None else None
+
+
 @dataclass(slots=True)
 class SalesActionPlanner:
     consultation_duration_minutes: int = 30
@@ -99,7 +110,7 @@ class SalesActionPlanner:
             return self._agreement_plan(contact=contact, state=state, processed=processed)
 
         if self._is_lead_candidate(intent, contact):
-            return self._lead_plan(contact=contact, services=services)
+            return self._lead_plan(contact=contact, services=services, state=state)
 
         return ActionPlan(
             status=ActionStatus.NOT_NEEDED,
@@ -164,6 +175,7 @@ class SalesActionPlanner:
         *,
         contact: dict[str, str],
         services: list[str],
+        state: ThreadState | None = None,
     ) -> ActionPlan:
         if "name" not in contact:
             return ActionPlan(
@@ -187,6 +199,7 @@ class SalesActionPlanner:
                 **contact,
                 "services": services,
             },
+            sales_stage=_sales_stage(state),
             recommended_follow_up_slots=lead_follow_up_slots(contact),
             reason="Lead can be created with available contact details.",
         )

@@ -783,13 +783,26 @@ class SalesActionDispatcher:
                 binding=binding,
                 customer_id=customer_id,
                 request_id=request_id,
+                # S6.2.1: the thread's funnel stage travels with the lead; Sales
+                # maps it with the frozen `mapSalesStage` instead of filing the
+                # chat lead at its default stage.
+                stage=plan.sales_stage,
             )
         except (SalesTenantNotAllowed, SalesMcpConfigError) as exc:
+            # Two different problems land here: the turn names a tenant/site Sales
+            # does not allow, or the payload cannot be described on the wire (e.g.
+            # a funnel stage the frozen map does not key). Both degrade locally,
+            # but the recorded code must say which, or an operator chasing a
+            # missing lead is sent to the allow-list for an argument bug.
             return None, {
                 "tool": tool,
                 "request_id": request_id,
                 "ok": False,
-                "code": "sales_tenant_not_allowed",
+                "code": (
+                    "sales_tenant_not_allowed"
+                    if isinstance(exc, SalesTenantNotAllowed)
+                    else "sales_invalid_arguments"
+                ),
                 "degraded": True,
                 "detail": str(exc)[:200],
             }

@@ -479,3 +479,43 @@ def test_consultation_pending_confirmation_yes_carries_payload() -> None:
 def test_time_hint_month_abbreviation_is_boundary_safe() -> None:
     assert has_time_hint("Can we talk Nov 20?")
     assert not has_time_hint("This is a novel manuscript.")
+
+
+def test_a_ready_lead_plan_carries_the_threads_funnel_stage() -> None:
+    # S6.2.1: the stage the conversation reached travels with the lead, in the
+    # bot's own vocabulary — Sales translates it with the frozen stage map.
+    planner = SalesActionPlanner()
+    state = ThreadState(
+        sales_stage={"value": SalesStage.SCOPING},
+        contact_info={"name": "Ada Lovelace", "email": "ada@example.com"},
+    )
+
+    plan = planner.plan(
+        processed=_message("I would like to move ahead, the scope is clear."),
+        state=state,
+        intent=_intent(QueryIntentType.CONTACT_INFO_PROVIDED),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.action_type == ActionType.CREATE_LEAD
+    assert plan.status == ActionStatus.READY
+    assert plan.sales_stage == "scoping"
+
+
+def test_a_thread_that_never_advanced_sends_no_stage() -> None:
+    # An unset stage must be omitted, not guessed: Sales then keeps its own
+    # default instead of being told the visitor is somewhere they are not.
+    planner = SalesActionPlanner()
+    state = ThreadState(contact_info={"name": "Ada Lovelace", "email": "ada@example.com"})
+
+    plan = planner.plan(
+        processed=_message("Here are my details."),
+        state=state,
+        intent=_intent(QueryIntentType.CONTACT_INFO_PROVIDED),
+        extraction=CombinedExtraction(),
+    )
+
+    assert plan.status == ActionStatus.READY
+    assert plan.sales_stage is None
+    # The stage is not a slot: it must not leak into the idempotency hash.
+    assert "sales_stage" not in plan.collected_slots

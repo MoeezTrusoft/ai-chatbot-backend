@@ -13,6 +13,7 @@ import pytest
 
 from bookcraft.infra.sales_mcp import (
     ACTION_TOOL_MAP,
+    CHATBOT_SALES_STAGES,
     CODE_REACTIONS,
     CONSULTATION_TIMEOUT_TOOLS,
     TOOL_PERMISSIONS,
@@ -80,6 +81,19 @@ def test_error_reactions_match_the_frozen_contract() -> None:
     }
     assert reactions, "no reactions parsed from the contract"
     assert reactions == CODE_REACTIONS
+
+
+def test_the_stage_vocabulary_matches_the_frozen_map() -> None:
+    # S6.2.1: the bot sends its OWN funnel stage on `sales_lead_create` and Sales
+    # translates it with the frozen `SALES_STAGE_MAP`. A stage the map does not key
+    # would throw inside Sales, so the two sets have to be identical — not merely
+    # overlapping.
+    source = _contract_source()
+    start = source.index("SALES_STAGE_MAP = Object.freeze({")
+    block = source[start : source.index("});", start)]
+    keys = set(re.findall(r"(\w+):\s*'[A-Za-z]+'", block))
+    assert keys, "no stage map parsed from the contract"
+    assert keys == set(CHATBOT_SALES_STAGES)
 
 
 def test_the_consultation_timeout_is_only_used_for_granted_write_tools() -> None:
