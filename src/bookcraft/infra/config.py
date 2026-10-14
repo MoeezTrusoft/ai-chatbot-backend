@@ -222,6 +222,14 @@ class Settings(BaseSettings):
     sales_mcp_timeout_write_seconds: float = 8.0
     sales_mcp_timeout_consultation_seconds: float = 10.0
     sales_mcp_max_attempts: int = 2
+    # Overrides the `scope` claim. Unset means the pinned grant set from
+    # bookcraft.infra.sales_mcp is sent — the exact permissions Sales registers
+    # for this principal. Set it only to narrow, never to widen, that set.
+    sales_mcp_scope: str | None = None
+    # Circuit breaker: after this many consecutive failures the client stops
+    # calling Sales for the cooldown, so a stalled Sales cannot slow every turn.
+    sales_mcp_circuit_failure_threshold: int = 5
+    sales_mcp_circuit_cooldown_seconds: float = 30.0
     # Keep the in-process dispatcher + CSR push for standalone/dev deployments
     # (D3/T3.4). Production sets this false so Sales owns the booking.
     chatbot_local_scheduler: bool = True
