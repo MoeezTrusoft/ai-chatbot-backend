@@ -176,9 +176,29 @@ class PendingConfirmationState(BaseModel):
     expires_at: datetime | None = None
 
 
+class SalesIntegrationState(BaseModel):
+    """Where the CRM write actually landed (D1/D3).
+
+    Sales owns leads and bookings once the MCP integration is on, so its ids are
+    kept apart from the bot's own local records: the same turn can have written to
+    Sales and fallen back locally, and only this records which happened.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    lead_id: str | None = None
+    consultation_id: str | None = None
+    last_tool: str | None = None
+    last_code: str | None = None
+    last_request_id: str | None = None
+    degraded: bool = False
+    updated_at: datetime | None = None
+
+
 class SalesActionsState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    integration: SalesIntegrationState = Field(default_factory=SalesIntegrationState)
     lead: LeadActionState = Field(default_factory=LeadActionState)
     consultation: ConsultationActionState = Field(default_factory=ConsultationActionState)
     pricing: PricingActionState = Field(default_factory=PricingActionState)

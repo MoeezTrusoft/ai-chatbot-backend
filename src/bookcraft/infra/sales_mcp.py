@@ -22,7 +22,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 from uuid import UUID, uuid4
@@ -133,6 +135,8 @@ CODE_REACTIONS: Final[dict[str, tuple[str, bool, str]]] = {
 
 # Reactions the bot produces locally, keyed the same way so callers switch on
 # one vocabulary regardless of whether Sales or the transport failed.
+LEAD_SOURCE_CHANNEL: Final = "Chatbot"
+
 TRANSPORT_REACTION: Final[tuple[str, bool, str]] = ("retry", True, "sales_unavailable")
 PERIMETER_REACTION: Final[tuple[str, bool, str]] = ("degrade", False, "sales_forbidden")
 CONTRACT_REACTION: Final[tuple[str, bool, str]] = ("degrade", False, "sales_unavailable")
@@ -154,6 +158,23 @@ class TenantBinding:
     tenant_id: UUID
     owner_id: str
     chat_mode: Literal["ai", "human"] = "ai"
+
+
+@dataclass(frozen=True, slots=True)
+class SalesTurnContext:
+    """The verified tenant/site of the turn being served (S3.3.1).
+
+    Filled from the Sales-signed inbound token claim, never from request input:
+    a caller cannot choose which tenant its conversation is written into.
+    """
+
+    tenant_id: UUID | None = None
+    site_id: str | None = None
+    thread_id: UUID | None = None
+
+    @property
+    def usable(self) -> bool:
+        return bool(self.tenant_id or self.site_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +278,75 @@ class ServiceTokenSigner:
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def lead_source(site_id: str) -> str:
+    """`Chatbot:<siteId>` provenance, validated the way the contract validates it."""
+    site = str(site_id or "").strip()
+    if not re.fullmatch(r"[a-z0-9_-]{3,80}", site, flags=re.IGNORECASE):
+        raise SalesMcpConfigError(f"cannot build a lead source from site id {site_id!r}")
+    return f"{LEAD_SOURCE_CHANNEL}:{site}"
+
+
+def lead_create_arguments(
+    slots: Mapping[str, Any],
+    *,
+    binding: TenantBinding,
+    customer_id: UUID | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Map dispatcher slots onto `sales_lead_create` (S3.2.2).
+
+    `source` and `ownerId` come from the allow-list binding rather than the chat
+    payload: Sales' routing owner is a CRM decision, not something a visitor can
+    assert by typing it.
+    """
+    arguments: dict[str, Any] = {
+        "source": lead_source(binding.site_id),
+        "ownerId": binding.owner_id,
+    }
+    for slot, field_name in (("name", "name"), ("email", "email"), ("phone", "phone")):
+        value = slots.get(slot)
+        if isinstance(value, str) and value.strip():
+            arguments[field_name] = value.strip()[:255]
+    if customer_id is not None:
+        arguments["customerId"] = str(customer_id)
+    if request_id:
+        arguments["requestId"] = request_id
+    return arguments
+
+
+def lead_payload_from_sales(
+    data: Mapping[str, Any], *, contact: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Shape a Sales lead record into the `payload["lead"]` the state writer reads.
+
+    Sales keeps the person on `customer` and the pipeline fields on the lead, so the
+    contact details the conversation collected are used when Sales has none yet.
+    """
+    raw_customer = data.get("customer")
+    customer: Mapping[str, Any] = raw_customer if isinstance(raw_customer, Mapping) else {}
+    collected = contact or {}
+
+    def contact_field(key: str) -> str | None:
+        for source in (customer, collected):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    return {
+        "id": str(data.get("id") or ""),
+        "name": contact_field("name"),
+        "email": contact_field("email"),
+        "phone": contact_field("phone"),
+        "customer_id": data.get("customerId"),
+        "stage": data.get("stage"),
+        "score": data.get("score"),
+        "owner_id": data.get("ownerId"),
+        "source": data.get("source"),
+        "origin": "sales",
+    }
 
 
 def pinned_scope(settings: Settings) -> str:
@@ -386,6 +476,31 @@ class SalesMcpClient:
                 return binding
         raise SalesTenantNotAllowed(f"tenant {tenant_id} is not in the tenant allow-list")
 
+    def resolve_binding(
+        self, *, tenant_id: UUID | str | None = None, site_id: str | None = None
+    ) -> TenantBinding:
+        """Pick the binding for a turn, refusing a site/tenant pair that disagrees.
+
+        A token that names a site resolves through the site; a token that names only
+        a tenant resolves by tenant. Both at once must agree, so a token cannot pair
+        one tenant's id with another tenant's site and write into either.
+        """
+        site = str(site_id or "").strip()
+        if site:
+            binding = self._bindings.get(site)
+            if binding is None:
+                raise SalesTenantNotAllowed(f"site {site!r} is not in the tenant allow-list")
+            claimed = str(tenant_id or "").strip().lower()
+            if claimed and claimed != str(binding.tenant_id).lower():
+                raise SalesTenantNotAllowed(
+                    f"site {site!r} does not belong to the claimed tenant {tenant_id}"
+                )
+            return binding
+        binding = self.assert_tenant_allowed(tenant_id)
+        if binding is None:
+            raise SalesTenantNotAllowed("the turn carries no tenant or site claim")
+        return binding
+
     def _timeout_for(self, tool: str) -> float:
         if tool in CONSULTATION_TIMEOUT_TOOLS:
             return self.settings.sales_mcp_timeout_consultation_seconds
@@ -412,7 +527,8 @@ class SalesMcpClient:
         tool: str,
         arguments: dict[str, Any] | None = None,
         *,
-        tenant_id: UUID | str,
+        tenant_id: UUID | str | None,
+        site_id: str | None = None,
         request_id: str | None = None,
         correlation_id: str | None = None,
     ) -> SalesToolResult:
@@ -436,18 +552,21 @@ class SalesMcpClient:
                 ok=False, tool=tool, code="sales_integration_disabled", degraded=True, attempts=0
             )
         try:
-            binding = self.assert_tenant_allowed(tenant_id)
-        except SalesTenantNotAllowed:
-            _logger.warning("sales_mcp_tenant_rejected", tool=tool, tenant_id=str(tenant_id))
-            return SalesToolResult(
-                ok=False, tool=tool, code="sales_tenant_not_allowed", degraded=True, attempts=0
+            binding = self.resolve_binding(tenant_id=tenant_id, site_id=site_id)
+        except SalesTenantNotAllowed as exc:
+            _logger.warning(
+                "sales_mcp_tenant_rejected",
+                tool=tool,
+                tenant_id=str(tenant_id),
+                site_id=site_id,
+                detail=str(exc),
             )
-        if binding is None:
-            # No tenant claim on the turn: Sales would reject the call anyway,
-            # so stay on the local path instead of making it (D1).
-            return SalesToolResult(
-                ok=False, tool=tool, code="sales_tenant_missing", degraded=True, attempts=0
+            code = (
+                "sales_tenant_missing"
+                if not str(tenant_id or "").strip() and not str(site_id or "").strip()
+                else "sales_tenant_not_allowed"
             )
+            return SalesToolResult(ok=False, tool=tool, code=code, degraded=True, attempts=0)
 
         call_id = request_id or str(uuid4())
         payload = {
@@ -530,7 +649,8 @@ class SalesMcpClient:
 
         error = body.get("error")
         if isinstance(error, dict):
-            data = error.get("data") if isinstance(error.get("data"), dict) else {}
+            raw_data = error.get("data")
+            data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
             sales_code = str(data.get("code") or "") or None
             reaction = CODE_REACTIONS.get(sales_code or "", CONTRACT_REACTION)
             failure = _failure(tool, reaction, attempts=attempts)
@@ -644,9 +764,13 @@ __all__ = [
     "SalesMcpConfigError",
     "SalesTenantNotAllowed",
     "SalesToolResult",
+    "SalesTurnContext",
     "ServiceTokenSigner",
     "TenantBinding",
     "call_action",
+    "lead_create_arguments",
+    "lead_payload_from_sales",
+    "lead_source",
     "parse_tenant_allowlist",
     "pinned_scope",
     "tool_for_action",

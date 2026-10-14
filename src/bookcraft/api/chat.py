@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from bookcraft.api.auth import authenticate_websocket, require_http_auth
+from bookcraft.api.auth import AuthPrincipal, authenticate_websocket, require_http_auth
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.security import is_origin_allowed
 from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
@@ -175,12 +175,27 @@ class ConsultationCancelledResponse(BaseModel):
     cancelled: bool
 
 
+def _with_verified_claims(payload: ChatTurnRequest, principal: AuthPrincipal) -> ChatTurnRequest:
+    """Copy the verified tenant/site onto the turn and drop anything the caller sent.
+
+    The claim is the only source of the conversation's tenant (S3.3.1): a body that
+    names a tenant is overwritten, and a turn whose token carries no claim is
+    cleared, so it cannot inherit a tenant from a previous hop or from input.
+    """
+    update: dict[str, object] = {
+        "tenant_id": principal.tenant_id,
+        "site_id": principal.site_id,
+    }
+    if payload.customer_id is None and principal.customer_id is not None:
+        update["customer_id"] = principal.customer_id
+    return payload.model_copy(update=update)
+
+
 @router.post("/turn", response_model=ChatTurnResponse)
 async def chat_turn(payload: ChatTurnRequest, request: Request) -> ChatTurnResponse:
     settings: Settings = request.app.state.settings
     principal = require_http_auth(request, settings)
-    if payload.customer_id is None and principal.customer_id is not None:
-        payload = payload.model_copy(update={"customer_id": principal.customer_id})
+    payload = _with_verified_claims(payload, principal)
 
     limiter: RateLimiter = request.app.state.rate_limiter
     client_host = request.client.host if request.client else None
@@ -383,12 +398,15 @@ async def chat_ws(websocket: WebSocket, thread_id: UUID) -> None:
             corr_id = data.get("correlation_id")
             raw_corr = corr_id if isinstance(corr_id, str) else None
             try:
-                turn_request = ChatTurnRequest(
-                    thread_id=thread_id,
-                    customer_id=principal.customer_id,
-                    message=message_str,
-                    correlation_id=sanitize_correlation_id(raw_corr),
-                    attachments=attachments,
+                turn_request = _with_verified_claims(
+                    ChatTurnRequest(
+                        thread_id=thread_id,
+                        customer_id=principal.customer_id,
+                        message=message_str,
+                        correlation_id=sanitize_correlation_id(raw_corr),
+                        attachments=attachments,
+                    ),
+                    principal,
                 )
             except ValidationError:
                 await websocket.send_json(
@@ -495,9 +513,8 @@ async def chat_websocket_stream(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "error", "message": str(exc)})
                 continue
 
-            # Inject principal customer_id if the caller did not supply one.
-            if request.customer_id is None and principal.customer_id is not None:
-                request = request.model_copy(update={"customer_id": principal.customer_id})
+            # Inject the verified identity claims, dropping anything the client sent.
+            request = _with_verified_claims(request, principal)
 
             if not streaming_enabled:
                 # Non-streaming path: delegate to the standard handle_turn pipeline.

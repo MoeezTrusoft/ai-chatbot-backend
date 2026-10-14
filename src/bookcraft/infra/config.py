@@ -236,6 +236,14 @@ class Settings(BaseSettings):
     # C4: expose the bot's read-mostly capabilities over MCP. Purely additive —
     # all REST/WS behaviour is unchanged whether or not this is on.
     chatbot_mcp_server_enabled: bool = False
+    # Public keys of the callers allowed to reach `/mcp`, as JSON: kid → JWK
+    # ({"kty":"OKP","crv":"Ed25519","x":"..."}) or a PEM public key. An empty
+    # registry admits nobody: the surface stays closed until keys are registered.
+    chatbot_mcp_public_keys_json: str = "{}"
+    # Comma-separated issuers accepted on that surface. Blank uses the pinned
+    # internal set (gateway, RBAC, Sales); widening is a deliberate act.
+    chatbot_mcp_eddsa_issuers: str = ""
+    chatbot_mcp_audience: str = "internal"
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     rate_limit_per_ip_per_minute: int = 30
 

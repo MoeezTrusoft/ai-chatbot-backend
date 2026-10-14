@@ -34,6 +34,14 @@ from bookcraft.components.storage.action_idempotency_repository import (
     ActionIdempotencyRepository,
     make_slots_hash,
 )
+from bookcraft.infra.sales_mcp import (
+    SalesMcpClient,
+    SalesMcpConfigError,
+    SalesTenantNotAllowed,
+    SalesTurnContext,
+    lead_create_arguments,
+    lead_payload_from_sales,
+)
 
 
 logger = structlog.get_logger(__name__)
@@ -64,6 +72,10 @@ class SalesActionDispatcher:
     action_idempotency_repository: ActionIdempotencyRepository = field(
         default_factory=ActionIdempotencyRepository
     )
+    # D2/S3.2.2: Sales owns the CRM write when the integration is switched on.
+    # The in-process services below stay as the fallback (D3) so a Sales outage
+    # degrades a turn instead of losing the enquiry.
+    sales_client: SalesMcpClient | None = None
     # Controls synthetic-success behaviour when lead_service is None.
     # In test/dev envs (app_env in _DEV_ENVS) a fake success is returned so e2e tests
     # can exercise post-lead flows without a real DB.  In production this must be False
@@ -76,6 +88,7 @@ class SalesActionDispatcher:
         *,
         thread_id: UUID,
         customer_id: UUID | None,
+        sales_context: SalesTurnContext | None = None,
     ) -> ActionResult | None:
         if plan.action_type is None or plan.status != ActionStatus.READY:
             return None
@@ -105,6 +118,11 @@ class SalesActionDispatcher:
                 thread_id=thread_id,
                 customer_id=customer_id,
                 started=started,
+                # Reusing the durable idempotency key as the Sales requestId makes
+                # a retry a replay Sales dedupes, rather than a second lead
+                # (S3.2.4) — and a retried turn reuses this exact key.
+                request_id=idem_key,
+                sales_context=sales_context,
             )
         elif plan.action_type == ActionType.SCHEDULE_CONSULTATION:
             result = await self._schedule_consultation(
@@ -333,6 +351,130 @@ class SalesActionDispatcher:
         )
 
     async def _create_lead(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+        request_id: str | None = None,
+        sales_context: SalesTurnContext | None = None,
+    ) -> ActionResult:
+        sales_result, sales_meta = await self._create_lead_in_sales(
+            plan,
+            customer_id=customer_id,
+            started=started,
+            request_id=request_id,
+            sales_context=sales_context,
+        )
+        if sales_result is not None:
+            return sales_result
+
+        result = await self._create_lead_locally(
+            plan,
+            thread_id=thread_id,
+            customer_id=customer_id,
+            started=started,
+        )
+        if sales_meta is not None:
+            # Sales was tried and did not take the lead. Keep the outcome on the
+            # result so the state layer can record why the turn degraded (D3).
+            result.payload = {**result.payload, "sales": sales_meta}
+        return result
+
+    async def _create_lead_in_sales(
+        self,
+        plan: ActionPlan,
+        *,
+        customer_id: UUID | None,
+        started: float,
+        request_id: str | None,
+        sales_context: SalesTurnContext | None,
+    ) -> tuple[ActionResult | None, dict[str, object] | None]:
+        """Try the CRM write in Sales first when the integration is switched on.
+
+        Returns the authoritative result plus the metadata to record. `(None, None)`
+        means Sales is not configured for this turn, and the caller proceeds on the
+        local path exactly as before.
+        """
+        if self.sales_client is None or not self.sales_client.enabled:
+            return None, None
+        if sales_context is None or not sales_context.usable:
+            # No verified tenant/site on the turn: Sales would refuse the call, and
+            # guessing a tenant is exactly what the allow-list exists to prevent.
+            logger.info(
+                "sales_mcp_skipped_no_tenant",
+                thread_id=str(sales_context.thread_id if sales_context else None),
+            )
+            return None, None
+
+        tool = "sales_lead_create"
+        try:
+            binding = self.sales_client.resolve_binding(
+                tenant_id=sales_context.tenant_id, site_id=sales_context.site_id
+            )
+            arguments = lead_create_arguments(
+                plan.collected_slots,
+                binding=binding,
+                customer_id=customer_id,
+                request_id=request_id,
+            )
+        except (SalesTenantNotAllowed, SalesMcpConfigError) as exc:
+            return None, {
+                "tool": tool,
+                "request_id": request_id,
+                "ok": False,
+                "code": "sales_tenant_not_allowed",
+                "degraded": True,
+                "detail": str(exc)[:200],
+            }
+
+        outcome = await self.sales_client.call_tool(
+            tool,
+            arguments,
+            tenant_id=binding.tenant_id,
+            site_id=binding.site_id,
+            request_id=request_id,
+        )
+        meta: dict[str, object] = {
+            "tool": tool,
+            "request_id": request_id,
+            "ok": outcome.ok,
+            "code": outcome.code,
+            "sales_code": outcome.sales_code,
+            "degraded": outcome.degraded,
+            "attempts": outcome.attempts,
+        }
+        if not outcome.ok or not isinstance(outcome.data, dict):
+            return None, meta
+
+        lead = lead_payload_from_sales(outcome.data, contact=plan.collected_slots)
+        if not lead.get("id"):
+            # A success without an id is a contract violation: treat it as a
+            # failure so the enquiry still lands on the local path.
+            meta["ok"] = False
+            meta["code"] = "sales_invalid_response"
+            return None, meta
+
+        return (
+            ActionResult(
+                action_type=ActionType.CREATE_LEAD,
+                success=True,
+                result_id=str(lead["id"]),
+                customer_safe_summary="Got it! I've passed your details to our sales team.",
+                internal_summary=f"Lead created in Sales: {lead['id']}",
+                payload={
+                    "lead": lead,
+                    "created": True,
+                    "sales": meta,
+                    "recommended_follow_up_slots": plan.recommended_follow_up_slots,
+                },
+                duration_ms=_elapsed_ms(started),
+            ),
+            meta,
+        )
+
+    async def _create_lead_locally(
         self,
         plan: ActionPlan,
         *,

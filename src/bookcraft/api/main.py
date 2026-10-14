@@ -1,8 +1,9 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
+from uuid import UUID
 
 import sentry_sdk
 import structlog
@@ -15,8 +16,10 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bookcraft.api.admin_analysis import router as admin_analysis_router
+from bookcraft.api.chat import ChatGreetRequest
 from bookcraft.api.chat import router as chat_router
 from bookcraft.api.holidays import router as holidays_router
+from bookcraft.api.mcp import router as mcp_router
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
@@ -71,7 +74,10 @@ from bookcraft.components.pricing_actions import (
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.storage.db import create_engine, create_session_factory
+from bookcraft.components.mcp import ChatbotMcpServer, idempotency_key_for
+from bookcraft.components.response.chat_schemas import ChatTurnRequest
 from bookcraft.components.storage.thread_repository import ThreadRepository
+from bookcraft.infra.service_tokens import ServicePrincipal
 from bookcraft.components.trg import (
     InMemoryGraphRepository,
     RedisHotGraphStore,
@@ -91,6 +97,7 @@ from bookcraft.infra.observability import configure_tracing
 from bookcraft.infra.rate_limit import InMemoryRateLimiter, RedisRateLimiter, RedisRateLimitStore
 from bookcraft.infra.readiness import ReadinessChecker
 from bookcraft.infra.redaction import redact_text
+from bookcraft.infra.sales_mcp import SalesMcpClient
 from bookcraft.infra.schemas import HealthResponse, ReadinessResponse
 from bookcraft.services.chat import ChatService
 from bookcraft.tools import (
@@ -98,6 +105,7 @@ from bookcraft.tools import (
     IdempotencyStore,
     MemoryAuditSink,
     MemoryCache,
+    ToolContext,
     ToolDispatcher,
     ToolGatingPolicy,
     ToolRegistry,
@@ -266,6 +274,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(admin_analysis_router)
     app.include_router(holidays_router)
+    # C4: the bot's own MCP server. Mounted only when switched on, so an off
+    # deployment exposes no extra route at all (S3.6.4).
+    if resolved_settings.chatbot_mcp_server_enabled:
+        app.state.mcp_server = build_mcp_server(
+            app.state.chat_service, thread_repository=thread_repository
+        )
+        app.include_router(mcp_router)
 
     @app.middleware("http")
     async def bind_trace_context(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -532,10 +547,109 @@ def build_chat_service(
             nda_action_service=nda_action_service,
             agreement_action_service=agreement_action_service,
             app_env=settings.app_env,
+            sales_client=build_sales_mcp_client(settings),
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,
     )
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def build_mcp_server(
+    chat_service: ChatService, *, thread_repository: ThreadRepository | None
+) -> ChatbotMcpServer:
+    """The bot's own MCP server, over the in-process services it already has.
+
+    Nothing is re-implemented here: `chat.*` routes to the chat service, the
+    tool-backed tools route to the SAME registry/dispatcher a chat turn uses, and
+    `chat.state` reads the thread repository (S3.6.2).
+    """
+
+    async def handle_turn(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        payload = ChatTurnRequest.model_validate(arguments)
+        response = await chat_service.handle_turn(payload)
+        return response.model_dump(mode="json")
+
+    async def handle_greet(arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        payload = ChatGreetRequest(
+            thread_id=_uuid_or_none(arguments.get("thread_id")),
+            customer_id=_uuid_or_none(arguments.get("customer_id")),
+            landing_page=_optional_str(arguments.get("landing_page")),
+            landing_keyword=_optional_str(arguments.get("landing_keyword")),
+        )
+        response = await chat_service.handle_greet(payload)
+        return dict(response.model_dump(mode="json"))
+
+    async def load_state(thread_id: UUID) -> Mapping[str, Any]:
+        if thread_repository is None:
+            # No storage configured means there is no state to read; the server
+            # maps this to CHATBOT-0500 rather than inventing an empty thread.
+            raise RuntimeError("thread repository is not configured")
+        record = await thread_repository.load(thread_id=thread_id)
+        if record is None:
+            raise LookupError(f"no such conversation: {thread_id}")
+        return {
+            "thread_id": str(record.thread_id),
+            "version": record.version,
+            "turn_count": record.turn_count,
+            "state": record.state.model_dump(mode="json"),
+        }
+
+    async def invoke_tool(
+        tool_name: str, arguments: dict[str, Any], principal: ServicePrincipal
+    ) -> Mapping[str, Any]:
+        thread_id = _uuid_or_none(arguments.get("thread_id"))
+        if thread_id is None:
+            raise ValueError("thread_id must be a UUID")
+        if chat_service.tool_dispatcher is None:
+            raise RuntimeError("tool dispatcher is not configured")
+        context = ToolContext(
+            thread_id=thread_id,
+            customer_id=_uuid_or_none(arguments.get("customer_id")),
+            turn_sequence=0,
+            invoked_by=f"mcp:{principal.subject}",
+            correlation_id=str(arguments.get("correlation_id") or ""),
+            idempotency_key=idempotency_key_for(
+                tool_name, arguments, principal=principal.subject
+            ),
+            environment=chat_service.environment,
+        )
+        envelope = await chat_service.tool_dispatcher.invoke(
+            tool_name=tool_name, raw_input=dict(arguments), context=context
+        )
+        return envelope.model_dump(mode="json")
+
+    return ChatbotMcpServer(
+        handle_turn=handle_turn,
+        handle_greet=handle_greet,
+        invoke_tool=invoke_tool,
+        load_thread_state=load_state if thread_repository is not None else None,
+    )
+
+
+def build_sales_mcp_client(settings: Settings) -> SalesMcpClient | None:
+    """The bot → Sales MCP client, or None while the integration is switched off.
+
+    A malformed allow-list raises here rather than at the first lead: an enabled
+    integration that cannot name a tenant must fail visibly at startup, not
+    quietly write leads into the wrong place (S3.3.3).
+    """
+    if not settings.sales_mcp_enabled:
+        return None
+    return SalesMcpClient(settings)
 
 
 def build_tool_dispatcher(

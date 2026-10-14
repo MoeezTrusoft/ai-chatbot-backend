@@ -19,6 +19,12 @@ class ChatTurnRequest(BaseModel):
 
     thread_id: UUID | None = None
     customer_id: UUID | None = None
+    # Verified tenant/site of the conversation, copied from the Sales-signed token
+    # by the API layer — never taken from the request body (S3.3.1). Present only
+    # when the caller's token carries the claims, so an unclaimed turn is
+    # single-tenant exactly as before.
+    tenant_id: UUID | None = None
+    site_id: str | None = Field(default=None, max_length=80)
     # An attachment-only turn (file uploaded with no typed text) is valid, so the
     # message itself may be empty — but a turn with neither text nor an attachment
     # is rejected by the validator below. (Previously min_length=1 here 422'd every

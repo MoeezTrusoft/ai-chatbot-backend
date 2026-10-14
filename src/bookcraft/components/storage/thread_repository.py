@@ -31,6 +31,28 @@ class LoadedThread:
 class ThreadRepository:
     session_factory: async_sessionmaker[AsyncSession]
 
+    async def load(self, *, thread_id: UUID) -> LoadedThread | None:
+        """Read a conversation without creating one.
+
+        `load_or_create` is the turn path: it materialises a thread on first
+        contact. A reader (the MCP `chat.state` tool, an operator lookup) must be
+        able to ask about a conversation that does not exist and get `None` back
+        rather than silently creating an empty one.
+        """
+        async with self.session_factory() as session:
+            record = await session.get(ThreadRecord, thread_id)
+            if record is None:
+                return None
+            event_count, last_hash = await self._event_tail(session, thread_id)
+            return LoadedThread(
+                thread_id=thread_id,
+                state=ThreadState.model_validate(record.state or {}),
+                version=record.version,
+                turn_count=record.turn_count,
+                event_count=event_count,
+                last_event_hash=last_hash,
+            )
+
     async def load_or_create(
         self,
         *,

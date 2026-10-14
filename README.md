@@ -45,6 +45,33 @@ DATABASE_URL=postgresql+asyncpg://bookcraft:bookcraft_dev@localhost:55432/bookcr
 - `GET /metrics`
 - `POST /api/v1/chat/turn`
 - `WS /api/v1/chat/ws/{thread_id}`
+- `POST /mcp` — only mounted when `CHATBOT_MCP_SERVER_ENABLED=true`
+
+## Sales integration (`erp-sales-backend`)
+
+Both directions of the bridge are off by default and configured only through the environment; see
+the Sales MCP block in `.env.example` (`.env.staging.example` for staging).
+
+- **Bot → Sales (MCP `tools/call`).** With `SALES_MCP_ENABLED=true` the bot writes lead,
+  chatroom, message and consultation state through Sales' MCP endpoint, signing every call with an
+  Ed25519 service-JWT (`SALES_MCP_ISSUER`/`SALES_MCP_KID`). Sales must hold the matching public key
+  in `SERVICE_JWT_PUBLIC_KEYS_JSON` and the issuer in `SERVICE_JWT_EDDSA_ISSUERS`. Only sites listed
+  in `SALES_MCP_TENANT_ALLOWLIST_JSON` are served. A failed or unauthorized call degrades to the
+  local path rather than losing the lead. `CHATBOT_LOCAL_SCHEDULER=true` keeps the in-process
+  dispatcher + CSR push for standalone/dev; production sets it false so Sales owns the booking.
+- **Sales → bot (MCP server, C4).** With `CHATBOT_MCP_SERVER_ENABLED=true` the bot also serves its
+  own read-mostly tools (`chat.turn`, `chat.greet`, `chat.state`, `pricing.quote`,
+  `portfolio.lookup`, `documents.render`) over `POST /mcp`, authenticated with the same Ed25519
+  service-token shape via `CHATBOT_MCP_PUBLIC_KEYS_JSON` / `CHATBOT_MCP_EDDSA_ISSUERS`. The tool
+  manifest is frozen in `erp-contracts/src/mcp/chatbot.js` and mirrored by
+  `tests/unit/test_chatbot_mcp_contract_parity.py`.
+
+End-to-end proof of the token seam:
+
+```bash
+PYTHONPATH=src .venv/bin/python ../../deployments/chatbot-sales-20261012/verify-bot-token-crossrepo.py > /tmp/bot-token.json
+cd ../erp-sales-backend && node scripts/verify-bot-token-crossrepo.mjs /tmp/bot-token.json
+```
 
 ## Acceptance
 

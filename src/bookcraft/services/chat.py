@@ -134,6 +134,7 @@ from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
 from bookcraft.infra.observability import STAGE_LATENCY
 from bookcraft.infra.redaction import redact_mapping, redact_text
+from bookcraft.infra.sales_mcp import SalesTurnContext
 from bookcraft.infra.trace_sanitizer import (
     safe_contact_capture,
     safe_lead_intake,
@@ -1182,6 +1183,13 @@ class ChatService:
                     action_plan,
                     thread_id=thread_id,
                     customer_id=payload.customer_id,
+                    # Verified tenant/site of this conversation (S3.3.1): the CRM
+                    # write goes to the tenant Sales signed, or nowhere.
+                    sales_context=SalesTurnContext(
+                        tenant_id=payload.tenant_id,
+                        site_id=payload.site_id,
+                        thread_id=thread_id,
+                    ),
                 )
             else:
                 action_result = None
@@ -3200,11 +3208,39 @@ class ChatService:
             return None
 
     @staticmethod
+    def _record_sales_outcome(state: ThreadState, action_result: ActionResult) -> None:
+        """Persist which system took the write, and whether the turn degraded.
+
+        A Sales failure that fell back to the local path must stay visible: without
+        this, a bot whose key is refused would look healthy while every lead silently
+        lived only in the bot's own tables.
+        """
+        meta = action_result.payload.get("sales")
+        if not isinstance(meta, dict):
+            return
+        integration = state.sales_actions.integration
+        integration.last_tool = _optional_string(meta.get("tool"))
+        integration.last_code = _optional_string(meta.get("code"))
+        integration.last_request_id = _optional_string(meta.get("request_id"))
+        integration.degraded = bool(meta.get("degraded"))
+        integration.updated_at = datetime.now(UTC)
+        if meta.get("ok") and action_result.action_type == ActionType.CREATE_LEAD:
+            lead = action_result.payload.get("lead")
+            if isinstance(lead, dict) and lead.get("id"):
+                integration.lead_id = str(lead["id"])
+
+    @staticmethod
     def _apply_sales_action_result_to_state(
         state: ThreadState,
         action_result: ActionResult | None,
     ) -> None:
-        if action_result is None or not action_result.success:
+        if action_result is None:
+            return
+        # Recorded before the success check: a Sales call that failed *and* left the
+        # local path with nothing to save is exactly the case an operator must be
+        # able to see in state.
+        ChatService._record_sales_outcome(state, action_result)
+        if not action_result.success:
             return
 
         if action_result.action_type == ActionType.CREATE_LEAD:
