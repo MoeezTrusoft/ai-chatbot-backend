@@ -99,7 +99,10 @@ class _FakeLLMExtractor:
     personal.name delta for such messages so the issue-1 back-fill can be exercised.
     """
 
-    async def extract(self, *, user_text: str, assistant_text: str, state):  # noqa: ANN001
+    # `active_service` mirrors the real extractor's optional parameter; the turn
+    # pipeline passes it, so a fake missing it raises and the name back-fill never
+    # runs (which reads as a pipeline failure rather than a stale harness).
+    async def extract(self, *, user_text: str, assistant_text: str, state, active_service: str | None = None):  # noqa: ANN001
         import re as _re
 
         from bookcraft.components.extraction.llm_extractor import LLMExtractionResult
