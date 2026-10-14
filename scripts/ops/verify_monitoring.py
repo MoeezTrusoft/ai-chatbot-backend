@@ -11,6 +11,7 @@ REQUIRED_DASHBOARDS = {
     "BookCraft RAG Pricing Portfolio Documents",
     "BookCraft Tri-Match Funnel Tool Dispatcher",
     "BookCraft Database Redis",
+    "BookCraft Website ↔ Chatbot Funnel (session → turns → lead → consult)",
 }
 
 REQUIRED_ALERTS = {
@@ -26,6 +27,13 @@ REQUIRED_ALERTS = {
     "BookCraftToolFailures",
     "BookCraftCostSpike",
     "BookCraftNoTrafficAnomaly",
+    # The bridge alerts (S9.2.1/S9.2.2). A degraded MCP call still answers the
+    # visitor, so these are the only signal that a lead missed the ERP.
+    "BookCraftSalesBridgeDown",
+    "BookCraftSalesMcpTenantResolutionMisses",
+    "BookCraftSalesMcpDegradations",
+    "BookCraftSalesMcpCallFailures",
+    "BookCraftChatbotTurnUncertainRate",
 }
 
 REQUIRED_METRICS = {
@@ -49,6 +57,18 @@ REQUIRED_METRICS = {
     "tool_invocation_failures_total",
     "db_pool_checked_out",
     "redis_cache_hits_total",
+    # Bot half of the bridge (S9.2.2) — defined in sales_mcp_metrics.py.
+    "bookcraft_sales_mcp_calls_total",
+    "bookcraft_sales_mcp_tenant_resolution_misses_total",
+    "bookcraft_sales_mcp_degradations_total",
+    # Sales half (S9.2.1) — published from the Sales repo, asserted via the
+    # funnel dashboard that is part of this repo.
+    "sales_chatbot_mcp_tool_calls_total",
+    "sales_chatbot_mcp_tool_duration_seconds_bucket",
+    "sales_chatbot_leads_created_total",
+    "sales_chatbot_consultations_booked_total",
+    "sales_chatbot_bot_turns_total",
+    "sales_chatbot_bot_turn_duration_seconds_bucket",
 }
 
 
@@ -68,6 +88,10 @@ def main() -> int:
     prometheus = Path("ops/prometheus/prometheus.yml").read_text(encoding="utf-8")
     if "pricing-alerts.yml" not in prometheus:
         errors.append("prometheus.yml does not load pricing-alerts.yml")
+    # The funnel spans two services, so both have to be scraped or half the
+    # dashboard and every bridge alert is silently empty.
+    if "job_name: sales-api" not in prometheus:
+        errors.append("prometheus.yml does not scrape Sales (/metrics)")
 
     source_text = "\n".join(path.read_text(encoding="utf-8") for path in Path("src").rglob("*.py"))
     dashboard_text = "\n".join(

@@ -280,6 +280,16 @@ async def main() -> int:
     tidg = rg["thread_id"]
     leads5 = await _leads(sf)
     lead5 = next((x for x in leads5 if (x.email or "") == "gargonz@gmail.com"), None)
+    # OPEN DEFECT (2026-10-14), reproduced against the live bot on :8000, not just
+    # this offline harness: a sign-off-form contact (name on its own line + email)
+    # is extracted into personal.name/personal.email but no lead action fires. Live
+    # trace for this exact message: personal.name='Gonzalo Garcia',
+    # personal.email='gargonz@gmail.com', contact_info=null, sales_actions=null,
+    # actionEvents=null — and a follow-up "send me a quote" turn also produced no
+    # action. The deterministic form ("My name is Ada … my email is …") does create
+    # the lead (see deployments/chatbot-sales-20261014/e2e-bridge.py C8), so this is
+    # the BUG-6040 back-fill path. Left failing on purpose: verify_sign-off-form
+    # contacts must reach the ERP (D1), and relaxing this check would hide that.
     check("lead created from sign-off message", lead5 is not None)
     if lead5:
         check("lead5.name == 'Gonzalo Garcia' (LLM name reached the lead)",
@@ -301,12 +311,18 @@ async def main() -> int:
     stage6 = (dbg6.get("consultation") or {}).get("stage")
     check("bot asks for phone even with email (stage=requested_phone_needed)",
           stage6 == "requested_phone_needed", repr(stage6))
-    # After asking once, providing only a time should proceed (loop-safe, not stuck on phone).
+    # Asking once does NOT let the booking through without a phone: the phone is a
+    # hard requirement of the Sales consultation contract (name + E.164), so a
+    # turn that supplies only a time must stay blocked on it. This is the intent
+    # pinned by tests/unit/test_chat_6040_fixes.py::test_phone_is_hard_required_for_consultation
+    # ("keeps requiring it, even after it was already asked on a prior turn").
     await turn("Any weekday afternoon works.", tid6)
     dbg6b = await chat.get_thread_debug_state(tid6)
-    check("phone ask is loop-safe (proceeds after asking once)",
-          (dbg6b.get("consultation") or {}).get("stage") != "requested_phone_needed",
-          (dbg6b.get("consultation") or {}).get("stage"))
+    consult6b = dbg6b.get("consultation") or {}
+    check("booking stays blocked until a phone arrives (phone is hard-required)",
+          consult6b.get("stage") == "requested_phone_needed"
+          and consult6b.get("can_schedule") is not True,
+          f"stage={consult6b.get('stage')} can_schedule={consult6b.get('can_schedule')}")
 
     await engine.dispose()
 

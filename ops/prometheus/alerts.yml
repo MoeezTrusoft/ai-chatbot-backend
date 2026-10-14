@@ -78,3 +78,47 @@ groups:
           severity: warning
         annotations:
           summary: LLM cost spike detected
+
+  # The Website ↔ Chatbot bridge (S9.2.1/S9.2.2). The bot half lives here; the
+  # Sales half is scraped from the `sales-api` job below. These are the failures
+  # that are otherwise invisible: a degraded MCP call still returns bubbles, so a
+  # lead can silently miss the ERP while the visitor sees a normal conversation.
+  - name: sales-chatbot-bridge
+    rules:
+      - alert: BookCraftSalesBridgeDown
+        expr: up{job="sales-api"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sales Prometheus target is down (bot→Sales MCP and callbacks degraded)
+      - alert: BookCraftSalesMcpTenantResolutionMisses
+        expr: sum(rate(bookcraft_sales_mcp_tenant_resolution_misses_total[15m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Turns are not resolving a site to an allow-listed tenant (bot writes CRM locally)
+      - alert: BookCraftSalesMcpDegradations
+        expr: sum(rate(bookcraft_sales_mcp_degradations_total[5m])) by (tool, code) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The bot degraded a Sales MCP call instead of completing it
+      - alert: BookCraftSalesMcpCallFailures
+        expr: sum(rate(sales_chatbot_mcp_tool_calls_total{outcome!="ok"}[5m])) by (tool) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sales rejected a bot tools/call at the MCP boundary
+      - alert: BookCraftChatbotTurnUncertainRate
+        expr: |
+          sum(rate(sales_chatbot_bot_turns_total{outcome="uncertain"}[15m]))
+            / clamp_min(sum(rate(sales_chatbot_bot_turns_total[15m])), 0.001) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 20% of website→bot turns ended UNCERTAIN
