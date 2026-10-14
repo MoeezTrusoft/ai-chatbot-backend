@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +24,12 @@ class AuthPrincipal:
     subject: str
     customer_id: UUID | None = None
     scopes: frozenset[str] = frozenset()
+    # Additive tenant claims (SALES-AI-CHATBOT-INTEGRATION-PLAN.md §P1.2). Sales
+    # signs the tenant/site/thread of the conversation into the turn token; a
+    # token without them behaves exactly as before (single-tenant).
+    tenant_id: UUID | None = None
+    site_id: str | None = None
+    thread_id: UUID | None = None
 
 
 def authenticate_request(request: Request, settings: Settings) -> AuthPrincipal:
@@ -86,13 +93,21 @@ def verify_jwt_token(token: str | None, settings: Settings) -> AuthPrincipal:
     if not isinstance(subject, str) or not subject.strip():
         raise AuthError("jwt subject is required")
 
-    customer_id = _customer_id_from_claim(payload.claims.get("customer_id"))
+    customer_id = _uuid_from_claim(payload.claims.get("customer_id"), "customer_id")
     scopes = _scopes_from_claim(payload.claims.get("scope") or payload.claims.get("scopes"))
 
     return AuthPrincipal(
         subject=subject,
         customer_id=customer_id,
         scopes=frozenset(scopes),
+        # Sales mints `tenant_id`; tolerate the short `tid` alias the ERP
+        # service-JWT uses so both token shapes resolve to one principal.
+        tenant_id=_uuid_from_claim(
+            payload.claims.get("tenant_id") or payload.claims.get("tid"),
+            "tenant_id",
+        ),
+        site_id=_site_id_from_claim(payload.claims.get("site_id")),
+        thread_id=_uuid_from_claim(payload.claims.get("thread_id"), "thread_id"),
     )
 
 
@@ -165,17 +180,32 @@ def _bearer_token_from_authorization(value: str | None) -> str | None:
     return token.strip()
 
 
-def _customer_id_from_claim(value: Any) -> UUID | None:
+def _uuid_from_claim(value: Any, name: str) -> UUID | None:
     if value is None:
         return None
 
     if not isinstance(value, str):
-        raise AuthError("customer_id claim must be a string")
+        raise AuthError(f"{name} claim must be a string")
 
     try:
         return UUID(value)
     except ValueError as exc:
-        raise AuthError("customer_id claim must be a UUID") from exc
+        raise AuthError(f"{name} claim must be a UUID") from exc
+
+
+def _site_id_from_claim(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise AuthError("site_id claim must be a string")
+
+    site_id = value.strip()
+    if not site_id:
+        return None
+    if len(site_id) > 80 or not re.fullmatch(r"[a-z0-9_-]{3,80}", site_id, re.IGNORECASE):
+        raise AuthError("site_id claim must be a registered site id")
+    return site_id
 
 
 def _scopes_from_claim(value: Any) -> set[str]:

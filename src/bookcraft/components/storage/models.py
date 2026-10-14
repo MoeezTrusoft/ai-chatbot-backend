@@ -40,6 +40,10 @@ class SalesLeadRecord(SQLModel, table=True):
     __tablename__ = "sales_leads"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    # Tenant partition (SALES-AI-CHATBOT-INTEGRATION-PLAN.md §P1.2). Nullable so
+    # existing single-tenant rows and standalone deployments keep working; Sales
+    # is the CRM source of truth once a tenant is present (D1).
+    tenant_id: UUID | None = Field(default=None, index=True)
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
     thread_id: UUID | None = Field(default=None, index=True)
     name: str | None = Field(default=None, max_length=255)
@@ -153,6 +157,8 @@ class SalesConsultationRecord(SQLModel, table=True):
     __tablename__ = "sales_consultations"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    # Tenant partition (see SalesLeadRecord.tenant_id).
+    tenant_id: UUID | None = Field(default=None, index=True)
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
     lead_id: UUID | None = Field(default=None, foreign_key="sales_leads.id", index=True)
     thread_id: UUID | None = Field(default=None, index=True)
@@ -193,6 +199,8 @@ class ThreadRecord(SQLModel, table=True):
     __tablename__ = "threads"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
+    # Tenant partition (see SalesLeadRecord.tenant_id).
+    tenant_id: UUID | None = Field(default=None, index=True)
     customer_id: UUID | None = Field(default=None, foreign_key="customers.id", index=True)
     sales_stage: SalesStage = Field(
         default=SalesStage.NEW,

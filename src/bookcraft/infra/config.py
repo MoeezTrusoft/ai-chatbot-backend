@@ -200,6 +200,34 @@ class Settings(BaseSettings):
     api_auth_mode: Literal["off", "jwt"] = "off"
     jwt_signing_key: str | None = None
     jwt_ttl_hours: int = 24
+
+    # ── Sales MCP integration (SALES-AI-CHATBOT-INTEGRATION-PLAN.md D1–D5) ──
+    # Every switch below defaults OFF, so a deployment that configures none of
+    # them behaves exactly as it did before the integration. Sales stays the CRM
+    # source of truth only once `sales_mcp_enabled` is on and a tenant claim is
+    # present (D1); without a tenant the local path is used unchanged.
+    sales_mcp_enabled: bool = False
+    sales_mcp_url: str | None = None
+    sales_mcp_issuer: str = "ai-chatbot-backend"
+    sales_mcp_audience: str = "internal"
+    sales_mcp_kid: str = "ai-chatbot-backend"
+    # Ed25519 private key (PEM text or JWK JSON) that signs the outbound
+    # service-JWT. Never logged; only a key handle is cached.
+    sales_mcp_signing_key: str | None = None
+    # Per-bot tenant allow-list — the mitigation for the bot being a trusted
+    # multi-tenant caller (D2). JSON array of
+    # {siteId, tenantId, ownerId, chatMode}. An empty list allows no tenant.
+    sales_mcp_tenant_allowlist_json: str = "[]"
+    sales_mcp_timeout_read_seconds: float = 4.0
+    sales_mcp_timeout_write_seconds: float = 8.0
+    sales_mcp_timeout_consultation_seconds: float = 10.0
+    sales_mcp_max_attempts: int = 2
+    # Keep the in-process dispatcher + CSR push for standalone/dev deployments
+    # (D3/T3.4). Production sets this false so Sales owns the booking.
+    chatbot_local_scheduler: bool = True
+    # C4: expose the bot's read-mostly capabilities over MCP. Purely additive —
+    # all REST/WS behaviour is unchanged whether or not this is on.
+    chatbot_mcp_server_enabled: bool = False
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     rate_limit_per_ip_per_minute: int = 30
 
