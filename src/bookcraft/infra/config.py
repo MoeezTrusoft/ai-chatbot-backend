@@ -1,7 +1,28 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Every `str | None` setting, i.e. the ones where "blank" and "absent" should be
+# the same thing. Kept as an explicit list so the rule stays reviewable.
+OPTIONAL_STRING_FIELDS: frozenset[str] = frozenset(
+    {
+        "anthropic_api_key",
+        "database_replica_url",
+        "deepseek_api_key",
+        "elasticsearch_password",
+        "elasticsearch_user",
+        "jwt_signing_key",
+        "metrics_bearer_token",
+        "openai_api_key",
+        "sales_mcp_scope",
+        "sales_mcp_signing_key",
+        "sales_mcp_url",
+        "sendgrid_api_key",
+        "sentry_dsn",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -246,6 +267,22 @@ class Settings(BaseSettings):
     chatbot_mcp_audience: str = "internal"
     ws_allowed_origins: str = "http://localhost:3000,http://localhost:8000"
     rate_limit_per_ip_per_minute: int = 30
+
+    @field_validator(*sorted(OPTIONAL_STRING_FIELDS), mode="before")
+    @classmethod
+    def _blank_optional_string_is_unset(cls, value: object) -> object:
+        """Treat a blank optional string as absent rather than as ``""``.
+
+        `.env.example` ships these keys blank, which is the dotenv spelling of
+        "not configured". Without this, copying the template would hand the app an
+        empty URL or an empty key: a value that is falsy everywhere it is read but
+        that no longer equals the ``None`` an absent key produces, so "is this
+        configured?" would answer differently depending on whether a `.env` file
+        happens to exist.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache
