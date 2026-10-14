@@ -1,0 +1,13 @@
+{
+  "note": "Digests of the public chat surface (S11.7.1). A change here must be deliberate: the Sales/website integration is additive-only, so these files are expected to stay byte-identical. Regenerate with UPDATE_PUBLIC_SURFACE=1 when a change is intended and reviewed.",
+  "files": {
+    "src/bookcraft/components/persona/representative.py": "0802020d8f2219ee4189af80707ef95d88545dd5f55a20302f70b73638ec1b55",
+    "src/bookcraft/components/response/chat_schemas.py": "4b026d2aae0101a9e00880d268f566979129ab46072e326df700248b5cfe20cf",
+    "src/bookcraft/components/response/contracts.py": "d44647985e442100941dde9f5521327d98ecf108dce5527b9730e16f8d18351e",
+    "src/bookcraft/components/response/generator.py": "09e6c340a60a27b32764f4e76e0081423001ed5f999b53218f9dadef878d7cb9",
+    "src/bookcraft/components/response/quality_gate.py": "5c6fb6d57723716cac1683b1120c293509993ac3984f5f0dcc4996b1abd0d186",
+    "src/bookcraft/components/response/schemas.py": "a4bbdee7512a769d59287c02a3089b8168469bbffda01683ce23e299b9c10827",
+    "src/bookcraft/components/response/style_policy.py": "519ac5e62e3adc5c4d357117819f28a18358a9e2123ec198a99f8b2b004d91c5",
+    "src/bookcraft/components/safety/input_guard.py": "dfba94e07b2526c708411f4295b0f0e6075784834ce0675fb37adbc9d7e211d4"
+  }
+}
