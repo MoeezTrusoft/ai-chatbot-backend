@@ -35,13 +35,16 @@ from bookcraft.components.storage.action_idempotency_repository import (
     ActionIdempotencyRepository,
     make_slots_hash,
 )
+from bookcraft.infra.crm_freeze import is_crm_frozen
 from bookcraft.infra.sales_mcp import (
     SalesMcpClient,
     SalesMcpConfigError,
     SalesTenantNotAllowed,
     SalesTurnContext,
     consultation_availability_arguments,
+    consultation_config_arguments,
     consultation_payload_from_sales,
+    consultation_policy_from_sales,
     consultation_confirm_arguments,
     consultation_request_id,
     consultation_schedule_arguments,
@@ -101,6 +104,10 @@ class SalesActionDispatcher:
     # The in-process services below stay as the fallback (D3) so a Sales outage
     # degrades a turn instead of losing the enquiry.
     sales_client: SalesMcpClient | None = None
+    # Tenants whose CRM Sales owns after cutover (S12.2.2). The bot's local CRM
+    # tables become read-only for them, so the degraded path cannot silently
+    # recreate the dual-CRM divergence the integration removes.
+    frozen_crm_tenants: frozenset[str] = field(default_factory=frozenset)
     # Controls synthetic-success behaviour when lead_service is None.
     # In test/dev envs (app_env in _DEV_ENVS) a fake success is returned so e2e tests
     # can exercise post-lead flows without a real DB.  In production this must be False
@@ -243,6 +250,15 @@ class SalesActionDispatcher:
                 if offer_meta is not None:
                     confirmed.payload = {**confirmed.payload, "sales": offer_meta}
                 return confirmed
+            if self._crm_frozen(sales_context):
+                # Sales owns this tenant's calendar and did not take the confirm,
+                # so the local table must not become a second booking (S12.2.2).
+                result = self._frozen_local_write_result(
+                    ActionType.SCHEDULE_CONSULTATION, started
+                )
+                if offer_meta is not None:
+                    result.payload = {**result.payload, "sales": offer_meta}
+                return result
             result = await self._schedule_consultation_locally(
                 plan,
                 thread_id=thread_id,
@@ -266,6 +282,14 @@ class SalesActionDispatcher:
                 sales_result.payload = {**sales_result.payload, "sales": sales_meta}
             return sales_result
 
+        if self._crm_frozen(sales_context):
+            # S12.2.2: Sales owns this tenant's CRM and did not take the booking,
+            # so the local table stays read-only rather than diverging.
+            result = self._frozen_local_write_result(ActionType.SCHEDULE_CONSULTATION, started)
+            if sales_meta is not None:
+                result.payload = {**result.payload, "sales": sales_meta}
+            return result
+
         result = await self._schedule_consultation_locally(
             plan,
             thread_id=thread_id,
@@ -277,6 +301,32 @@ class SalesActionDispatcher:
             # the state layer records why the turn degraded (D3).
             result.payload = {**result.payload, "sales": sales_meta}
         return result
+
+    def _crm_frozen(self, sales_context: SalesTurnContext | None) -> bool:
+        """Whether the local CRM tables are read-only for this turn's tenant."""
+        return is_crm_frozen(
+            sales_context.tenant_id if sales_context else None,
+            self.frozen_crm_tenants,
+        )
+
+    def _frozen_local_write_result(self, action_type: ActionType, started: float) -> ActionResult:
+        """The degraded result when a frozen tenant's local CRM write is refused.
+
+        Nothing is written locally (Sales owns the tenant's CRM); the visitor is
+        told the truth — the details were not saved — rather than being shown a
+        success that only exists in a table Sales will never read.
+        """
+        return ActionResult(
+            action_type=action_type,
+            success=False,
+            error_code="crm_frozen",
+            customer_safe_summary=(
+                "I couldn't reach our sales system just now, so I haven't saved "
+                "that yet. Please try again in a moment."
+            ),
+            internal_summary="local CRM write refused: tenant is frozen (S12.2.2)",
+            duration_ms=_elapsed_ms(started),
+        )
 
     def _sales_booking_available(self, sales_context: SalesTurnContext | None) -> bool:
         """True when this turn may write to Sales at all (D3/S7.1.4).
@@ -598,6 +648,36 @@ class SalesActionDispatcher:
             or "America/Chicago"
         )
         business_timezone = _string_or_none(slots.get("business_timezone")) or "America/Chicago"
+
+        # S7.2.2/S7.3.1: Sales owns the consultation calendar, so read its policy
+        # before interpreting the request. The window, timezone, weekday grid and
+        # holiday blackout dates from the policy replace the bot's hard-coded
+        # 10–19 America/Chicago assumptions. A failed or empty read keeps the local
+        # defaults — a policy lookup must never cost the visitor their booking.
+        policy_call = await client.call_tool(
+            "sales_consultation_config_get",
+            consultation_config_arguments(),
+            tenant_id=sales_context.tenant_id,
+            site_id=sales_context.site_id,
+        )
+        policy = (
+            consultation_policy_from_sales(policy_call.data)
+            if policy_call.ok and isinstance(policy_call.data, dict)
+            else {}
+        )
+        policy_meta: dict[str, object] = {
+            "ok": policy_call.ok,
+            "code": policy_call.code,
+            "sales_code": policy_call.sales_code,
+            "degraded": policy_call.degraded,
+            "applied": bool(policy),
+        }
+        if policy.get("timezone"):
+            business_timezone = str(policy["timezone"])
+        policy_start_hour, policy_end_hour = _policy_business_hours(policy)
+        policy_weekdays = _policy_weekdays(policy)
+        policy_blackout = _policy_blackout_dates(policy)
+
         services = slots.get("services")
         service_names = (
             [str(item) for item in services if item is not None]
@@ -620,8 +700,15 @@ class SalesActionDispatcher:
         )
         try:
             # Reuse the local resolver so "Tuesday 3pm" means the same instant on
-            # both paths; Sales only owns the calendar, not the interpretation.
-            requested_start = service.resolve_requested_start(action_request)
+            # both paths; Sales only owns the calendar, not the interpretation —
+            # which is why its policy is handed in as an override (S7.2.2/S7.3.1).
+            requested_start = service.resolve_requested_start(
+                action_request,
+                business_start_hour=policy_start_hour,
+                business_end_hour=policy_end_hour,
+                business_weekdays=policy_weekdays,
+                blackout_dates=policy_blackout,
+            )
         except RequestedTimeError:
             # Hand the turn to the local path: its error mapping is the one the
             # reply layer already voices for a past/holiday/ambiguous date.
@@ -645,6 +732,7 @@ class SalesActionDispatcher:
             "sales_code": availability.sales_code,
             "degraded": availability.degraded,
             "attempts": availability.attempts,
+            "policy": policy_meta,
         }
         if not availability.ok or not isinstance(availability.data, dict):
             return None, meta
@@ -677,6 +765,7 @@ class SalesActionDispatcher:
             "sales_code": schedule_call.sales_code,
             "degraded": schedule_call.degraded,
             "attempts": schedule_call.attempts,
+            "policy": policy_meta,
         }
         if not schedule_call.ok or not isinstance(schedule_call.data, dict):
             return None, meta
@@ -735,6 +824,15 @@ class SalesActionDispatcher:
         if sales_result is not None:
             return sales_result
 
+        if self._crm_frozen(sales_context):
+            # S12.2.2: a cut-over tenant's leads live in Sales. With Sales not
+            # taking this one, the local write is refused instead of creating a
+            # second lead only the bot can see.
+            result = self._frozen_local_write_result(ActionType.CREATE_LEAD, started)
+            if sales_meta is not None:
+                result.payload = {**result.payload, "sales": sales_meta}
+            return result
+
         result = await self._create_lead_locally(
             plan,
             thread_id=thread_id,
@@ -787,6 +885,11 @@ class SalesActionDispatcher:
                 # maps it with the frozen `mapSalesStage` instead of filing the
                 # chat lead at its default stage.
                 stage=plan.sales_stage,
+                # S6.3.1: the page/keyword the visitor arrived on (from the
+                # Sales-signed turn) rides along, so the lead keeps its
+                # attribution instead of starting blank.
+                landing_page=sales_context.landing_page,
+                landing_keyword=sales_context.landing_keyword,
             )
         except (SalesTenantNotAllowed, SalesMcpConfigError) as exc:
             # Two different problems land here: the turn names a tenant/site Sales
@@ -1235,6 +1338,39 @@ def _int_or_none(value: object) -> int | None:
         return int(str(value))
     except ValueError:
         return None
+
+
+def _policy_business_hours(policy: dict[str, object]) -> tuple[int | None, int | None]:
+    """The policy's open/close minutes as whole start/end hours (S7.2.2).
+
+    The resolver works in hours; the policy carries minutes-of-day. A missing
+    bound stays `None` so the resolver keeps the tenant's local default.
+    """
+    open_minute = _int_or_none(policy.get("open_minute"))
+    close_minute = _int_or_none(policy.get("close_minute"))
+    start_hour = open_minute // 60 if open_minute is not None else None
+    end_hour = (close_minute + 59) // 60 if close_minute is not None else None
+    return start_hour, end_hour
+
+
+def _policy_weekdays(policy: dict[str, object]) -> frozenset[int] | None:
+    """The policy's working-weekday grid, or `None` to keep the local default."""
+    raw = policy.get("weekdays")
+    if isinstance(raw, list) and raw:
+        return frozenset(day for day in raw if isinstance(day, int) and 0 <= day <= 6)
+    return None
+
+
+def _policy_blackout_dates(policy: dict[str, object]) -> frozenset[str] | None:
+    """The policy's holiday blackout dates (S7.3.1), or `None` when unknown.
+
+    An empty set is meaningful: Sales owns the calendar, so "no blackout dates"
+    must not fall back to the bot's own table.
+    """
+    raw = policy.get("blackout_dates")
+    if not isinstance(raw, list):
+        return None
+    return frozenset(day for day in raw if isinstance(day, str))
 
 
 def _uuid_or_none(value: object) -> UUID | None:

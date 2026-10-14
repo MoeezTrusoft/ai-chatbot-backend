@@ -254,6 +254,11 @@ class Settings(BaseSettings):
     # Keep the in-process dispatcher + CSR push for standalone/dev deployments
     # (D3/T3.4). Production sets this false so Sales owns the booking.
     chatbot_local_scheduler: bool = True
+    # Tenants whose CRM Sales owns after cutover (S12.2.2). JSON array of tenant
+    # ids; the bot's local `sales_leads`/`sales_consultations` tables become
+    # read-only for them so the degraded path cannot recreate a second CRM. An
+    # empty list (the default) freezes nothing.
+    chatbot_frozen_crm_tenants_json: str = "[]"
     # C4: expose the bot's read-mostly capabilities over MCP. Purely additive —
     # all REST/WS behaviour is unchanged whether or not this is on.
     chatbot_mcp_server_enabled: bool = False

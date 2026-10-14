@@ -210,6 +210,27 @@ async def test_a_transient_5xx_is_retried_with_the_same_id_and_succeeds() -> Non
     assert [json.loads(r.content)["id"] for r in seen] == ["act-7", "act-7"]
 
 
+async def test_each_attempt_presents_a_fresh_token_with_a_new_jti() -> None:
+    # Sales refuses a `jti` it has already accepted (S10.3.2), so the retry must
+    # arrive on a new token while staying the *same* JSON-RPC call.
+    settings = make_settings(sales_mcp_max_attempts=2)
+    responses = [httpx.Response(503, text="busy"), tool_result({"ok": True})]
+    client, seen = client_with(lambda _: responses.pop(0), settings)
+
+    await client.call_tool(
+        "sales_lead_create", {"source": "Chatbot:demo"}, tenant_id=TENANT_ID, request_id="act-8"
+    )
+
+    assert len(seen) == 2
+    tokens = [request.headers[HEADER_SERVICE_AUTHORIZATION] for request in seen]
+    assert tokens[0] != tokens[1]
+    jtis = {
+        json.loads(_unb64(token.split(".")[1]))["jti"] for token in tokens
+    }
+    assert len(jtis) == 2
+    assert [json.loads(r.content)["id"] for r in seen] == ["act-8", "act-8"]
+
+
 async def test_a_timeout_degrades_instead_of_raising() -> None:
     settings = make_settings(sales_mcp_max_attempts=2)
 

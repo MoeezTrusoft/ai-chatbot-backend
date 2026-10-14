@@ -91,6 +91,7 @@ from bookcraft.components.trimatch import (
 )
 from bookcraft.infra.cache import CacheClient, CacheKeyBuilder, create_redis_client
 from bookcraft.infra.config import Settings, get_settings
+from bookcraft.infra.crm_freeze import parse_frozen_tenants
 from bookcraft.infra.email import SMTPEmailClient
 from bookcraft.infra.logging import configure_logging
 from bookcraft.infra.observability import configure_tracing
@@ -548,6 +549,9 @@ def build_chat_service(
             agreement_action_service=agreement_action_service,
             app_env=settings.app_env,
             sales_client=build_sales_mcp_client(settings),
+            # S12.2.2: tenants whose CRM Sales owns after cutover. A malformed
+            # value fails startup rather than silently re-enabling local writes.
+            frozen_crm_tenants=parse_frozen_tenants(settings.chatbot_frozen_crm_tenants_json),
         ),
         trace_store=LiveTraceStore(Path("reports/live_traces/chat_turns.jsonl")),
         thread_repository=thread_repository,

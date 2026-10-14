@@ -116,7 +116,13 @@ def make_settings(**overrides: object) -> Settings:
     return Settings(**values)
 
 
-def build(fake: FakeSales, *, settings: Settings | None = None, lead_service=None):
+def build(
+    fake: FakeSales,
+    *,
+    settings: Settings | None = None,
+    lead_service=None,
+    frozen_crm_tenants: frozenset[str] = frozenset(),
+):
     settings = settings or make_settings()
     client = SalesMcpClient(
         settings, http_client=httpx.AsyncClient(transport=fake.transport())
@@ -127,6 +133,7 @@ def build(fake: FakeSales, *, settings: Settings | None = None, lead_service=Non
         # prod + no lead_service: the local path cannot fake success, so a passing
         # result proves Sales actually took the write.
         app_env="prod",
+        frozen_crm_tenants=frozen_crm_tenants,
     )
     return client, dispatcher
 
@@ -264,6 +271,42 @@ async def test_a_forbidden_tool_falls_back_to_the_local_path_and_is_marked() -> 
     assert result.payload["sales"]["code"] == "sales_forbidden"
     assert result.payload["sales"]["degraded"] is True
     assert result.payload["sales"]["sales_code"] == "SALES-0403"
+
+
+async def test_a_frozen_tenant_refuses_the_local_write_instead_of_diverging() -> None:
+    # S12.2.2: Sales owns this tenant's CRM. When its call is refused, the local
+    # table must stay read-only rather than becoming a second, invisible CRM — and
+    # the visitor must not be told the details were saved.
+    fake = FakeSales(deny="sales_lead_create")
+    lead_service = StubLeadService()
+    _, dispatcher = build(
+        fake, lead_service=lead_service, frozen_crm_tenants=frozenset({str(TENANT_ID)})
+    )
+
+    result = await dispatcher.dispatch(
+        lead_plan(), thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    assert result is not None
+    assert result.success is False
+    assert result.error_code == "crm_frozen"
+    assert lead_service.requests == [], "a frozen tenant's local CRM is read-only"
+    assert result.payload["sales"]["code"] == "sales_forbidden"
+
+
+async def test_a_frozen_tenant_still_uses_sales_and_never_writes_locally() -> None:
+    fake = FakeSales()
+    lead_service = StubLeadService()
+    _, dispatcher = build(
+        fake, lead_service=lead_service, frozen_crm_tenants=frozenset({str(TENANT_ID)})
+    )
+
+    result = await dispatcher.dispatch(
+        lead_plan(), thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    assert result is not None and result.success is True
+    assert lead_service.requests == []
 
 
 async def test_a_refused_tenant_never_reaches_sales_and_degrades() -> None:
@@ -474,6 +517,52 @@ async def test_a_plan_without_a_stage_leaves_the_field_off_the_call() -> None:
 
     # Absent, not null: Sales' own default still governs an unstaged enquiry.
     assert "stage" not in fake.calls[0]["arguments"]
+
+
+# ── Attribution travels with the lead (S6.3.1) ──────────────────────────────
+async def test_the_turns_landing_page_and_keyword_are_sent_with_the_lead() -> None:
+    from bookcraft.infra.sales_mcp import lead_attribution, landing_slug
+
+    fake = FakeSales()
+    _, dispatcher = build(fake)
+    sales_context = SalesTurnContext(
+        tenant_id=TENANT_ID,
+        site_id=SITE_ID,
+        thread_id=THREAD_ID,
+        landing_page="https://www.bookcraftpublishers.com/book-cover-design/?utm_source=g",
+        landing_keyword="book cover design",
+    )
+
+    await dispatcher.dispatch(
+        lead_plan(), thread_id=THREAD_ID, customer_id=None, sales_context=sales_context
+    )
+
+    arguments = fake.calls[0]["arguments"]
+    assert arguments["lpNiche"] == "book-cover-design"
+    assert arguments["adSource"] == "book cover design"
+    # The slug helper ignores the query string and the trailing slash.
+    assert landing_slug("/editing/") == "editing"
+    assert landing_slug("https://x.com/") is None
+    assert landing_slug(None) is None
+
+
+async def test_no_landing_context_leaves_the_lead_arguments_unchanged() -> None:
+    from bookcraft.infra.sales_mcp import lead_attribution
+
+    fake = FakeSales()
+    _, dispatcher = build(fake)
+
+    await dispatcher.dispatch(
+        lead_plan(), thread_id=THREAD_ID, customer_id=None, sales_context=context()
+    )
+
+    # Absent, not null/empty: a visitor with no landing signal keeps the exact
+    # argument shape the call had before attribution existed.
+    arguments = fake.calls[0]["arguments"]
+    assert "lpNiche" not in arguments
+    assert "adSource" not in arguments
+    assert lead_attribution() == {}
+    assert lead_attribution(landing_keyword="  ") == {}
 
 
 async def test_a_stage_the_contract_cannot_map_degrades_instead_of_reaching_sales() -> None:

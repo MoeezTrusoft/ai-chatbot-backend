@@ -1193,6 +1193,10 @@ class ChatService:
                         # Sales books a consultation against its own lead, so
                         # without this id the booking cannot be delegated (S7.1.1).
                         lead_id=state.sales_actions.integration.lead_id,
+                        # S6.3.1: the landing signal Sales sent on this turn, so a
+                        # lead created in chat carries its attribution.
+                        landing_page=payload.landing_page,
+                        landing_keyword=payload.landing_keyword,
                     ),
                 )
             else:

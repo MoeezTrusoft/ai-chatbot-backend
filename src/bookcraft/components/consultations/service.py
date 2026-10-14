@@ -168,20 +168,38 @@ class ConsultationActionService:
 
         return result
 
-    def resolve_requested_start(self, request: ConsultationActionRequest) -> datetime:
+    def resolve_requested_start(
+        self,
+        request: ConsultationActionRequest,
+        *,
+        business_start_hour: int | None = None,
+        business_end_hour: int | None = None,
+        business_weekdays: frozenset[int] | None = None,
+        blackout_dates: frozenset[str] | None = None,
+    ) -> datetime:
         """The concrete instant a free-text request resolves to.
 
         Shared with the Sales path (S7.1.1) so "Tuesday 3pm" means the same moment
         whichever calendar ends up holding the booking — reusing this rather than
         re-deriving it is what stops the two paths from disagreeing about the time.
         Raises the same `RequestedTimeError` subclasses the local path voices.
+
+        The `business_*`/`blackout_dates` overrides let the Sales path pass the
+        tenant's own policy (S7.2.2/S7.3.1) so the bot interprets the customer's
+        words against Sales' calendar rather than its hard-coded 10–19 window.
         """
         return _parse_requested_start(
             text=request.requested_time_text,
             customer_tz=_safe_zoneinfo(request.customer_timezone or request.business_timezone),
             business_tz=_safe_zoneinfo(request.business_timezone),
-            business_start_hour=self.business_start_hour,
-            business_end_hour=self.business_end_hour,
+            business_start_hour=(
+                self.business_start_hour if business_start_hour is None else business_start_hour
+            ),
+            business_end_hour=(
+                self.business_end_hour if business_end_hour is None else business_end_hour
+            ),
+            business_weekdays=business_weekdays,
+            blackout_dates=blackout_dates,
         )
 
     async def _push_to_csr_api(
@@ -341,6 +359,8 @@ def _parse_requested_start(
     business_start_hour: int,
     business_end_hour: int,
     now: datetime | None = None,
+    business_weekdays: frozenset[int] | None = None,
+    blackout_dates: frozenset[str] | None = None,
 ) -> datetime:
     now = now or datetime.now(customer_tz)
     lowered = text.casefold()
@@ -351,7 +371,11 @@ def _parse_requested_start(
     # (never silently slid to another date). An *inferred* date that happens to
     # land on a holiday is rolled forward by _normalize_to_business_window below,
     # mirroring how weekends and after-hours are handled.
-    if kind == "explicit" and target_date is not None and is_blackout_date(target_date):
+    if (
+        kind == "explicit"
+        and target_date is not None
+        and _is_blackout_day(target_date, blackout_dates=blackout_dates)
+    ):
         raise HolidayError(
             f"requested date {target_date.isoformat()} is a business holiday"
         )
@@ -393,6 +417,8 @@ def _parse_requested_start(
         business_candidate,
         business_start_hour=business_start_hour,
         business_end_hour=business_end_hour,
+        business_weekdays=business_weekdays,
+        blackout_dates=blackout_dates,
     )
 
 
@@ -602,16 +628,52 @@ def _time_from_text(text: str) -> time | None:
     return time(hour=hour, minute=minute)
 
 
+def _is_blackout_day(day: date, *, blackout_dates: frozenset[str] | None = None) -> bool:
+    """Whether the business is closed on ``day`` for holiday reasons.
+
+    With an explicit ``blackout_dates`` set (the Sales policy, S7.3.1) that set is
+    authoritative; otherwise the bot's own mirrored holiday cache is consulted.
+    """
+    if blackout_dates is not None:
+        return day.isoformat() in blackout_dates
+    return is_blackout_date(day)
+
+
+def _is_closed_day(
+    day: date,
+    *,
+    business_weekdays: frozenset[int] | None = None,
+    blackout_dates: frozenset[str] | None = None,
+) -> bool:
+    """Whether the business is closed all day: a holiday or a non-working weekday.
+
+    ``business_weekdays`` mirrors the Sales policy's weekday grid; without one the
+    bot keeps its Mon–Fri default. Holidays always close the day.
+    """
+    if _is_blackout_day(day, blackout_dates=blackout_dates):
+        return True
+    if business_weekdays is not None:
+        return day.weekday() not in business_weekdays
+    return day.weekday() >= 5
+
+
 def _normalize_to_business_window(
     value: datetime,
     *,
     business_start_hour: int,
     business_end_hour: int,
+    business_weekdays: frozenset[int] | None = None,
+    blackout_dates: frozenset[str] | None = None,
 ) -> datetime:
     normalized = value.replace(second=0, microsecond=0)
 
-    # Roll off weekends *and* holiday blackout dates to the next open day's open.
-    while normalized.weekday() >= 5 or is_blackout_date(normalized.date()):
+    # Roll off closed days (non-working weekdays *and* holiday blackout dates) to
+    # the next open day's open.
+    while _is_closed_day(
+        normalized.date(),
+        business_weekdays=business_weekdays,
+        blackout_dates=blackout_dates,
+    ):
         normalized = (normalized + timedelta(days=1)).replace(
             hour=business_start_hour,
             minute=0,
@@ -629,6 +691,8 @@ def _normalize_to_business_window(
             normalized,
             business_start_hour=business_start_hour,
             business_end_hour=business_end_hour,
+            business_weekdays=business_weekdays,
+            blackout_dates=blackout_dates,
         )
 
     return normalized

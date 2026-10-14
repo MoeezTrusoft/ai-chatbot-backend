@@ -27,6 +27,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import httpx
@@ -37,11 +38,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from bookcraft.domain.enums import SalesStage
 from bookcraft.infra.config import Settings
+from bookcraft.infra.sales_mcp_metrics import observe_sales_mcp_result
 
 _logger = structlog.get_logger(__name__)
 
 # ── Frozen wire constants (mirror of contracts/src/mcp/sales-chatbot.js) ─────
-CONTRACT_VERSION: Final = "sales-chatbot-mcp@1"
+CONTRACT_VERSION: Final = "sales-chatbot-mcp@2"
 MCP_PROTOCOL_VERSION: Final = "2025-06-18"
 SERVICE_ISSUER: Final = "ai-chatbot-backend"
 SERVICE_PRINCIPAL: Final = "svc:ai-chatbot-backend"
@@ -69,6 +71,7 @@ TOOL_PERMISSIONS: Final[dict[str, str]] = {
     "sales_chatroom_status_set": "sales.chatroom.update",
     "sales_message_create": "sales.lead.update",
     "sales_note_create": "sales.chatroom.update",
+    "sales_consultation_config_get": "sales.config.read",
     "sales_consultation_availability": "sales.lead.read",
     "sales_consultation_schedule": "sales.lead.update",
     "sales_consultation_confirm": "sales.lead.update",
@@ -87,6 +90,7 @@ TOOL_RATE_CLASSES: Final[dict[str, Literal["read", "write"]]] = {
     "sales_lead_get": "read",
     "sales_lead_list": "read",
     "sales_chatroom_get": "read",
+    "sales_consultation_config_get": "read",
     "sales_consultation_availability": "read",
     "sales_consultation_list": "read",
     "sales_capture_submission_list": "read",
@@ -177,6 +181,11 @@ class SalesTurnContext:
     # consultation against a LEAD it owns, so its own id — not the bot's local
     # one — is the only handle `sales_consultation_schedule` will accept.
     lead_id: str | None = None
+    # Where the visitor came from (S6.3.1): the page and keyword Sales sent on the
+    # turn. They become the created lead's attribution instead of being dropped
+    # once the conversation starts.
+    landing_page: str | None = None
+    landing_keyword: str | None = None
 
     @property
     def usable(self) -> bool:
@@ -313,6 +322,42 @@ def lead_stage_value(stage: str) -> str:
     return value
 
 
+def landing_slug(landing_page: str | None) -> str | None:
+    """Last meaningful path segment of a landing page (S6.3.1).
+
+    `https://x.com/book-cover-design/?utm_source=g` and `/book-cover-design/`
+    both resolve to `book-cover-design`, which is a niche Sales can report on;
+    a query string or a trailing slash is not.
+    """
+    text = (landing_page or "").strip()
+    if not text:
+        return None
+    path = urlsplit(text).path if "//" in text else text
+    segments = [segment for segment in path.split("/") if segment.strip()]
+    if not segments:
+        return None
+    return segments[-1].strip().lower()[:120] or None
+
+
+def lead_attribution(
+    *, landing_page: str | None = None, landing_keyword: str | None = None
+) -> dict[str, str]:
+    """Attribution arguments for `sales_lead_create` (S6.3.1).
+
+    Only fields the conversation actually knows: a missing keyword never invents
+    one, so a lead with no landing context keeps the exact argument shape it had
+    before this existed.
+    """
+    attribution: dict[str, str] = {}
+    slug = landing_slug(landing_page)
+    keyword = (landing_keyword or "").strip()[:200]
+    if slug:
+        attribution["lpNiche"] = slug
+    if keyword:
+        attribution["adSource"] = keyword
+    return attribution
+
+
 def lead_create_arguments(
     slots: Mapping[str, Any],
     *,
@@ -320,6 +365,8 @@ def lead_create_arguments(
     customer_id: UUID | None = None,
     request_id: str | None = None,
     stage: str | None = None,
+    landing_page: str | None = None,
+    landing_keyword: str | None = None,
 ) -> dict[str, Any]:
     """Map dispatcher slots onto `sales_lead_create` (S3.2.2).
 
@@ -342,6 +389,11 @@ def lead_create_arguments(
         arguments["requestId"] = request_id
     if stage:
         arguments["stage"] = lead_stage_value(stage)
+    # The page/keyword the visitor arrived on travels with the lead, so
+    # attribution is not lost the moment the chat starts (S6.3.1).
+    arguments.update(
+        lead_attribution(landing_page=landing_page, landing_keyword=landing_keyword)
+    )
     return arguments
 
 
@@ -497,6 +549,63 @@ def consultation_slot_from_sales(data: Mapping[str, Any]) -> list[dict[str, Any]
     if not isinstance(raw, list):
         return []
     return [dict(slot) for slot in raw if isinstance(slot, Mapping)]
+
+
+# An ISO `YYYY-MM-DD` day, the shape Sales' policy carries in `blackoutDates`.
+_ISO_DATE_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def consultation_config_arguments() -> dict[str, Any]:
+    """Arguments for `sales_consultation_config_get` (S7.2.2).
+
+    The policy is scoped by the verified tenant claim, so the tool takes no
+    input — the bot never picks which tenant's calendar it reads.
+    """
+    return {}
+
+
+def consultation_policy_from_sales(data: Mapping[str, Any]) -> dict[str, Any]:
+    """The tenant consultation policy returned by `sales_consultation_config_get`.
+
+    Sales is the single owner of the consultation calendar (S7.2.2/S7.3.1), so the
+    bot reads the business window, timezone and holiday blackout dates from here
+    instead of enforcing its own 10–19 America/Chicago assumptions. A malformed or
+    absent payload yields `{}` rather than raising: the caller then keeps its
+    local defaults, and a booking is never blocked by a policy read.
+    """
+    policy = data.get("policy") if isinstance(data, Mapping) else None
+    if not isinstance(policy, Mapping):
+        return {}
+    blackout: list[str] = []
+    raw_blackout = policy.get("blackoutDates")
+    if isinstance(raw_blackout, list):
+        blackout = [day for day in raw_blackout if isinstance(day, str) and _ISO_DATE_RE.match(day)]
+    weekdays: list[int] = []
+    raw_weekdays = policy.get("weekdays")
+    if isinstance(raw_weekdays, list):
+        weekdays = [day for day in raw_weekdays if isinstance(day, int) and 0 <= day <= 6]
+    timezone = policy.get("timezone")
+    return {
+        "enabled": bool(policy.get("enabled")),
+        "timezone": str(timezone) if timezone else None,
+        "open_minute": _optional_int(policy.get("openMinute")),
+        "close_minute": _optional_int(policy.get("closeMinute")),
+        "weekdays": weekdays,
+        "max_days_ahead": _optional_int(policy.get("maxDaysAhead")),
+        "min_notice_minutes": _optional_int(policy.get("minNoticeMinutes")),
+        "blackout_dates": blackout,
+    }
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def pinned_scope(settings: Settings) -> str:
@@ -692,6 +801,32 @@ class SalesMcpClient:
         request_id: str | None = None,
         correlation_id: str | None = None,
     ) -> SalesToolResult:
+        """Call one Sales MCP tool and record its outcome (S9.2.2).
+
+        The result is exactly what `_call_tool` produced — this wrapper only
+        counts it, so no caller can observe a different value.
+        """
+        result = await self._call_tool(
+            tool,
+            arguments,
+            tenant_id=tenant_id,
+            site_id=site_id,
+            request_id=request_id,
+            correlation_id=correlation_id,
+        )
+        observe_sales_mcp_result(tool, result)
+        return result
+
+    async def _call_tool(
+        self,
+        tool: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        tenant_id: UUID | str | None,
+        site_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> SalesToolResult:
         """Call one Sales MCP tool, degrading instead of raising.
 
         `request_id` is the stable per-action id: a retry (by this client or the
@@ -735,17 +870,12 @@ class SalesMcpClient:
             "method": "tools/call",
             "params": {"name": tool, "arguments": dict(arguments or {})},
         }
-        headers = {
+        base_headers = {
             HEADER_INTERNAL: "true",
-            # The token's tenant comes from the allow-list binding, never from
-            # request input (S3.3.1/S3.3.3).
-            HEADER_SERVICE_AUTHORIZATION: self._signer.mint(
-                binding.tenant_id, scopes=pinned_scope(self.settings)
-            ),
             "content-type": "application/json",
         }
         if correlation_id:
-            headers[HEADER_CORRELATION] = correlation_id
+            base_headers[HEADER_CORRELATION] = correlation_id
 
         timeout = self._timeout_for(tool)
         attempts = max(1, self.settings.sales_mcp_max_attempts)
@@ -761,6 +891,18 @@ class SalesMcpClient:
                     degraded=True,
                     attempts=attempt - 1,
                 )
+            # One token per attempt: Sales refuses a `jti` it has already
+            # accepted (S10.3.2), so retrying with the previous attempt's token
+            # would turn a legitimate retry into a 401. The stable `request_id`
+            # — not the token — is what makes the retry the same call (S3.2.4).
+            headers = {
+                **base_headers,
+                # The token's tenant comes from the allow-list binding, never
+                # from request input (S3.3.1/S3.3.3).
+                HEADER_SERVICE_AUTHORIZATION: self._signer.mint(
+                    binding.tenant_id, scopes=pinned_scope(self.settings)
+                ),
+            }
             try:
                 response = await self._post(payload, headers, timeout_seconds=timeout)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
@@ -929,6 +1071,8 @@ __all__ = [
     "TenantBinding",
     "call_action",
     "consultation_availability_arguments",
+    "consultation_config_arguments",
+    "consultation_policy_from_sales",
     "consultation_payload_from_sales",
     "consultation_request_id",
     "consultation_schedule_arguments",

@@ -1,0 +1,134 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "title": "BookCraft Website ↔ Chatbot Funnel (session → turns → lead → consult)",
+  "tags": ["sales", "chatbot", "funnel"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum(rate(http_request_duration_seconds_count{service=\"sales\",route=\"/website/api/session\"}[5m]))",
+          "legendFormat": "sessions",
+          "refId": "A"
+        }
+      ],
+      "title": "1 · Website sessions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum(rate(sales_chatbot_bot_turns_total[5m])) by (outcome)",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "2 · Turns (done / uncertain / handover)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sales_chatbot_bot_turn_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "title": "2 · Turn latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum(rate(sales_chatbot_leads_created_total[5m]))",
+          "legendFormat": "leads from chat",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sales_chatbot_consultations_booked_total[5m]))",
+          "legendFormat": "consultations from chat",
+          "refId": "B"
+        }
+      ],
+      "title": "3 · Funnel: lead → consult (created from chat)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum(rate(sales_chatbot_mcp_tool_calls_total[5m])) by (tool, outcome)",
+          "legendFormat": "{{tool}} · {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Bot → Sales MCP calls by outcome",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum(rate(bookcraft_sales_mcp_degradations_total[5m])) by (tool, code)",
+          "legendFormat": "{{tool}} · {{code}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(bookcraft_sales_mcp_tenant_resolution_misses_total[5m])) by (code)",
+          "legendFormat": "tenant miss · {{code}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Bot-side degradations & tenant-resolution misses",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sales_chatbot_mcp_tool_duration_seconds_bucket[5m])) by (le, tool))",
+          "legendFormat": "{{tool}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Bot → Sales MCP latency p95",
+      "type": "timeseries"
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s"
+}

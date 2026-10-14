@@ -44,10 +44,16 @@ class StubConsultationService:
         self.local_calls = 0
         # What the Sales path handed to the shared time seam, if anything.
         self.resolved: list[ConsultationActionRequest] = []
+        # The Sales-policy overrides the dispatcher passed alongside the request
+        # (S7.2.2/S7.3.1), so a test can assert the tenant's calendar is honored.
+        self.resolved_overrides: dict[str, Any] = {}
         self.resolved_start = START
 
-    def resolve_requested_start(self, request: ConsultationActionRequest) -> datetime:
+    def resolve_requested_start(
+        self, request: ConsultationActionRequest, **overrides: Any
+    ) -> datetime:
         self.resolved.append(request)
+        self.resolved_overrides = overrides
         return self.resolved_start
 
     async def schedule(self, request: ConsultationActionRequest) -> ConsultationActionResult:
@@ -75,6 +81,7 @@ class FakeConsultationSales:
         slots: list[dict[str, Any]] | None = None,
         status: str = "Scheduled",
         deny: str | None = None,
+        policy: dict[str, Any] | None = None,
     ) -> None:
         self.calls: list[dict[str, Any]] = []
         self.consultations: dict[str, dict[str, Any]] = {}
@@ -86,6 +93,9 @@ class FakeConsultationSales:
         )
         self.status = status
         self.deny = deny
+        # The tenant consultation policy `sales_consultation_config_get` answers
+        # with (S7.2.2/S7.3.1). `None` mimics Sales having no stored policy.
+        self.policy = policy
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
@@ -108,6 +118,8 @@ class FakeConsultationSales:
                     },
                 },
             )
+        if tool == "sales_consultation_config_get":
+            return _text(body["id"], {"policy": self.policy or {}, "version": 1})
         if tool == "sales_consultation_availability":
             return _text(body["id"], {"slots": self.slots})
         if tool == "sales_consultation_schedule":
@@ -268,7 +280,13 @@ async def test_a_booking_is_scheduled_in_sales_rather_than_the_local_scheduler()
     assert result.payload["created"] is True
     assert service.local_calls == 0, "Sales took the booking; local must not book it again"
     # Availability is asked first: schedule will only accept an instant Sales offers.
-    assert fake.tools() == ["sales_consultation_availability", "sales_consultation_schedule"]
+    # The tenant policy is read first (S7.2.2/S7.3.1) so the window/timezone come
+    # from Sales; then availability, then the booking itself.
+    assert fake.tools() == [
+        "sales_consultation_config_get",
+        "sales_consultation_availability",
+        "sales_consultation_schedule",
+    ]
 
 
 async def test_the_booking_uses_the_shared_time_seam_and_the_instant_it_returned() -> None:
@@ -287,10 +305,56 @@ async def test_the_booking_uses_the_shared_time_seam_and_the_instant_it_returned
     assert resolved.customer_timezone == "America/Los_Angeles"
     assert resolved.phone == "+14155552671", "Sales needs the E.164 phone the seam saw"
     assert resolved.duration_minutes == 30
-    availability = fake.calls[0]["arguments"]
+    availability = next(
+        call["arguments"] for call in fake.calls if call["tool"] == "sales_consultation_availability"
+    )
     assert availability["leadId"] == LEAD_ID
     assert availability["startTime"] == START.isoformat()
     assert availability["userTimezone"] == "America/Los_Angeles"
+
+
+# ── Sales owns the calendar: window + holidays (S7.2.2/S7.3.1) ────────────────
+async def test_the_sales_policy_governs_the_business_window_and_holidays() -> None:
+    policy = {
+        "enabled": True,
+        "timezone": "America/New_York",
+        "openMinute": 540,  # 09:00
+        "closeMinute": 1020,  # 17:00
+        "weekdays": [1, 2, 3, 4, 5],
+        "maxDaysAhead": 21,
+        "minNoticeMinutes": 30,
+        "blackoutDates": ["2026-11-26"],
+    }
+    fake = FakeConsultationSales(policy=policy)
+    service = StubConsultationService()
+
+    result = await dispatch(build(fake, service), booking_plan(), context())
+
+    assert result is not None and result.success is True
+    # The bot interprets the request against the tenant's policy, not its own
+    # 10–19 America/Chicago default (S7.2.2).
+    assert service.resolved[0].business_timezone == "America/New_York"
+    assert service.resolved_overrides["business_start_hour"] == 9
+    assert service.resolved_overrides["business_end_hour"] == 17
+    assert service.resolved_overrides["business_weekdays"] == frozenset({1, 2, 3, 4, 5})
+    # Holidays come from Sales too, so the bot keeps no second calendar (S7.3.1).
+    assert service.resolved_overrides["blackout_dates"] == frozenset({"2026-11-26"})
+
+
+async def test_a_missing_sales_policy_keeps_the_local_defaults() -> None:
+    # A policy read that returns nothing must not invent a window or lose the
+    # booking: no override is set and the client still books the offered slot.
+    fake = FakeConsultationSales()  # no stored policy
+    service = StubConsultationService()
+
+    result = await dispatch(build(fake, service), booking_plan(), context())
+
+    assert result is not None and result.success is True
+    assert service.resolved[0].business_timezone == "America/Chicago"
+    assert service.resolved_overrides["business_start_hour"] is None
+    assert service.resolved_overrides["business_end_hour"] is None
+    assert service.resolved_overrides["business_weekdays"] is None
+    assert service.resolved_overrides["blackout_dates"] == frozenset()
 
 
 async def test_a_retried_booking_reuses_the_request_id_so_sales_dedupes_it() -> None:
@@ -395,7 +459,7 @@ async def test_no_availability_offered_degrades_rather_than_booking_blind() -> N
 
     assert result is not None
     assert service.local_calls == 1
-    assert fake.tools() == ["sales_consultation_availability"]
+    assert fake.tools() == ["sales_consultation_config_get", "sales_consultation_availability"]
     assert result.payload["sales"]["code"] == "sales_no_availability"
 
 
@@ -698,7 +762,9 @@ async def test_an_unresolvable_time_hands_the_turn_to_the_local_error_mapping() 
     class AmbiguousResolver(StubConsultationService):
         """The real service raises from both the resolver and the booking itself."""
 
-        def resolve_requested_start(self, request: ConsultationActionRequest) -> datetime:
+        def resolve_requested_start(
+            self, request: ConsultationActionRequest, **overrides: Any
+        ) -> datetime:
             raise AmbiguousDateError("which Monday?")
 
         async def schedule(self, request: ConsultationActionRequest) -> ConsultationActionResult:
@@ -710,7 +776,8 @@ async def test_an_unresolvable_time_hands_the_turn_to_the_local_error_mapping() 
 
     assert result is not None
     assert result.success is False
-    # The local path owns the reply for an ambiguous date; Sales is never asked.
-    assert fake.calls == []
+    # The local path owns the reply for an ambiguous date; Sales is asked for its
+    # policy (S7.2.2, read before interpreting) but never for a slot or a booking.
+    assert fake.tools() == ["sales_consultation_config_get"]
     assert result.error_code == "ambiguous_requested_date"
     assert "sales" not in result.payload
