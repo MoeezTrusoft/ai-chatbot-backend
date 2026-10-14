@@ -24,6 +24,7 @@ from bookcraft.components.document_actions import (
     NDAActionRequest,
     NDAActionService,
 )
+from bookcraft.components.consultations.service import RequestedTimeError
 from bookcraft.components.leads import CreateOrUpdateLeadRequest, LeadService
 from bookcraft.components.portfolio_actions import (
     PortfolioActionRequest,
@@ -39,12 +40,36 @@ from bookcraft.infra.sales_mcp import (
     SalesMcpConfigError,
     SalesTenantNotAllowed,
     SalesTurnContext,
+    consultation_availability_arguments,
+    consultation_payload_from_sales,
+    consultation_confirm_arguments,
+    consultation_request_id,
+    consultation_schedule_arguments,
+    consultation_slot_from_sales,
     lead_create_arguments,
     lead_payload_from_sales,
+    normalize_e164,
 )
 
 
 logger = structlog.get_logger(__name__)
+
+
+def _sales_offer_handle(slots: dict[str, object]) -> tuple[str, int] | None:
+    """The Sales offer a confirmed turn is accepting, if this turn is one (S7.1.2).
+
+    Sales answers `sales_consultation_schedule` with a `Proposed` row when it cannot
+    hold the exact instant. That row is an expiring offer, not a booking: accepting it
+    means calling `sales_consultation_confirm` on that same row, so the handle is
+    carried on the pending confirmation rather than re-scheduled as a new booking.
+    """
+    if not slots.get("confirmed"):
+        return None
+    consultation_id = _string_or_none(slots.get("sales_offer_consultation_id"))
+    version = _int_or_none(slots.get("sales_offer_version"))
+    if not consultation_id or version is None:
+        return None
+    return consultation_id, version
 
 
 def _make_idempotency_key(thread_id: UUID, action_type: str, slots: dict[str, object]) -> str:
@@ -130,6 +155,10 @@ class SalesActionDispatcher:
                 thread_id=thread_id,
                 customer_id=customer_id,
                 started=started,
+                # Same durable key as the lead write, so a retried booking is a
+                # replay Sales dedupes rather than a second appointment (S3.2.4).
+                request_id=idem_key,
+                sales_context=sales_context,
             )
         elif plan.action_type == ActionType.PRICE_QUOTE:
             result = await self._price_quote(
@@ -186,6 +215,156 @@ class SalesActionDispatcher:
         return result
 
     async def _schedule_consultation(
+        self,
+        plan: ActionPlan,
+        *,
+        thread_id: UUID,
+        customer_id: UUID | None,
+        started: float,
+        request_id: str | None = None,
+        sales_context: SalesTurnContext | None = None,
+    ) -> ActionResult:
+        # Sales owns the calendar once the integration is on and the conversation
+        # has a tenant plus a Sales lead to book against (D3/S7.1.1). Anything
+        # else falls through to the in-process scheduler exactly as before.
+        offer = _sales_offer_handle(plan.collected_slots)
+        if offer is not None and self._sales_booking_available(sales_context):
+            # The customer is accepting an offer Sales already persisted, so the
+            # booking is a confirm of that exact row (S7.1.2) — scheduling again
+            # would ask the calendar for a slot it already refused.
+            confirmed, offer_meta = await self._confirm_consultation_in_sales(
+                plan,
+                offer=offer,
+                started=started,
+                request_id=request_id,
+                sales_context=sales_context,
+            )
+            if confirmed is not None:
+                if offer_meta is not None:
+                    confirmed.payload = {**confirmed.payload, "sales": offer_meta}
+                return confirmed
+            result = await self._schedule_consultation_locally(
+                plan,
+                thread_id=thread_id,
+                customer_id=customer_id,
+                started=started,
+            )
+            if offer_meta is not None:
+                result.payload = {**result.payload, "sales": offer_meta}
+            return result
+
+        sales_result, sales_meta = await self._schedule_consultation_in_sales(
+            plan,
+            started=started,
+            request_id=request_id,
+            sales_context=sales_context,
+        )
+        if sales_result is not None:
+            if sales_meta is not None:
+                # A refusal raised before the call was made still has to say so on
+                # the result, exactly like the degraded local path below (D3).
+                sales_result.payload = {**sales_result.payload, "sales": sales_meta}
+            return sales_result
+
+        result = await self._schedule_consultation_locally(
+            plan,
+            thread_id=thread_id,
+            customer_id=customer_id,
+            started=started,
+        )
+        if sales_meta is not None:
+            # Sales was tried and did not take the booking. Keep the outcome so
+            # the state layer records why the turn degraded (D3).
+            result.payload = {**result.payload, "sales": sales_meta}
+        return result
+
+    def _sales_booking_available(self, sales_context: SalesTurnContext | None) -> bool:
+        """True when this turn may write to Sales at all (D3/S7.1.4).
+
+        `CHATBOT_LOCAL_SCHEDULER=true` keeps the in-process scheduler for standalone
+        and dev deployments that have no Sales to book against.
+        """
+        if self.sales_client is None or not self.sales_client.enabled:
+            return False
+        if sales_context is None or not sales_context.usable or not sales_context.lead_id:
+            return False
+        return not self.sales_client.local_scheduler
+
+    async def _confirm_consultation_in_sales(
+        self,
+        plan: ActionPlan,
+        *,
+        offer: tuple[str, int],
+        started: float,
+        request_id: str | None,
+        sales_context: SalesTurnContext | None,
+    ) -> tuple[ActionResult | None, dict[str, object] | None]:
+        """Confirm a persisted, unexpired Sales offer (S7.1.2).
+
+        `(None, meta)` means the confirm did not land, and the caller degrades to the
+        local scheduler with the reason recorded rather than losing the booking.
+        """
+        assert self.sales_client is not None and sales_context is not None
+        idem_key = request_id or plan.idempotency_key
+        if not idem_key:
+            return None, None
+        consultation_id, expected_version = offer
+        call = await self.sales_client.call_tool(
+            "sales_consultation_confirm",
+            consultation_confirm_arguments(
+                consultation_id=consultation_id,
+                expected_version=expected_version,
+                request_id=consultation_request_id(str(idem_key)),
+            ),
+            tenant_id=sales_context.tenant_id,
+            site_id=sales_context.site_id,
+        )
+        meta: dict[str, object] = {
+            "tool": "sales_consultation_confirm",
+            "request_id": idem_key,
+            "ok": call.ok,
+            "code": call.code,
+            "sales_code": call.sales_code,
+            "degraded": call.degraded,
+            "attempts": call.attempts,
+        }
+        if not call.ok or not isinstance(call.data, dict):
+            return None, meta
+        consultation = consultation_payload_from_sales(call.data)
+        if not consultation.get("id"):
+            return None, {**meta, "ok": False, "code": "sales_invalid_response"}
+        status = str(consultation.get("status") or "")
+        # A confirm that comes back Proposed again is not a held slot either; the
+        # reply layer must not claim a booking the tenant still holds as an offer.
+        return (
+            ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=True,
+                result_id=str(consultation["id"]),
+                customer_safe_summary=(
+                    "You're booked in. I've sent the details to our sales team."
+                    if status != "Proposed"
+                    else (
+                        "That time still isn't held on our side — could you pick "
+                        "another day or time?"
+                    )
+                ),
+                internal_summary=(
+                    f"Consultation confirmed in Sales: {consultation['id']} ({status})"
+                ),
+                payload={
+                    "consultation": consultation,
+                    "created": status != "Proposed",
+                    "requested_time_available": True,
+                    "sales": meta,
+                    "recommended_follow_up_slots": plan.recommended_follow_up_slots,
+                },
+                duration_ms=_elapsed_ms(started),
+            ),
+            meta,
+        )
+
+    async def _schedule_consultation_locally(
         self,
         plan: ActionPlan,
         *,
@@ -348,6 +527,192 @@ class SalesActionDispatcher:
             internal_summary=f"Consultation scheduled: {result.appointment_id}",
             payload=result.model_dump(mode="json"),
             duration_ms=_elapsed_ms(started),
+        )
+
+    async def _schedule_consultation_in_sales(
+        self,
+        plan: ActionPlan,
+        *,
+        started: float,
+        request_id: str | None,
+        sales_context: SalesTurnContext | None,
+    ) -> tuple[ActionResult | None, dict[str, object] | None]:
+        """Try the booking in Sales first when the integration is switched on (D3).
+
+        `(None, None)` means Sales is not the right actor for this turn, so the
+        caller proceeds on the local path exactly as before. `(None, meta)` means
+        Sales was asked and declined: the booking still has to happen somewhere, so
+        the local path runs with the reason recorded for the state layer.
+        """
+        if not self._sales_booking_available(sales_context):
+            return None, None
+        client = self.sales_client
+        assert client is not None and sales_context is not None
+        lead_id = sales_context.lead_id
+        assert lead_id
+        service = self.consultation_action_service
+        if service is None:
+            return None, None
+        idem_key = request_id or plan.idempotency_key
+        if not idem_key:
+            # No stable key means the call could not be deduped server-side, and
+            # a duplicated booking is worse than a local one.
+            return None, None
+
+        slots = plan.collected_slots
+        name = _string_or_none(slots.get("name"))
+        if not name:
+            # The local path owns the missing-contact reply.
+            return None, None
+        raw_phone = _string_or_none(slots.get("phone"))
+        phone = normalize_e164(raw_phone)
+        if raw_phone and phone is None:
+            # Sales requires a E.164 phone on the lead's customer, so a number we
+            # cannot interpret is a booking it will refuse after the visitor has
+            # already agreed a time. Say so now, plainly (S7.2.1).
+            return (
+                ActionResult(
+                    action_type=ActionType.SCHEDULE_CONSULTATION,
+                    success=False,
+                    customer_safe_summary=(
+                        "I have the details, but that phone number doesn't look "
+                        "callable. Could you share it with the country code, "
+                        "for example +1 415 555 2671?"
+                    ),
+                    internal_summary="Phone number is not a valid E.164 number",
+                    error_code="invalid_phone",
+                    duration_ms=_elapsed_ms(started),
+                ),
+                {
+                    "tool": "sales_consultation_schedule",
+                    "request_id": idem_key,
+                    "ok": False,
+                    "code": "invalid_phone",
+                    "degraded": False,
+                },
+            )
+
+        customer_timezone = (
+            _string_or_none(slots.get("customer_timezone"))
+            or _string_or_none(slots.get("timezone"))
+            or "America/Chicago"
+        )
+        business_timezone = _string_or_none(slots.get("business_timezone")) or "America/Chicago"
+        services = slots.get("services")
+        service_names = (
+            [str(item) for item in services if item is not None]
+            if isinstance(services, list)
+            else []
+        )
+        action_request = ConsultationActionRequest(
+            customer_id=None,
+            lead_id=None,
+            thread_id=sales_context.thread_id,
+            name=name,
+            email=_string_or_none(slots.get("email")),
+            phone=phone,
+            services=service_names,
+            requested_time_text=_string_or_none(slots.get("requested_time_text")) or "",
+            customer_timezone=customer_timezone,
+            business_timezone=business_timezone,
+            duration_minutes=_int_or_none(slots.get("duration_minutes")) or 30,
+            metadata={"action_plan_reason": plan.reason},
+        )
+        try:
+            # Reuse the local resolver so "Tuesday 3pm" means the same instant on
+            # both paths; Sales only owns the calendar, not the interpretation.
+            requested_start = service.resolve_requested_start(action_request)
+        except RequestedTimeError:
+            # Hand the turn to the local path: its error mapping is the one the
+            # reply layer already voices for a past/holiday/ambiguous date.
+            return None, None
+
+        availability = await client.call_tool(
+            "sales_consultation_availability",
+            consultation_availability_arguments(
+                lead_id=lead_id,
+                start_time=requested_start.isoformat(),
+                customer_timezone=customer_timezone,
+            ),
+            tenant_id=sales_context.tenant_id,
+            site_id=sales_context.site_id,
+        )
+        meta: dict[str, object] = {
+            "tool": "sales_consultation_availability",
+            "request_id": idem_key,
+            "ok": availability.ok,
+            "code": availability.code,
+            "sales_code": availability.sales_code,
+            "degraded": availability.degraded,
+            "attempts": availability.attempts,
+        }
+        if not availability.ok or not isinstance(availability.data, dict):
+            return None, meta
+        offered = consultation_slot_from_sales(availability.data)
+        if not offered:
+            return None, {**meta, "ok": False, "code": "sales_no_availability"}
+        chosen = offered[0]
+        start_time = str(chosen.get("startTime") or "")
+        if not start_time:
+            return None, {**meta, "ok": False, "code": "sales_invalid_response"}
+
+        owner_id = chosen.get("ownerId")
+        schedule_call = await client.call_tool(
+            "sales_consultation_schedule",
+            consultation_schedule_arguments(
+                lead_id=lead_id,
+                start_time=start_time,
+                customer_timezone=customer_timezone,
+                request_id=consultation_request_id(str(idem_key)),
+                preferred_owner_id=str(owner_id) if owner_id else None,
+            ),
+            tenant_id=sales_context.tenant_id,
+            site_id=sales_context.site_id,
+        )
+        meta = {
+            "tool": "sales_consultation_schedule",
+            "request_id": idem_key,
+            "ok": schedule_call.ok,
+            "code": schedule_call.code,
+            "sales_code": schedule_call.sales_code,
+            "degraded": schedule_call.degraded,
+            "attempts": schedule_call.attempts,
+        }
+        if not schedule_call.ok or not isinstance(schedule_call.data, dict):
+            return None, meta
+        consultation = consultation_payload_from_sales(schedule_call.data)
+        if not consultation.get("id"):
+            return None, {**meta, "ok": False, "code": "sales_invalid_response"}
+
+        status = str(consultation.get("status") or "")
+        if status == "Proposed":
+            # A Proposed result is an expiring offer, never a held slot — claiming
+            # "booked" here is the error that produced duplicate form submissions.
+            summary = (
+                "I can offer you that time, but it isn't held yet — "
+                "shall I confirm it for you?"
+            )
+        else:
+            summary = "You're booked in. I've sent the details to our sales team."
+        return (
+            ActionResult(
+                action_type=ActionType.SCHEDULE_CONSULTATION,
+                success=True,
+                result_id=str(consultation["id"]),
+                customer_safe_summary=summary,
+                internal_summary=(
+                    f"Consultation scheduled in Sales: {consultation['id']} ({status})"
+                ),
+                payload={
+                    "consultation": consultation,
+                    "created": status != "Proposed",
+                    "requested_time_available": start_time == requested_start.isoformat(),
+                    "sales": meta,
+                    "recommended_follow_up_slots": plan.recommended_follow_up_slots,
+                },
+                duration_ms=_elapsed_ms(started),
+            ),
+            meta,
         )
 
     async def _create_lead(

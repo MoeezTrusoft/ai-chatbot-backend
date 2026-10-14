@@ -1189,6 +1189,10 @@ class ChatService:
                         tenant_id=payload.tenant_id,
                         site_id=payload.site_id,
                         thread_id=thread_id,
+                        # The Sales lead this conversation already created, if any:
+                        # Sales books a consultation against its own lead, so
+                        # without this id the booking cannot be delegated (S7.1.1).
+                        lead_id=state.sales_actions.integration.lead_id,
                     ),
                 )
             else:
@@ -3230,6 +3234,40 @@ class ChatService:
                 integration.lead_id = str(lead["id"])
 
     @staticmethod
+    def _consultation_state_view(action_result: ActionResult) -> dict[str, Any]:
+        """Consultation facts whichever system took the booking (S7.1.3).
+
+        Sales answers with the ERP row under `consultation`; the bot's own scheduler
+        answers with a flat payload. The state layer must not care which one booked
+        the call, and it must never read an expiring offer as a held slot: `Proposed`
+        means the tenant does not hold that time yet (S7.1.2).
+        """
+        payload = dict(action_result.payload or {})
+        consultation = payload.get("consultation")
+        if not isinstance(consultation, dict):
+            return payload
+        status = _optional_string(consultation.get("status"))
+        business_tz = _optional_string(consultation.get("timezone"))
+        user_tz = _optional_string(consultation.get("user_timezone"))
+        start_time = _optional_string(consultation.get("start_time"))
+        return {
+            **payload,
+            "appointment_id": consultation.get("id") or action_result.result_id,
+            "lead_id": consultation.get("lead_id"),
+            "csr_id": consultation.get("owner_id"),
+            "csr_name": consultation.get("csr_name"),
+            "customer_timezone": user_tz,
+            "starts_at_utc": start_time,
+            "ends_at_utc": consultation.get("end_time"),
+            "houston_display_time": _display_time_in(start_time, business_tz),
+            "customer_display_time": _display_time_in(start_time, user_tz),
+            "status": status,
+            "version": consultation.get("version"),
+            "offer_expires_at": consultation.get("offer_expires_at"),
+            "confirmed": bool(payload.get("created")) and status != "Proposed",
+        }
+
+    @staticmethod
     def _apply_sales_action_result_to_state(
         state: ThreadState,
         action_result: ActionResult | None,
@@ -3308,25 +3346,53 @@ class ChatService:
             return
 
         if action_result.action_type == ActionType.SCHEDULE_CONSULTATION:
+            view = ChatService._consultation_state_view(action_result)
             state.sales_actions.consultation.requested = True
+            # The in-process scheduler only ever returns a held booking; only a
+            # Sales payload can carry an offer that still has to be accepted.
+            if not view.get("confirmed", True):
+                # Sales could not hold that exact instant and persisted an expiring
+                # offer instead (S7.1.2). Keep the offer's handle so the customer's
+                # "yes" confirms that row, and leave every booked-consultation gate
+                # untouched: clearing them here is how the bot ends up telling a
+                # visitor they are booked into a slot the tenant does not hold.
+                consultation_ref = dict(state.sales_actions.pending_confirmation.payload or {})
+                consultation_ref.pop("sales_offer_consultation_id", None)
+                consultation_ref.pop("sales_offer_version", None)
+                offer_id = _optional_string(view.get("appointment_id"))
+                version = view.get("version")
+                if offer_id:
+                    consultation_ref["sales_offer_consultation_id"] = offer_id
+                if isinstance(version, int):
+                    consultation_ref["sales_offer_version"] = version
+                state.sales_actions.consultation.pending_confirmation = True
+                state.sales_actions.consultation.pending_slot = consultation_ref or None
+                state.sales_actions.pending_confirmation.type = (
+                    ActionType.SCHEDULE_CONSULTATION.value
+                )
+                state.sales_actions.pending_confirmation.payload = consultation_ref or None
+                state.sales_actions.pending_confirmation.created_at = datetime.now(UTC)
+                expires_at = _parse_instant(view.get("offer_expires_at"))
+                if expires_at is not None:
+                    state.sales_actions.pending_confirmation.expires_at = expires_at
+                return
+
             state.sales_actions.consultation.pending_confirmation = False
             state.sales_actions.consultation.pending_slot = None
-            state.sales_actions.consultation.confirmed_appointment_id = action_result.result_id
-            state.sales_actions.consultation.csr_id = _optional_string(
-                action_result.payload.get("csr_id")
-            )
-            state.sales_actions.consultation.csr_name = _optional_string(
-                action_result.payload.get("csr_name")
-            )
+            state.sales_actions.consultation.confirmed_appointment_id = _optional_string(
+                view.get("appointment_id")
+            ) or action_result.result_id
+            state.sales_actions.consultation.csr_id = _optional_string(view.get("csr_id"))
+            state.sales_actions.consultation.csr_name = _optional_string(view.get("csr_name"))
             state.sales_actions.consultation.customer_timezone = _optional_string(
-                action_result.payload.get("customer_timezone")
+                view.get("customer_timezone")
             )
             # C1: persist the authoritative booked time so later turns ground on it.
             state.sales_actions.consultation.confirmed_display_time = _optional_string(
-                action_result.payload.get("houston_display_time")
+                view.get("houston_display_time")
             )
             state.sales_actions.consultation.confirmed_customer_display_time = _optional_string(
-                action_result.payload.get("customer_display_time")
+                view.get("customer_display_time")
             )
             state.sales_actions.pending_confirmation.type = None
             state.sales_actions.pending_confirmation.payload = None
@@ -3334,7 +3400,9 @@ class ChatService:
             state.sales_actions.pending_confirmation.expires_at = None
             # Step 16: mark handoff as created so it doesn't retrigger on later turns.
             state.consultation_handoff_created = True
-            state.consultation_handoff_action_id = action_result.result_id
+            state.consultation_handoff_action_id = (
+                state.sales_actions.consultation.confirmed_appointment_id
+            )
             return
 
         if action_result.action_type == ActionType.GENERATE_NDA:
@@ -3374,21 +3442,23 @@ class ChatService:
             ]
 
         if action_result.action_type == ActionType.SCHEDULE_CONSULTATION:
-            starts_at = action_result.payload.get("starts_at_utc")
-            ends_at = action_result.payload.get("ends_at_utc")
+            view = ChatService._consultation_state_view(action_result)
+            starts_at = view.get("starts_at_utc")
+            ends_at = view.get("ends_at_utc")
             return [
                 {
                     "type": "consultation_scheduled",
-                    "appointment_id": str(action_result.result_id or ""),
-                    "lead_id": str(action_result.payload.get("lead_id") or ""),
-                    "csr_id": _optional_string(action_result.payload.get("csr_id")),
-                    "csr_name": _optional_string(action_result.payload.get("csr_name")),
+                    "appointment_id": str(view.get("appointment_id") or ""),
+                    "lead_id": str(view.get("lead_id") or ""),
+                    "csr_id": _optional_string(view.get("csr_id")),
+                    "csr_name": _optional_string(view.get("csr_name")),
                     "starts_at_utc": str(starts_at) if starts_at is not None else None,
                     "ends_at_utc": str(ends_at) if ends_at is not None else None,
-                    "customer_timezone": _optional_string(
-                        action_result.payload.get("customer_timezone")
-                    ),
-                    "status": _optional_string(action_result.payload.get("status")),
+                    "customer_timezone": _optional_string(view.get("customer_timezone")),
+                    "status": _optional_string(view.get("status")),
+                    # Callers must be able to tell a held booking from an offer that
+                    # still expires; a Proposed result is the latter (S7.1.2).
+                    "confirmed": bool(view.get("confirmed", True)),
                 }
             ]
 
@@ -4975,6 +5045,35 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _parse_instant(value: object) -> datetime | None:
+    """Parse an ISO-8601 instant from a counterpart service, or None."""
+    text = _optional_string(value)
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _display_time_in(value: object, tz_name: str | None) -> str | None:
+    """Render a booked instant the way the reply layer quotes it.
+
+    Uses the same format as the local scheduler's own display time, so a booking
+    made in Sales reads identically to one made in-process.
+    """
+    from zoneinfo import ZoneInfo
+
+    instant = _parse_instant(value)
+    if instant is None:
+        return None
+    try:
+        localized = instant.astimezone(ZoneInfo(str(tz_name))) if tz_name else instant
+    except Exception:  # noqa: BLE001 - an unknown tz must not break the state write
+        localized = instant
+    return localized.strftime("%A, %B %-d, %Y at %-I:%M %p %Z")
 
 
 def _pending_confirmation_debug(state: ThreadState) -> dict[str, Any] | None:

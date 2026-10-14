@@ -27,9 +27,10 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import httpx
+import phonenumbers
 import structlog
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -171,6 +172,10 @@ class SalesTurnContext:
     tenant_id: UUID | None = None
     site_id: str | None = None
     thread_id: UUID | None = None
+    # The Sales lead id this conversation already created (S7.1.1). Sales books a
+    # consultation against a LEAD it owns, so its own id — not the bot's local
+    # one — is the only handle `sales_consultation_schedule` will accept.
+    lead_id: str | None = None
 
     @property
     def usable(self) -> bool:
@@ -349,6 +354,127 @@ def lead_payload_from_sales(
     }
 
 
+def normalize_e164(phone: str | None, *, default_region: str | None = None) -> str | None:
+    """Best-effort E.164 for the number a visitor typed (S7.2.1).
+
+    Sales' scheduling requires the lead's customer to carry a **E.164** phone, so
+    any other shape is a booking that gets refused after the visitor has already
+    agreed to a time. Returns ``None`` when the number cannot be interpreted at
+    all, and the caller then reports a contact problem instead of sending Sales
+    something it will reject.
+    """
+    raw = (phone or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = phonenumbers.parse(raw, default_region)
+    except phonenumbers.NumberParseException:
+        return None
+    if not phonenumbers.is_valid_number(parsed):
+        return None
+    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+
+def consultation_request_id(idempotency_key: str) -> str:
+    """A stable UUID for `sales_consultation_schedule`'s required `requestId`.
+
+    Sales types that field as a UUID, and the bot's durable idempotency key is a
+    hex digest, so the two are bridged deterministically: a retried booking
+    reuses the same UUID and Sales dedupes it instead of booking twice.
+    """
+    return str(uuid5(NAMESPACE_URL, f"sales-consultation-schedule:{idempotency_key}"))
+
+
+def consultation_availability_arguments(
+    *, lead_id: str, start_time: str, customer_timezone: str, preferred_owner_id: str | None = None
+) -> dict[str, Any]:
+    """Arguments for `sales_consultation_availability`.
+
+    That tool's schema is strict and has no `requestId` field, so the idempotency
+    key is deliberately left to the JSON-RPC envelope here.
+    """
+    arguments: dict[str, Any] = {
+        "leadId": str(lead_id),
+        "startTime": str(start_time),
+        "userTimezone": str(customer_timezone),
+        "limit": 1,
+    }
+    if preferred_owner_id:
+        arguments["preferredOwnerId"] = str(preferred_owner_id)
+    return arguments
+
+
+def consultation_schedule_arguments(
+    *,
+    lead_id: str,
+    start_time: str,
+    customer_timezone: str,
+    request_id: str,
+    preferred_owner_id: str | None = None,
+) -> dict[str, Any]:
+    """Arguments for `sales_consultation_schedule` (S3.2.2).
+
+    `startTime` must be an instant Sales actually offers: availability is asked
+    first, and whatever it returns is what gets booked.
+    """
+    arguments: dict[str, Any] = {
+        "leadId": str(lead_id),
+        "startTime": str(start_time),
+        "userTimezone": str(customer_timezone),
+        "requestId": str(request_id),
+    }
+    if preferred_owner_id:
+        arguments["preferredOwnerId"] = str(preferred_owner_id)
+    return arguments
+
+
+def consultation_confirm_arguments(
+    *, consultation_id: str, expected_version: int, request_id: str
+) -> dict[str, Any]:
+    """Arguments for `sales_consultation_confirm` (S7.1.2).
+
+    Accepting a persisted offer needs the exact row and its version: Sales re-checks
+    availability under an optimistic lock, so a stale version is refused rather than
+    silently double-booking the slot.
+    """
+    return {
+        "consultationId": str(consultation_id),
+        "expectedVersion": int(expected_version),
+        "requestId": str(request_id),
+    }
+
+
+def consultation_payload_from_sales(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Shape a Sales consultation record into the payload the state layer reads.
+
+    A `Proposed` result is an expiring offer, not a booking — the caller has to
+    confirm it separately — so the status is carried through verbatim and never
+    flattened into "booked" here.
+    """
+    return {
+        "id": str(data.get("id") or ""),
+        "status": data.get("status"),
+        "owner_id": data.get("ownerId"),
+        "lead_id": data.get("leadId"),
+        "customer_id": data.get("customerId"),
+        "start_time": data.get("startTime"),
+        "end_time": data.get("endTime"),
+        "timezone": data.get("timezone"),
+        "user_timezone": data.get("userTimezone"),
+        "version": data.get("version"),
+        "offer_expires_at": data.get("offerExpiresAt"),
+        "origin": "sales",
+    }
+
+
+def consultation_slot_from_sales(data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The `slots` array `sales_consultation_availability` returns."""
+    raw = data.get("slots")
+    if not isinstance(raw, list):
+        return []
+    return [dict(slot) for slot in raw if isinstance(slot, Mapping)]
+
+
 def pinned_scope(settings: Settings) -> str:
     """The scope claim: the pinned grant set, space-delimited (S3.1.3)."""
     override = (settings.sales_mcp_scope or "").strip()
@@ -454,6 +580,16 @@ class SalesMcpClient:
             and self.settings.sales_mcp_url
             and self.settings.sales_mcp_signing_key
         )
+
+    @property
+    def local_scheduler(self) -> bool:
+        """`CHATBOT_LOCAL_SCHEDULER=true`: the bot books in-process (D3/T3.4).
+
+        Standalone and dev deployments have no Sales calendar to book against, so
+        the in-process dispatcher stays authoritative for them; production turns
+        this off and Sales owns the booking.
+        """
+        return bool(self.settings.chatbot_local_scheduler)
 
     @property
     def bindings(self) -> dict[str, TenantBinding]:
@@ -768,6 +904,11 @@ __all__ = [
     "ServiceTokenSigner",
     "TenantBinding",
     "call_action",
+    "consultation_availability_arguments",
+    "consultation_payload_from_sales",
+    "consultation_request_id",
+    "consultation_schedule_arguments",
+    "consultation_slot_from_sales",
     "lead_create_arguments",
     "lead_payload_from_sales",
     "lead_source",

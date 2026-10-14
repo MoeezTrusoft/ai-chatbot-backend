@@ -168,6 +168,22 @@ class ConsultationActionService:
 
         return result
 
+    def resolve_requested_start(self, request: ConsultationActionRequest) -> datetime:
+        """The concrete instant a free-text request resolves to.
+
+        Shared with the Sales path (S7.1.1) so "Tuesday 3pm" means the same moment
+        whichever calendar ends up holding the booking — reusing this rather than
+        re-deriving it is what stops the two paths from disagreeing about the time.
+        Raises the same `RequestedTimeError` subclasses the local path voices.
+        """
+        return _parse_requested_start(
+            text=request.requested_time_text,
+            customer_tz=_safe_zoneinfo(request.customer_timezone or request.business_timezone),
+            business_tz=_safe_zoneinfo(request.business_timezone),
+            business_start_hour=self.business_start_hour,
+            business_end_hour=self.business_end_hour,
+        )
+
     async def _push_to_csr_api(
         self,
         *,
