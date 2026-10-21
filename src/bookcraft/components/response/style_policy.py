@@ -86,7 +86,7 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
     "document_scoping": "Confirm the exact document and missing legal-safe details.",
     "portfolio_matching": "Ask one clarifier to provide relevant portfolio samples.",
     "lead_contact_capture": (
-        "Ask for the author's name and one contact method (email or phone) — not both. "
+        "Ask for the author's name and one contact method (email or phone), not both. "
         "Frame the ask around the benefit to the author, not the company's need."
     ),
     "consultation_handoff": (
@@ -337,15 +337,17 @@ class ResponseStylePolicy:
         return (
             "Tone: warm, specific, human, consultative, concise.\n"
             "Approach: react to what the author shared, then move ONE natural step forward.\n"
-            "On a first message — welcome and engage; never lead with a contact ask.\n"
-            "When the author asks a question — answer it fully before anything else.\n"
-            "After deflecting a contact ask — add value; do not repeat the same ask.\n"
+            "On a first message: welcome and engage; never lead with a contact ask.\n"
+            "When the author asks a question: answer it fully before anything else.\n"
+            "After deflecting a contact ask: add value; do not repeat the same ask.\n"
             "Moving forward is not always a question and not always a contact ask. "
             "Sometimes it is an answer, a next option, or a soft invitation.\n"
             "If you must ask for contact, ask for name + ONE channel (email or phone), "
             "framed around the author's benefit.\n"
             f"Avoid openers like: {', '.join(self.banned_openers)}.\n"
             "Avoid fake excitement, hype, and excessive exclamation marks.\n"
+            "Punctuation: never use em dashes or en dashes. Use a comma, a full stop, "
+            "or a colon instead. Hyphens are only for compound words and numeric ranges.\n"
             f"Avoid weak wording: {', '.join(self.weak_phrases)}.\n"
             "Do not expose internal terms or blocked-action completion claims."
             f"{guidance}"

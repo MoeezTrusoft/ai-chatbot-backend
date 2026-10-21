@@ -3,6 +3,36 @@ from dataclasses import dataclass
 
 from bookcraft.components.response.schemas import FormattedBubble
 
+# Em/en dashes are banned in customer-facing copy: they read as machine-written to
+# authors and the style guide asks for plain punctuation. The model is told this in the
+# prompt, and this is the deterministic backstop for the times it does it anyway.
+_EM_DASH_RE = re.compile(r"\s*\u2014+\s*")
+_EN_DASH_RANGE_RE = re.compile(r"(?<=\d)\s*\u2013\s*(?=\d)")
+_EN_DASH_RE = re.compile(r"\s*\u2013+\s*")
+
+
+def strip_dashes(text: str) -> str:
+    """Replace em dashes with a comma and en dashes with a hyphen.
+
+    "Price \u2014 timeline" becomes "Price, timeline"; a numeric range "1\u20132" becomes
+    "1-2". Repeated separators ("a, , b", "a,, b") are collapsed so the substitution
+    never leaves visible debris behind.
+    """
+    if not text:
+        return text
+
+    cleaned = _EN_DASH_RANGE_RE.sub("-", text)
+    cleaned = _EM_DASH_RE.sub(", ", cleaned)
+    cleaned = _EN_DASH_RE.sub("-", cleaned)
+    # Tidy the punctuation around the substitutions: "a \u2014 , b" becomes "a, , b"
+    # first, so collapse repeated commas before touching the space before punctuation.
+    cleaned = re.sub(r",(\s*,)+", ",", cleaned)
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r",\s*([.!?;:)])", r"\1", cleaned)
+    cleaned = re.sub(r"\(\s*,\s*", "(", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned
+
 
 def _trim_leading_sentence_fragment(text: str) -> str:
     stripped = text.strip()
@@ -98,7 +128,7 @@ class ResponseFormatter:
         stripped = re.sub(r"```.*?```", "", text, flags=re.S)
         stripped = re.sub(r"^\s{0,3}#{1,6}\s*", "", stripped, flags=re.M)
         stripped = stripped.replace("**", "").replace("__", "")
-        stripped = stripped.replace("\u2014", "-").replace("\u2013", "-").replace("\u2026", "...")
+        stripped = strip_dashes(stripped).replace("\u2026", "...")
         stripped = stripped.replace("\u201c", '"').replace("\u201d", '"').replace("\u2019", "'")
         if stripped.strip().startswith("{") or stripped.strip().startswith("["):
             return (
