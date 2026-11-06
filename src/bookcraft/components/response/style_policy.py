@@ -92,6 +92,16 @@ PRIMARY_GOAL_GUIDANCE: dict[str, str] = {
     "consultation_handoff": (
         "Offer specialist consultation handoff and collect one contact channel."
     ),
+    "consultation_email_capture": (
+        "The author's phone is unavailable or was refused. Ask for their email — "
+        "their only contact channel — and never ask for a phone, date, or time. "
+        "Frame it warmly: the consultant needs the email to reach them."
+    ),
+    "consultation_email_followup_confirmation": (
+        "Email-only track complete. Do NOT say the consultation is booked, scheduled, "
+        "or confirmed, and do not ask for a date, time, or phone number. Say a "
+        "professional consultant will contact them as soon as possible."
+    ),
     "specialist_handoff": "Confirm specialist handoff and collect required contact details.",
     "lead_created_confirmation": "Confirm handoff to a senior specialist and avoid more discovery.",
     "safe_blocked_action": "Do not imply completion. Explain safe next step only.",

@@ -1015,6 +1015,8 @@ def _cta_for_intent(
     if response_plan is not None and response_plan.primary_goal in {
         "lead_created_confirmation",
         "consultation_status_scheduled",
+        "consultation_text_followup_confirmation",
+        "consultation_email_followup_confirmation",
         "minimal_acknowledge",
         "complaint_recovery",
     }:
@@ -1126,6 +1128,22 @@ def _question_for_missing_fact(
             "Our specialists are available Monday–Friday, 10 AM to 7 PM Central Time."
         )
 
+    # Email ask depends on the track. In the normal phone track the email is
+    # optional; in the EMAIL-ONLY track (phone declared unavailable/refused) the
+    # email is the ONE channel a consultant can reach the author on, so it is
+    # required — never frame it as optional there.
+    _contact_status = context_pack.contact_status or {}
+    if _contact_status.get("phone") == "unavailable":
+        missing_email_ask = (
+            "Since there's no working phone to reach you on, could you share your "
+            "email address? That's how our consultant will contact you."
+        )
+    else:
+        missing_email_ask = (
+            "Thanks — do you also have an email address I can add? "
+            "Totally optional, but useful for sending confirmations."
+        )
+
     questions = {
         "cover_style": "What cover style or visual direction should I use for the design scope?",
         "word_or_page_count": "What rough word count or page count should I use?",
@@ -1159,10 +1177,7 @@ def _question_for_missing_fact(
             "I also need a phone number to complete your booking — "
             "that's how our specialist will reach you."
         ),
-        "missing_email": (
-            "Thanks — do you also have an email address I can add? "
-            "Totally optional, but useful for sending confirmations."
-        ),
+        "missing_email": missing_email_ask,
         "clarify_intent": "Could you tell me a bit more about what you're looking for?",
     }
     question = questions.get(missing_fact)
@@ -1488,6 +1503,7 @@ def _response_system_prompt(
         "- Do NOT re-ask for name, phone, or email if already captured, check Known Facts.\n"
         "- If the customer raises a service topic mid-consultation, acknowledge in ONE sentence "
         "('Our specialist will cover that on the call') and return to contact collection.\n"
+<<<<<<< Updated upstream
         "- Collect only what is still missing: name → phone → timezone → email → preferred time.\n"
         "- As soon as all required contact info is captured, confirm the booking and stop.\n"
         "When the author agrees to a consultation, including affirmative replies like "
@@ -1504,18 +1520,64 @@ def _response_system_prompt(
         "email is optional but welcome.\n"
         "(4) Timezone: REQUIRED so the call is scheduled at the right local time.\n"
         "(5) Preferred date and time, REQUIRED before confirming. When asking, always include: "
+=======
+        "Two booking tracks, know which one you are on:\n"
+        "(A) PHONE TRACK: the customer can and will give a working phone number (the normal "
+        "path). A consultation CAN ONLY EVER BE BOOKED with the author's name AND a working "
+        "phone number. Collect in this order: name → phone → timezone → preferred date and time.\n"
+        "(B) EMAIL-ONLY TRACK: the customer's phone is broken, inactive, out of service, or they "
+        "clearly cannot/will not provide a number (Known Facts shows phone is unavailable). A "
+        "phone number is NEVER coming from this customer. Collect: name → email. Do NOT ask "
+        "for a phone, and do NOT ask for a date, time, or timezone, there is no call to "
+        "schedule. Once their email is captured, the consultation is NOT scheduled: tell them "
+        "warmly that a professional consultant will contact them as soon as possible and to "
+        "watch their inbox. Never say it is booked, scheduled, locked in, or confirmed, and "
+        "never offer a slot, a time, or the booking button.\n"
+        "Contact collection rules:\n"
+        "- A consultation is NEVER booked without a phone number. If only an email is captured it "
+        "is always track (B): an email means the consultant contacts them, it is NOT a booking, "
+        "and it must never be worded as one.\n"
+        "- If NEITHER a phone number NOR an email has been captured, ask for one. Ask for the phone "
+        "first; the moment the customer says their phone is not functional/inactive or that they "
+        "will not provide it, switch to track (B) and ask for their email only (required there).\n"
+        "- Ask for one missing piece at a time.\n"
+        "Consultation platform: phone calls ONLY:\n"
+        "- BookCraft consultations are held over the PHONE. We do NOT offer consultations through "
+        "video links (Google Meet, Zoom, Teams, Skype, FaceTime), chat or social apps, or any "
+        "other online medium, there is no video link and no other platform to book onto.\n"
+        "- If the author asks about video or another medium, decline warmly and plainly "
+        "('We handle consultations over the phone, no video link, I'm afraid') and pivot to "
+        "collecting their phone number (or their email if their phone isn't usable) so a "
+        "specialist can call them. Never promise, offer, or go looking for a video option, and "
+        "never say a consultation can happen by any medium other than a phone call.\n"
+        "When the author agrees to a consultation, including affirmative replies like "
+        "'yes', 'sure', 'yes that would help', 'please set that up', 'that sounds good', "
+        "'go ahead', 'absolutely', immediately move to collecting their contact details, on "
+        "whichever track applies. Do NOT ask about manuscript stage, word count, genre, or any "
+        "other scoping question after they say yes to a consultation. That information can wait.\n"
+        "PHONE TRACK collection order:\n"
+        "(1) Name: if not yet captured.\n"
+        "(2) Phone number: required to book. Ask for it first.\n"
+        "(3) Email: optional but welcome once a phone is captured; never block the booking on it.\n"
+        "(4) Timezone: REQUIRED so the call is scheduled at the right local time.\n"
+        "(5) Preferred date and time: REQUIRED before confirming. When asking, always include: "
+>>>>>>> Stashed changes
         "'Our specialists are available Monday-Friday, 10 AM to 7 PM Central Time.' "
         "Do NOT say 'you're all set', 'a specialist will be in touch', 'confirmed', or any "
         "closing phrase until the preferred date AND time is captured. "
         "The date and time MUST be in the future relative to the current date above, if the "
         "customer names a day or time that has already passed, point it out and ask for an "
         "upcoming slot before booking.\n"
-        "Ask for one missing piece at a time. "
+        "EMAIL-ONLY TRACK closing:\n"
+        "When only an email is collected (no phone), the consultation is NOT scheduled. Say a "
+        "professional consultant will contact them as soon as possible. Do not propose, negotiate, "
+        "or confirm any specific date, time, specialist, or medium, and never say the consultation "
+        "is booked, scheduled, locked in, or confirmed.\n"
         "Never redirect them to contact BookCraft manually.\n\n"
         "After a lead is created:\n"
         "Once a lead is confirmed, immediately suggest scheduling a free consultation. "
         "Frame it as the natural next step: 'Would you like to lock in a quick call with one "
-        "of our specialists? I just need your phone number and timezone to set that up.'\n\n"
+        "of our specialists? I just need your name, phone number, and timezone to set that up.'\n\n"
         "Language disambiguation:\n"
         "- 'print a sample' or 'sample copy' or 'proof copy' in the context of publishing "
         "means the author wants a physical proof of THEIR OWN book, this is an Interior "

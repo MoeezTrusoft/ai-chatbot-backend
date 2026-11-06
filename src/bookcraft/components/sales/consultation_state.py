@@ -43,10 +43,16 @@ class ConsultationStage(StrEnum):
     PENDING_CONFIRMATION = "pending_confirmation"
     SCHEDULED = "scheduled"
     HANDOFF_CREATED = "handoff_created"
-    # Customer declined a voice call and asked to be texted instead. Terminal for
+    # Customer declared a voice call and asked to be texted instead. Terminal for
     # the CALL flow: we capture the lead and hand off for text follow-up rather
     # than interrogating them for an hour to ring them at (chat 6816).
     TEXT_FOLLOWUP_PREFERRED = "text_followup_preferred"
+    # Customer's phone is unavailable/refused (email-only track): ask for an
+    # email. Booking is still blocked until an email exists.
+    REQUESTED_EMAIL_NEEDED = "requested_email_needed"
+    # Email-only track complete: the consultation is NOT scheduled, but the lead
+    # is handed off for a consultant to reach out. Terminal for the booking flow.
+    EMAIL_FOLLOWUP_PREFERRED = "email_followup_preferred"
     # Customer postponed ("not until next month"). Terminal until they re-engage.
     DEFERRED = "deferred"
 
@@ -66,6 +72,8 @@ _ACTIVE_REQUEST_STAGES = frozenset(
         ConsultationStage.SCHEDULED,
         ConsultationStage.HANDOFF_CREATED,
         ConsultationStage.TEXT_FOLLOWUP_PREFERRED,
+        ConsultationStage.REQUESTED_EMAIL_NEEDED,
+        ConsultationStage.EMAIL_FOLLOWUP_PREFERRED,
         ConsultationStage.DEFERRED,
     }
 )
@@ -369,11 +377,39 @@ def reduce_consultation_state(
     # email-only). Block scheduling — keep asking for the phone — until one is present.
     # This is a hard gate: can_schedule stays False and we never reach READY_TO_SCHEDULE
     # without a phone, so no booking is created without it.
-    # EXCEPTION: when the customer has told us their phone is unavailable (chat 6759),
-    # stop demanding it and let the booking proceed on email — re-asking a channel the
-    # customer said they can't use reads as not listening and stalls the flow forever.
+    # EXCEPTION: when the customer has told us their phone is unavailable (chat 6759)
+    # or refuses to provide one, stop demanding it and switch to an EMAIL-ONLY track:
+    # re-asking a channel the customer said they can't/won't provide reads as not
+    # listening and stalls the flow forever. In the email-only track the consultation is
+    # NEVER scheduled — an email is captured (ask only if still missing) and the lead is
+    # handed off so a professional consultant contacts them. A booking button and a
+    # date/time ask require a phone, so they never appear here (can_schedule stays False).
+    if require_phone and not has_phone and phone_unavailable and not has_email:
+        audit.append("signal:phone_unavailable_email_needed")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.REQUESTED_EMAIL_NEEDED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            next_question="missing_email",
+            can_schedule=False,
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
     if require_phone and not has_phone and phone_unavailable:
-        audit.append("signal:phone_unavailable_proceed_email_only")
+        audit.append("signal:phone_unavailable_email_followup")
+        return ConsultationStateDecision(
+            stage=ConsultationStage.EMAIL_FOLLOWUP_PREFERRED,
+            contact_ready=True,
+            consultation_requested=True,
+            preferred_call_time=preferred_call_time,
+            can_schedule=False,
+            next_question=None,
+            stop_discovery=True,
+            is_status_question=is_status_question,
+            audit=audit,
+        )
     if require_phone and not has_phone and not phone_unavailable:
         audit.append("signal:phone_required_for_consultation")
         return ConsultationStateDecision(

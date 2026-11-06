@@ -96,6 +96,10 @@ _CONSULTATION_GOALS: frozenset[str] = frozenset(
         # Customer declined a voice call / postponed the engagement (chat 6816).
         "consultation_text_followup_confirmation",
         "consultation_deferred_acknowledgement",
+        # Email-only track: phone is unavailable/refused — capture the email and
+        # hand off for a consultant to reach out (no booking, no call-time ask).
+        "consultation_email_capture",
+        "consultation_email_followup_confirmation",
     }
 )
 
@@ -542,6 +546,10 @@ def _primary_goal(
             if cod_goal == "consultation_text_followup_confirmation":
                 return "consultation_text_followup_confirmation"
             return "consultation_handoff_confirmation"
+        if cod_move == "create_email_followup":
+            # Email-only track (phone unavailable/refused): reply confirms a
+            # consultant will reach out — never a scheduled booking or call time.
+            return "consultation_email_followup_confirmation"
         if cod_move == "ask_preferred_call_time":
             return "consultation_time_capture"
         # A misclassified story turn beats the softer "answer then pivot to
@@ -713,6 +721,13 @@ def _next_question(
         if not is_definite_call_time(context_pack.preferred_call_time):
             return "preferred_call_time_slots"
         return None
+    # Email-only track (phone unavailable/refused): ask for the email when it's
+    # still missing; once captured there is nothing left to ask — the consultant
+    # contacts them, no booking and no call-time question.
+    if primary_goal == "consultation_email_capture":
+        return "missing_email"
+    if primary_goal == "consultation_email_followup_confirmation":
+        return None
     if primary_goal == "consultation_time_capture":
         # Honour an explicit ask from the consultation objective engine — the phone gate
         # (email-only contact) or a slot-offer request — before defaulting to call time.
@@ -877,7 +892,7 @@ def _customer_safe_tool_summary(
 # ---------------------------------------------------------------------------
 
 
-def _contact_next_question(context_pack: ContextPack) -> str:
+def _contact_next_question(context_pack: ContextPack) -> str | None:
     """Return the most specific contact question given what's already captured.
 
     Phone is preferred and always solicited. However, email alone is a valid
@@ -898,6 +913,14 @@ def _contact_next_question(context_pack: ContextPack) -> str:
 
     if not has_name:
         return "name_and_email_or_phone"
+
+    # Email-only track (phone declared unavailable or refused): ask for the email
+    # if it's still missing, otherwise there is nothing left to request — no phone
+    # re-ask and no call time in this track (a consultant reaches out instead).
+    if phone_unavailable:
+        if not has_email:
+            return "missing_email"
+        return None
 
     # Neither contact method — ask for phone first (preferred).
     if not has_phone and not has_email:

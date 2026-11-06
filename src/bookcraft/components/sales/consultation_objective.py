@@ -183,6 +183,49 @@ class ConsultationObjectiveEngine:
                 audit=audit,
             )
 
+        # ── Priority 0.25: phone unavailable/refused → EMAIL-ONLY track ────
+        # The customer said their phone can't be used or made clear they won't
+        # provide a number (chat 6759). Stop demanding a phone (Priority 0 skips
+        # via `not phone_unavailable`). Ask for the email if it's still missing,
+        # otherwise hand off so a professional consultant contacts them. Never
+        # schedules: a booking hard-requires a phone, and this branch sits ABOVE
+        # Priority 1's handoff so a stray call time can never re-open a booking
+        # push in the email-only track.
+        if (
+            require_phone
+            and contact_ready
+            and not _has_phone
+            and phone_unavailable
+            and not handoff_created
+            and lod_move not in {"create_lead"}
+            and not _is_manuscript_update
+            and not _priority_question
+        ):
+            _has_email = bool(getattr(contact_capture, "has_email", False))
+            if not _has_email:
+                audit.append("move:phone_unavailable_ask_email")
+                return ConsultationObjectiveDecision(
+                    stage="consultation_email_requested",
+                    objective_move="ask_contact",
+                    consultation_first=True,
+                    stop_discovery=True,
+                    ask_contact=True,
+                    recommended_primary_goal="consultation_email_capture",
+                    next_question="missing_email",
+                    audit=audit,
+                )
+            audit.append("move:phone_unavailable_email_followup")
+            return ConsultationObjectiveDecision(
+                stage="consultation_email_followup",
+                objective_move="create_email_followup",
+                consultation_first=True,
+                stop_discovery=True,
+                create_handoff=True,
+                recommended_primary_goal="consultation_email_followup_confirmation",
+                next_question=None,
+                audit=audit,
+            )
+
         # ── Priority 0.5: customer declined a call → text follow-up ───────
         # Runs after the phone gate (we still need a number to text) but before
         # the entire call-time ladder below: there is no hour to agree on for a

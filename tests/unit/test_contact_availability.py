@@ -86,7 +86,12 @@ def test_reducer_blocks_scheduling_without_phone_by_default() -> None:
 
 
 def test_reducer_proceeds_email_only_when_phone_unavailable() -> None:
-    """chat 6759: phone flagged unavailable → skip the phone gate, ask for time."""
+    """chat 6759: phone flagged unavailable → switch to the email-only track.
+
+    A consultation is NEVER booked without a phone. With an email captured, the
+    bot must NOT ask for a time, must NOT schedule (can_schedule stays False),
+    and simply hands off — a consultant contacts them (chat 8868 rule).
+    """
     decision = reduce_consultation_state(
         state=ThreadState(),
         message="I'd like to book a call",
@@ -97,13 +102,22 @@ def test_reducer_proceeds_email_only_when_phone_unavailable() -> None:
         require_phone=True,
         phone_unavailable=True,
     )
-    # No longer stuck demanding a phone — advances to the time question instead.
+    # No longer stuck demanding a phone — but also never a booking.
     assert decision.next_question != "missing_phone"
-    assert "phone_unavailable_proceed_email_only" in " ".join(decision.audit)
+    assert decision.next_question not in {"preferred_call_time", "preferred_call_time_slots"}
+    assert decision.next_question is None
+    assert decision.can_schedule is False
+    assert str(decision.stage) == "email_followup_preferred"
+    assert "signal:phone_unavailable_email_followup" in " ".join(decision.audit)
 
 
 def test_reducer_reaches_ready_to_schedule_email_only() -> None:
-    """Full email-only path with a definite time + known timezone → can_schedule."""
+    """Full email-only path with a definite time + known timezone must NOT schedule.
+
+    Even when the author named a day/time and a timezone, a consultation without a
+    working phone number is never booked: the email-only track hands off for a
+    consultant to contact them instead (chat 8868 rule).
+    """
     state = ThreadState()
     state.preferred_timezone = "America/New_York"
     state.preferred_call_time = "Friday at 3pm"
@@ -117,8 +131,8 @@ def test_reducer_reaches_ready_to_schedule_email_only() -> None:
         require_phone=True,
         phone_unavailable=True,
     )
-    assert decision.can_schedule is True
-    assert str(decision.stage) == "ready_to_schedule"
+    assert decision.can_schedule is False
+    assert str(decision.stage) == "email_followup_preferred"
 
 
 # --------------------------------------------------------------------------- #
@@ -166,6 +180,12 @@ def test_objective_engine_stops_asking_phone_when_unavailable() -> None:
 
 
 def test_objective_engine_books_email_only_with_definite_time() -> None:
+    """Email-only + a definite time on file → email FOLLOW-UP handoff, not a booking.
+
+    A stray call time must not resurrect the normal booking handoff in the
+    email-only track: the goal is a consultant-follow-up confirmation and there is
+    nothing further to ask (chat 8868 rule).
+    """
     engine = ConsultationObjectiveEngine()
     state = ThreadState()
     state.lead_created = True
@@ -180,6 +200,9 @@ def test_objective_engine_books_email_only_with_definite_time() -> None:
         phone_unavailable=True,
     )
     assert decision.create_handoff is True
+    assert decision.objective_move == "create_email_followup"
+    assert decision.recommended_primary_goal == "consultation_email_followup_confirmation"
+    assert decision.next_question is None
 
 
 def test_objective_engine_still_asks_phone_when_not_unavailable() -> None:

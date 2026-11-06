@@ -23,8 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Phone declared unavailable. Covers "don't have a phone", "no phone (number)",
 # "phone is unable to be used / not working / broken / disconnected / dead",
-# "can't/cannot use my phone", "no way to take calls", and "email only / email is
-# my (main/best/only) contact" (which implies the phone channel is out).
+# "can't/cannot use my phone", "no way to take calls", "email only / email is
+# my (main/best/only) contact" (which implies the phone channel is out), and
+# explicit refusals ("won't provide / give my number", "prefer not to share",
+# "don't want to give my phone number") so an email-only track can start.
 _PHONE_UNAVAILABLE_RE = re.compile(
     r"(?:"
     r"(?:don'?t|do\s+not|doesn'?t|does\s+not)\s+have\s+(?:a\s+)?(?:phone|cell|mobile|number)|"
@@ -38,7 +40,11 @@ _PHONE_UNAVAILABLE_RE = re.compile(
     r"email\s+(?:is\s+)?(?:my\s+)?(?:main|best|only|primary|preferred)\s+(?:source\s+of\s+)?(?:contact|way)|"
     r"(?:only|just|prefer)\s+(?:by\s+|through\s+|via\s+)?email|"
     r"only\s+(?:be\s+)?(?:reach|contact)(?:ed)?\s+(?:me\s+)?(?:by|through|via|on)\s+(?:my\s+)?email|"
-    r"reach\s+me\s+(?:by\s+|through\s+|via\s+|on\s+)?(?:my\s+)?email\s+only"
+    r"reach\s+me\s+(?:by\s+|through\s+|via\s+|on\s+)?(?:my\s+)?email\s+only|"
+    r"(?:(?:won'?t|will\s+not|can'?t|cannot|can\s+not|would'?t|would\s+not)\s+"
+    r"(?:(?:like\s+to\s+|want\s+to\s+)?(?:give|share|provide))\s+(?:you\s+)?(?:my\s+)?(?:phone|cell|number))|"
+    r"(?:prefer|preferred|rather)\s+not\s+(?:to\s+)?(?:give|share|provide)\s+(?:you\s+)?(?:my\s+)?(?:phone|cell|number)|"
+    r"(?:don'?t|do\s+not|doesn'?t|does\s+not)\s+want\s+to\s+(?:give|share|provide)\s+(?:you\s+)?(?:my\s+)?(?:phone|cell|number)"
     r")",
     re.IGNORECASE,
 )
