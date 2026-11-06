@@ -298,9 +298,10 @@ class SalesActionDispatcher:
                 action_type=ActionType.SCHEDULE_CONSULTATION,
                 success=False,
                 customer_safe_summary=(
-                    "We're closed that day, so I can't book a consultation then. "
-                    "Our specialists are available Monday–Friday, 10 AM to 7 PM "
-                    "Central Time — what other day works for you?"
+                    "Every consultation slot on that day is already booked, so I "
+                    "can't schedule you then. Our specialists are available "
+                    "Monday–Friday, 10 AM to 7 PM Central Time — what other day "
+                    "works for you?"
                 ),
                 internal_summary=_exception_summary(exc),
                 error_code="requested_date_is_holiday",
