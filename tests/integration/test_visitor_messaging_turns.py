@@ -346,7 +346,9 @@ def test_at_most_two_offers_per_visit_and_a_new_visit_starts_again(chat: _Chat):
 
 
 def test_no_offer_while_a_complaint_is_being_raised(chat: _Chat):
-    body = chat.turn("this is frustrating, you are not answering my question. how do I get started?")
+    body = chat.turn(
+        "this is frustrating, you are not answering my question. how do I get started?"
+    )
     assert "right now" not in " ".join(_texts(body))
     assert chat.state().callback.offers_this_visit == 0
 
@@ -357,7 +359,9 @@ def test_proactive_messages_join_the_conversation_context(chat: _Chat):
     prompt = "I see you're looking at editing. Would you like a quick overview of how it works?"
     chat.turn(
         "yes",
-        proactive_messages=[{"rule_id": "T-SERVICE", "text": prompt, "sent_at": "2026-11-18T20:00:00Z"}],
+        proactive_messages=[
+            {"rule_id": "T-SERVICE", "text": prompt, "sent_at": "2026-11-18T20:00:00Z"}
+        ],
     )
     turns = chat.generator.calls[-1]["recent_turns"]
     assert turns and turns[-1][1] == prompt
@@ -406,3 +410,27 @@ def test_no_dashes_in_any_call_flow_reply(chat: _Chat):
     replies += _texts(chat.turn("Friday at 11am"))
     for text in replies:
         assert not re.search("[‒-―]", text), text
+
+
+# ------------------------------------------------------------------ one-word answers
+def test_yes_to_is_your_manuscript_finished_is_stored(chat: _Chat):
+    # Scenario 35: a one-word reply is understood in the light of the question.
+    chat.generator.text = "Happy to help with editing. Is your manuscript finished?"
+    chat.turn("I need help with editing", device="desktop")
+    assert chat.state().project.manuscript_status.value is None
+    chat.turn("yes", device="desktop")
+    assert chat.state().project.manuscript_status.value == "completed"
+
+
+def test_yes_to_another_question_does_not_set_the_stage(chat: _Chat):
+    chat.generator.text = "We do. Would you like to see some samples?"
+    chat.turn("do you edit thrillers", device="desktop")
+    chat.turn("yes", device="desktop")
+    assert chat.state().project.manuscript_status.value is None
+
+
+def test_a_qualified_answer_is_left_to_the_normal_extractors(chat: _Chat):
+    chat.generator.text = "Is your manuscript finished?"
+    chat.turn("I need help with editing", device="desktop")
+    chat.turn("yes but only the first three chapters are polished", device="desktop")
+    assert chat.state().project.manuscript_status.value != "completed"

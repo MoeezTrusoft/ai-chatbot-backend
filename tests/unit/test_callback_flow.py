@@ -287,9 +287,11 @@ async def test_a_new_visit_or_a_new_time_is_a_new_request():
         "thread_id": thread_id, "customer_id": None, "phone": "5552013344", "name": None,
         "customer_timezone": "America/Chicago", "summary": "",
     }
-    await service.request(visit_id="a", mode="scheduled", requested_time_text="Friday at 2pm", **base)
-    await service.request(visit_id="a", mode="scheduled", requested_time_text="Monday at 11am", **base)
-    await service.request(visit_id="b", mode="scheduled", requested_time_text="Friday at 2pm", **base)
+    requests = (("a", "Friday at 2pm"), ("a", "Monday at 11am"), ("b", "Friday at 2pm"))
+    for visit_id, time_text in requests:
+        await service.request(
+            visit_id=visit_id, mode="scheduled", requested_time_text=time_text, **base
+        )
     assert len(repository.rows) == 3
 
 

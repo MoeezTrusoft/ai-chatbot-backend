@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -138,6 +139,7 @@ from bookcraft.components.trimatch import TriMatchEngine
 from bookcraft.components.trimatch.schemas import TriMatchResult
 from bookcraft.domain.enums import (
     ContactFieldStatus,
+    ManuscriptStatus,
     QueryIntentType,
     ServiceCategory,
     Source,
@@ -844,6 +846,14 @@ class ChatService:
                 state = self.state_applier.apply(
                     state, extraction, rejected_paths=_rejected_delta_paths
                 )
+                # K-06: a one-word reply is read in the light of the question it
+                # answers ("Is your manuscript finished?" / "yes"), without relying
+                # on the LLM extractor.
+                _answer_delta = _yes_no_answer_delta(state.last_assistant_text, payload.message)
+                if _answer_delta is not None:
+                    state = self.state_applier.apply(
+                        state, CombinedExtraction(state_deltas=[_answer_delta])
+                    )
                 self._apply_service_focus_to_state(
                     state=state,
                     processed=processed,
@@ -5378,6 +5388,43 @@ def _summarize_trimatch_payload(result: "TriMatchResult") -> dict[str, object]:
             for e in result.evidence
         ],
     }
+
+
+_FINISHED_QUESTION_RE = re.compile(
+    r"\b(?:is|was)\s+(?:your|the)\s+(?:manuscript|book|novel|memoir|draft|story)\s+"
+    r"(?:already\s+|fully\s+)?(?:finished|complete|completed|done|written)\b[^?]*\?"
+    r"|\bhave\s+you\s+(?:already\s+)?(?:finished|completed)\s+(?:writing\s+)?"
+    r"(?:your|the)\s+(?:manuscript|book|novel|memoir|story)\b[^?]*\?",
+    re.IGNORECASE,
+)
+_BARE_YES_RE = re.compile(
+    r"^\s*(?:yes|yeah|yep|yup|it\s+is|i\s+have|all\s+done|it'?s\s+(?:finished|done|complete))"
+    r"\b[\s.!,]*(?:it\s+is|i\s+have|all\s+done)?[\s.!]*$",
+    re.IGNORECASE,
+)
+
+
+def _yes_no_answer_delta(last_assistant_text: str | None, message: str) -> StateDelta | None:
+    """Turn a bare "yes" to a finished-manuscript question into a stored fact.
+
+    Only a short, unqualified yes counts, and only when the bot's previous message
+    ended by asking whether the manuscript is finished. Anything longer is left to
+    the normal extractors, which read the visitor's own words.
+    """
+    question = (last_assistant_text or "").strip()
+    if not question.endswith("?") or not _BARE_YES_RE.match(message or ""):
+        return None
+    last_sentence = re.split(r"(?<=[.!?])\s+", question)[-1]
+    if not _FINISHED_QUESTION_RE.search(last_sentence):
+        return None
+    return StateDelta(
+        path="project.manuscript_status",
+        value=ManuscriptStatus.COMPLETED.value,
+        confidence=0.85,
+        source=Source.USER_STATED,
+        extracted_by="yes_no_answer.v1",
+        raw_excerpt=None,
+    )
 
 
 def _visit_key(visit_id: str) -> str:
