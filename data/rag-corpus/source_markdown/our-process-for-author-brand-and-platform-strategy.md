@@ -1,7 +1,9 @@
 ---
-source_id: author_brand_platform
+source_id: author_brand_platform_process
 service_category: author_brand_platform
 title: "Author Brand and Platform Strategy Process at BookCraft"
+section: process
+content_version: v1
 ---
 
 # Author Brand & Platform Strategy Process

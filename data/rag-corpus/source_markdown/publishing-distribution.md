@@ -2,6 +2,8 @@
 source_id: publishing_distribution
 service_category: publishing_distribution
 title: "Publishing and Distribution at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Publishing & Distribution

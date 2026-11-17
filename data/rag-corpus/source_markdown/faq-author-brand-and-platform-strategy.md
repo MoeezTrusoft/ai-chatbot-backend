@@ -1,7 +1,9 @@
 ---
-source_id: author_brand_platform
+source_id: author_brand_platform_faq
 service_category: author_brand_platform
 title: "Author Brand and Platform Strategy FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Author Brand & Platform Strategy__

@@ -1,7 +1,9 @@
 ---
-source_id: special_collector_editions
+source_id: special_collector_editions_process
 service_category: special_collector_editions
 title: "Special and Collector Editions Process at BookCraft"
+section: process
+content_version: v1
 ---
 
 # Special & Collector Editions Process

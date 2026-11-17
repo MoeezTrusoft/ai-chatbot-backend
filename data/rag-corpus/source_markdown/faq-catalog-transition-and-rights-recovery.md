@@ -1,7 +1,9 @@
 ---
-source_id: catalog_transition
+source_id: catalog_transition_faq
 service_category: catalog_transition
 title: "Catalog Transition FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Catalog Transition & Rights Recovery__

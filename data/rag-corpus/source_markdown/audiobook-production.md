@@ -2,6 +2,8 @@
 source_id: audiobook_production
 service_category: audiobook_production
 title: "Audiobook Production at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Audiobook Production

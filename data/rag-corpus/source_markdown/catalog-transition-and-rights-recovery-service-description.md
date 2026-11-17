@@ -1,7 +1,9 @@
 ---
-source_id: catalog_transition
+source_id: catalog_transition_overview
 service_category: catalog_transition
 title: "Catalog Transition and Rights Recovery at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Catalog Transition & Rights Recovery

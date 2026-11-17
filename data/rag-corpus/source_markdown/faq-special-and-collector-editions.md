@@ -1,7 +1,9 @@
 ---
-source_id: special_collector_editions
+source_id: special_collector_editions_faq
 service_category: special_collector_editions
 title: "Special and Collector Editions FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Special & Collector Editions__
