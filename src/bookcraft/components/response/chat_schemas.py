@@ -5,6 +5,7 @@ api/chat.py and services/chat.py. Both modules import from this shared location.
 """
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -12,6 +13,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from bookcraft.components.attachments.intake import ChatAttachment
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.schemas import FormattedBubble
+
+
+class ProactiveMessage(BaseModel):
+    """A proactive bot message the visitor was shown since the previous turn.
+
+    Proactive messages are fixed templates sent by the website bridge. They are not
+    counted as bot replies, but the engine must know about them: a visitor who
+    answers "yes" to a prompt is answering that prompt (rule K-06).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(max_length=32)
+    text: str = Field(max_length=500)
+    sent_at: str | None = Field(default=None, max_length=40)
 
 
 class ChatTurnRequest(BaseModel):
@@ -38,6 +54,17 @@ class ChatTurnRequest(BaseModel):
     # token; an older (superseded) turn must not persist its state. None = not supplied
     # (treated as never superseded).
     turn_token: int | None = Field(default=None, ge=0)
+    # Visitor attributes from the website bridge (Visitor Messaging Rule Set v2.4,
+    # section 5.2). All optional: a caller that does not send them gets the same
+    # behaviour as before.
+    device: Literal["mobile", "desktop"] | None = None
+    visitor_type: Literal["new", "returning"] | None = None
+    signup_status: Literal["not_started", "started", "completed"] | None = None
+    visitor_timezone: str | None = Field(default=None, max_length=64)
+    # Identifies the visit. A new value resets the per-visit reply and call-offer counters.
+    visit_id: str | None = Field(default=None, max_length=64)
+    # Proactive messages shown since the previous turn, oldest first.
+    proactive_messages: list[ProactiveMessage] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="after")
     def _require_message_or_attachment(self) -> "ChatTurnRequest":
@@ -58,3 +85,8 @@ class ChatTurnResponse(BaseModel):
     input_disabled: bool = False
     system_message: str | None = None
     action_events: list[dict[str, object]] = Field(default_factory=list)
+    # False when the reply needs no answer (a closing message, a promise of an email
+    # follow-up, or a confirmed call), so the bridge sends no check-in (rule E-07).
+    expects_reply: bool = True
+    # Why no reply is expected: closing | email_followup | call_confirmed | call_scheduled.
+    reply_kind: str | None = None

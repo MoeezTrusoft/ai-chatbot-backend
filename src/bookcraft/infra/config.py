@@ -94,6 +94,23 @@ class Settings(BaseSettings):
     # Always ask the customer for a phone number once before booking, even when an
     # email is already captured (the customer can still decline and proceed email-only).
     consultation_require_phone: bool = True
+    # Visitor Messaging Rule Set v2.4: callback hours and the mobile call-now offer.
+    # Callbacks run Monday to Friday in this zone and never on a marked holiday.
+    callback_timezone: str = "America/Chicago"
+    callback_start_hour: int = 10
+    callback_end_hour: int = 19
+    # The call-now offer stops this many minutes before callback hours end (H-03).
+    call_offer_cutoff_minutes: int = 10
+    # What the visitor is told to expect once the team is notified (M-09).
+    callback_time_minutes: int = 5
+    # Latest bot reply in a visit at which the call offer is made (M-06).
+    mobile_call_offer_by_reply: int = 6
+    max_call_offers_per_visit: int = 2
+    # Call-now is offered to mobile visitors only unless this is switched on.
+    call_now_desktop_enabled: bool = False
+    # Hard reply limits for a mobile visitor (M-02).
+    mobile_max_chars: int = 200
+    mobile_max_bubbles: int = 2
 
     # CSR Node.js backend — direct API call after consultation is booked so the
     # appointment always appears on the CSR dashboard regardless of action-event sync.

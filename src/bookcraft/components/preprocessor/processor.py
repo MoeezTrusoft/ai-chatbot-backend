@@ -511,11 +511,12 @@ class SharedPreprocessor:
         self._put_all(atoms, "currency", re.findall(r"(?:\$|USD\s*)\d[\d,]*(?:\.\d+)?", text))
         word_counts = [
             int(value.replace(",", ""))
-            for value in re.findall(r"(\d[\d,]*)\s+words?\b", text, re.I)
+            # "70,000 words" and the hyphenated adjective form "70,000-word thriller".
+            for value in re.findall(r"(\d[\d,]*)(?:\s+|-)words?\b", text, re.I)
         ]
         page_counts = [
             int(value.replace(",", ""))
-            for value in re.findall(r"(\d[\d,]*)\s+pages?\b", text, re.I)
+            for value in re.findall(r"(\d[\d,]*)(?:\s+|-)pages?\b", text, re.I)
         ]
         # Also extract English number words: "three thousand words", "eighty-five thousand pages".
         _written_word, _written_page = _extract_written_counts(text)

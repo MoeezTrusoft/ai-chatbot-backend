@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -28,7 +29,17 @@ from bookcraft.components.attachments.intake import (
     AttachmentIntakeProcessor,
     AttachmentIntakeResult,
 )
+from bookcraft.components.callbacks import (
+    CallbackFlow,
+    CallbackHours,
+    CallbackRequest,
+    CallbackRequestService,
+    CallbackTurnResult,
+    CallOfferDecision,
+    CallOfferPolicy,
+)
 from bookcraft.components.complaints import ComplaintClassifier
+from bookcraft.components.complaints.classifier import ComplaintCategory
 from bookcraft.components.context import ContextEnforcementGate, ContextPackBuilder
 from bookcraft.components.context.entity_index import ConversationEntityIndex
 from bookcraft.components.context.project_manager import (
@@ -36,6 +47,8 @@ from bookcraft.components.context.project_manager import (
     ProjectContextSnapshot,
 )
 from bookcraft.components.context.slot_tracker import SlotTracker
+from bookcraft.components.csr.commitment_detector import detect_commitments
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
 from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
@@ -51,9 +64,6 @@ from bookcraft.components.leads import (
     LeadObjectiveEngine,
 )
 from bookcraft.components.leads.contact_availability import ContactAvailabilityDetector
-from bookcraft.components.sales.consultation_preferences import (
-    ConsultationPreferenceDetector,
-)
 from bookcraft.components.leads.contact_recovery import (
     user_claims_already_shared,
     user_has_complaint_or_privacy_concern,
@@ -82,9 +92,10 @@ from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.rag.schemas import RetrievedChunk
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
 from bookcraft.components.response.contracts import CustomerResponseContract
+from bookcraft.components.response.formatter import strip_questions
 from bookcraft.components.response.planner import ResponsePlanner
 from bookcraft.components.response.quality_gate import ResponseQualityGate
-from bookcraft.components.response.schemas import ResponseDraft
+from bookcraft.components.response.schemas import FormattedBubble, ResponseDraft
 from bookcraft.components.response.style_policy import ResponseStylePolicy
 from bookcraft.components.safety import InputSafetyGuard
 from bookcraft.components.sales import (
@@ -92,6 +103,9 @@ from bookcraft.components.sales import (
     ConsultationObjectiveEngine,
     CurrentQuestionPriorityDetector,
     NarrativeSharingDetector,
+)
+from bookcraft.components.sales.consultation_preferences import (
+    ConsultationPreferenceDetector,
 )
 from bookcraft.components.sales.consultation_state import (
     ConsultationStage,
@@ -110,8 +124,6 @@ from bookcraft.components.storage.thread_repository import (
     ThreadVersionConflictError,
 )
 from bookcraft.components.tools.governance import ToolGovernanceGate
-from bookcraft.components.csr.commitment_detector import detect_commitments
-from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.trg import TemporalRelationGraphEngine
 from bookcraft.components.trg.checkpointer import ConversationCheckpointer
 from bookcraft.components.trg.fact_store import TRGFactStore
@@ -201,6 +213,34 @@ _CONSULTATION_FORM_GOALS = frozenset(
 # The English-only language redirect is sent at most once per this many user messages,
 # so a run of non-English turns is nudged occasionally instead of on every message.
 _LANGUAGE_REDIRECT_EVERY_N = 10
+
+
+# Visitor side of a conversation pair whose bot side was a proactive message.
+_NO_VISITOR_MESSAGE = "(no reply yet)"
+
+# Reply goals after which no visitor answer is expected, so the website bridge
+# sends no check-in (Visitor Messaging Rule Set v2.4, E-07).
+_NO_REPLY_GOALS: dict[str, str] = {
+    "consultation_email_followup_confirmation": "email_followup",
+    "consultation_text_followup_confirmation": "closing",
+    "consultation_handoff_confirmation": "closing",
+}
+
+# Prompt directives for a mobile visitor (M-02, M-03, M-05). The formatter enforces
+# the same limits as a hard check; the directive lets the model write to fit.
+_MOBILE_REPLY_DIRECTIVE = (
+    "MOBILE VISITOR: The author is on a phone. Reply in one or two short sentences, "
+    "under 200 characters in total where you can. No lists and no multi-part "
+    "explanations. Ask at most ONE question, it must follow from what the author just "
+    "said, and never ask for anything in Known Facts. If a full answer needs more room, "
+    "give the short answer and offer to share the rest here or on a call."
+)
+_CALL_OFFER_DIRECTIVE = (
+    "CALL OFFER: A separate line offering a phone call is added right after your message. "
+    "Answer the author's point in one or two short sentences and stop. Do NOT ask any "
+    "question, do NOT ask for a name, phone number, email or call time, and do NOT "
+    "mention a call, a booking, or a button yourself."
+)
 
 
 @dataclass
@@ -330,6 +370,17 @@ class ChatService:
     entity_index: ConversationEntityIndex | None = None
     # CSR context ingestion components.
     csr_summarizer: CsrContextSummarizer = field(default_factory=CsrContextSummarizer)
+    # Visitor Messaging Rule Set v2.4: mobile call-now offer (M-06 to M-10, H-02 to H-04).
+    call_offer_policy: CallOfferPolicy = field(
+        default_factory=lambda: CallOfferPolicy(hours=CallbackHours())
+    )
+    callback_flow: CallbackFlow = field(default_factory=lambda: CallbackFlow(hours=CallbackHours()))
+    callback_service: CallbackRequestService = field(default_factory=CallbackRequestService)
+    # Clock used by the call flow; replaceable in tests.
+    clock: Callable[[], datetime] = field(default=lambda: datetime.now(UTC))
+    # Hard reply limits for a mobile visitor (M-02).
+    mobile_max_chars: int = 200
+    mobile_max_bubbles: int = 2
     threads: dict[UUID, ThreadMemory] = field(default_factory=dict)
     thread_repository: ThreadRepository | None = None
     environment: str = "dev"
@@ -398,6 +449,29 @@ class ChatService:
             _evt_buf: _EventBuffer | None = _EventBuffer() if self.event_log_batching_enabled and self.thread_repository is not None else None
             _preloaded_trg_graph: TemporalRelationGraph | None = None
 
+            # Visitor attributes and visit rollover (Visitor Messaging Rule Set v2.4,
+            # section 5.2). A new visit resets the reply and call-offer counters.
+            _apply_visitor_attributes(state, payload)
+            # Proactive messages the visitor saw since the last turn. They are not bot
+            # replies, but the visitor may be answering one, so they join the
+            # conversation context before anything is classified or extracted (K-06).
+            for _proactive in list(getattr(payload, "proactive_messages", None) or []):
+                _proactive_text = (_proactive.text or "").strip()
+                if not _proactive_text:
+                    continue
+                _, event_sequence, previous_event_hash = await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=event_sequence,
+                    previous_hash=previous_event_hash,
+                    event_type="assistant.proactive",
+                    payload={"rule_id": _proactive.rule_id, "text": _proactive_text[:500]},
+                    _buf=_evt_buf,
+                )
+                state.last_assistant_text = _proactive_text[:300]
+                state.recent_turns.append((_NO_VISITOR_MESSAGE, _proactive_text[:300]))
+                if len(state.recent_turns) > 5:
+                    del state.recent_turns[:-5]
+
             # PR 4: run input safety guard before any processing.
             input_safety_decision = self.input_safety_guard.evaluate(payload.message, state=state)
             if input_safety_decision.action in {"warn", "block"}:
@@ -441,6 +515,23 @@ class ChatService:
                         "recorded_at": datetime.now(UTC).isoformat(),
                     }
                 )
+                # Persist the safety event so repeated hostility is recognised across
+                # requests and workers, not only inside one process (best effort).
+                if self.thread_repository is not None:
+                    try:
+                        await self.thread_repository.save_state(
+                            thread_id=thread_id,
+                            state=state,
+                            expected_version=thread.version,
+                            language=getattr(state, "detected_language", None) or "en",
+                        )
+                    except Exception as _block_save_exc:  # noqa: BLE001
+                        # A conflict only delays escalation; the turn is blocked either way.
+                        structlog.get_logger(__name__).info(
+                            "blocked_turn_state_save_skipped",
+                            thread_id=str(thread_id),
+                            exception_class=_block_save_exc.__class__.__name__,
+                        )
                 return ChatTurnResponse(
                     thread_id=thread_id,
                     bubbles=[],
@@ -448,6 +539,7 @@ class ChatService:
                     language_status="en",
                     debug_event_ids=self._debug_event_ids(event_ids),
                     blocked=True,
+                    expects_reply=False,
                     input_disabled=input_safety_decision.input_disabled,
                     system_message=input_safety_decision.system_message,
                 )
@@ -495,6 +587,17 @@ class ChatService:
                     _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
+                # K-06: learn from every message, including one the bot will not answer.
+                # An email address or phone number typed in another language is still a
+                # known detail and must never be asked for again.
+                try:
+                    self._capture_contact_into_state(state, payload.message)
+                except Exception as _contact_exc:  # noqa: BLE001
+                    structlog.get_logger(__name__).warning(
+                        "redirect_contact_capture_failed",
+                        thread_id=str(thread_id),
+                        exception_class=_contact_exc.__class__.__name__,
+                    )
                 # B5: persist the detected language on the early-return redirect path
                 # (which otherwise never saves state) so the next short follow-up
                 # inherits it via cached_language above.
@@ -537,6 +640,7 @@ class ChatService:
                     intent=None,
                     language_status=language.language,
                     debug_event_ids=self._debug_event_ids(event_ids),
+                    expects_reply=bool(bubbles),
                 )
 
             # Reached here => the author wrote in English (or a mixed message answered
@@ -883,6 +987,79 @@ class ChatService:
             # contact_slots() can find the contact on all subsequent turns.
             _sync_contact_capture_to_state(state, contact_capture)
             STATE_UPDATES.labels(result="applied").inc()
+
+            # Mobile call flow (rule M-09): is this message the answer to a call offer?
+            # Handled turns are answered with a fixed template, so "within 5 minutes" is
+            # only ever said after the callback request has been stored for the team.
+            _now_utc = self.clock()
+            callback_turn = CallbackTurnResult()
+            callback_request: CallbackRequest | None = None
+            if state.callback.pending is not None and not state.csr_handover_active:
+                _contact_phone = _optional_string(contact_capture.contact.phone)
+                callback_turn = self.callback_flow.interpret(
+                    state.callback,
+                    message=payload.message,
+                    phone_known=bool(contact_capture.has_phone and _contact_phone),
+                    email_known=bool(contact_capture.has_email),
+                    phone_in_message=bool(processed.deterministic_atoms.get("phones")),
+                    visitor_tz=state.visitor_timezone,
+                    now_utc=_now_utc,
+                )
+                if callback_turn.request_mode is not None:
+                    try:
+                        callback_request = await self.callback_service.request(
+                            thread_id=thread_id,
+                            customer_id=payload.customer_id,
+                            visit_id=state.visit_key,
+                            mode=callback_turn.request_mode,
+                            phone=_contact_phone or "",
+                            name=_optional_string(contact_capture.contact.name),
+                            requested_time_text=callback_turn.requested_time_text,
+                            customer_timezone=callback_turn.customer_timezone,
+                            summary=_callback_summary(state, processed.normalized or ""),
+                            now_utc=_now_utc,
+                        )
+                    except Exception as _cb_exc:  # noqa: BLE001
+                        # Never promise a call that was not recorded: fall back to the
+                        # normal reply pipeline and drop the pending step.
+                        structlog.get_logger(__name__).warning(
+                            "callback_request_failed",
+                            thread_id=str(thread_id),
+                            exception_class=_cb_exc.__class__.__name__,
+                        )
+                        state.callback.pending = None
+                        callback_turn = CallbackTurnResult(audit=["request_failed"])
+                    else:
+                        state.callback.requested_this_visit = True
+                        state.callback.last_request_id = callback_request.callback_id
+                        state.callback.last_request_mode = callback_request.mode
+                        state.callback.last_request_at = _now_utc.replace(tzinfo=None)
+                        # The call is arranged: stop the in-chat booking flow from
+                        # asking for a time or contact details the team will not need.
+                        self._apply_external_consultation_cancellation(state, None)
+                        event_id, event_sequence, previous_event_hash = (
+                            await self._append_thread_event(
+                                thread_id=thread_id,
+                                sequence=event_sequence,
+                                previous_hash=previous_event_hash,
+                                event_type="callback.requested",
+                                payload={
+                                    "callback_id": callback_request.callback_id,
+                                    "mode": callback_request.mode,
+                                    "phone_last4": callback_request.phone_last4,
+                                    "requested_time_text": callback_request.requested_time_text,
+                                    "customer_timezone": callback_request.customer_timezone,
+                                    "created": callback_request.created,
+                                },
+                                _buf=_evt_buf,
+                            )
+                        )
+                        event_ids.append(event_id)
+            _callback_handled = callback_turn.handled
+            if callback_turn.outcome == "prefers_chat":
+                # A stated preference for chat or email is sticky (same flag the
+                # consultation flow honours), so the call is not pushed again.
+                state.call_opt_out = True
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
                 sequence=event_sequence,
@@ -895,12 +1072,19 @@ class ChatService:
                 _buf=_evt_buf,
             )
             event_ids.append(event_id)
-            action_plan = self.action_planner.plan(
-                processed=processed,
-                state=state,
-                intent=intent,
-                extraction=extraction,
-            )
+            if _callback_handled:
+                # The call flow owns this turn: a "yes" to the call offer must not also
+                # be read as confirming, or starting, an in-chat booking.
+                action_plan = ActionPlan(
+                    status=ActionStatus.NOT_NEEDED, reason="callback_flow_handled_turn"
+                )
+            else:
+                action_plan = self.action_planner.plan(
+                    processed=processed,
+                    state=state,
+                    intent=intent,
+                    extraction=extraction,
+                )
             # When the planner has already produced a CONFIRMED pending action (the user
             # said "yes" to a pending booking/quote/etc.), that ready-to-execute plan must
             # not be clobbered by the lead-objective override or the consultation reconcile
@@ -1160,7 +1344,11 @@ class ChatService:
             # re-asked for it — the core loop in chat 6816.
             if consultation_state_decision.preferred_call_time:
                 state.preferred_call_time = consultation_state_decision.preferred_call_time
-            if consultation_state_decision.can_schedule and not _is_confirmed_pending:
+            if (
+                consultation_state_decision.can_schedule
+                and not _is_confirmed_pending
+                and not _callback_handled
+            ):
                 action_plan = _reconcile_consultation_action_plan(
                     current_plan=action_plan,
                     consultation_decision=consultation_state_decision,
@@ -1205,6 +1393,10 @@ class ChatService:
             if consultation_state_decision.preferred_call_time:
                 state.preferred_call_time = consultation_state_decision.preferred_call_time
             state.consultation_stage = str(consultation_state_decision.stage)
+            if _callback_handled:
+                # The reducer may have re-opened the booking from this message; the
+                # call flow has dealt with it, so leave no consultation request behind.
+                self._apply_external_consultation_cancellation(state, None)
             action_payload = action_trace_payload(action_plan, action_result)
             event_id, event_sequence, previous_event_hash = await self._append_thread_event(
                 thread_id=thread_id,
@@ -1549,6 +1741,45 @@ class ChatService:
                         update={"primary_goal": "consultation_status_in_progress"}
                     )
 
+            # Mobile call offer (rules M-06 and M-10): should this reply carry the offer?
+            call_offer = CallOfferDecision()
+            _call_flow_device = self.call_offer_policy.applies(state.device)
+            if _call_flow_device and not _callback_handled:
+                if self.call_offer_policy.said_researching(payload.message):
+                    state.callback.researching = True
+                _asked_for_person = (
+                    intent.query_primary == QueryIntentType.CONSULTATION_REQUEST
+                    or complaint_classification.category
+                    == ComplaintCategory.HUMAN_HANDOFF_REQUEST
+                )
+                call_offer = self.call_offer_policy.decide(
+                    device=state.device,
+                    flow=state.callback,
+                    message=payload.message,
+                    reply_index=state.visit_bot_replies + 1,
+                    service_known=_active_service_from_state(state) is not None,
+                    stage_known=state.project.manuscript_status.value is not None,
+                    asked_price=intent.query_primary == QueryIntentType.PRICING_QUESTION,
+                    asked_for_person=_asked_for_person,
+                    ready_to_buy=intent.query_primary == QueryIntentType.READY_TO_BUY,
+                    complaint=bool(complaint_classification.detected)
+                    and complaint_classification.category
+                    != ComplaintCategory.HUMAN_HANDOFF_REQUEST,
+                    needs_clarification=intent.query_primary == QueryIntentType.UNCLEAR,
+                    call_opt_out=bool(state.call_opt_out),
+                    deferred=bool(state.consultation_deferred),
+                    consultation_booked=bool(
+                        state.sales_actions.consultation.confirmed_appointment_id
+                        or state.consultation_handoff_created
+                    ),
+                    confirmation_pending=state.sales_actions.pending_confirmation.type
+                    is not None,
+                    csr_active=bool(state.csr_handover_active),
+                    now_utc=_now_utc,
+                )
+                if call_offer.buying_signal:
+                    state.callback.researching = False
+
             # Phase 9: context-aware RAG retrieval using enriched query.
             rag_query = self.rag_query_builder.build(
                 message=payload.message,
@@ -1558,7 +1789,11 @@ class ChatService:
             )
             rag_chunks: list[RetrievedChunk] = []
             rag_status: str = "skipped"  # Batch 3 Step 16: trace RAG status
-            if self.rag_retriever is not None and _allow_rag_for_intent(intent):
+            if (
+                self.rag_retriever is not None
+                and _allow_rag_for_intent(intent)
+                and not _callback_handled
+            ):
                 # Enrich the processed message with the context-aware query text so
                 # BM25 retrieval benefits from known service/genre/status context
                 # while vector retrieval keeps the original embedding.
@@ -1648,7 +1883,23 @@ class ChatService:
                 # name/email/phone in chat — the booking form collects those. The button
                 # is persistent, so this may naturally re-reference it on later turns.
                 _button_pg = response_plan.primary_goal if response_plan is not None else None
-                if _button_pg in _CONSULTATION_FORM_GOALS and response_hint != "repeat_message":
+                if state.device == "mobile" and response_hint != "repeat_message":
+                    response_hint = (
+                        f"{response_hint}\n{_MOBILE_REPLY_DIRECTIVE}"
+                        if response_hint
+                        else _MOBILE_REPLY_DIRECTIVE
+                    )
+                if call_offer.offer and response_hint != "repeat_message":
+                    response_hint = (
+                        f"{response_hint}\n{_CALL_OFFER_DIRECTIVE}"
+                        if response_hint
+                        else _CALL_OFFER_DIRECTIVE
+                    )
+                if (
+                    _button_pg in _CONSULTATION_FORM_GOALS
+                    and response_hint != "repeat_message"
+                    and not _call_flow_device
+                ):
                     _button_directive = (
                         "CONSULTATION BUTTON: A clickable '\U0001f4c5 Book a consultation' "
                         "button is shown right below your message. Warmly invite the author "
@@ -1664,24 +1915,30 @@ class ChatService:
                         else _button_directive
                     )
 
-                draft = await self.response_generator.generate(
-                    message=processed,
-                    state=state,
-                    intent=intent,
-                    extraction=extraction,
-                    rag_chunks=rag_chunks,
-                    pricing_quote=pricing_quote,
-                    timeline_estimate=timeline_estimate,
-                    pricing_missing_question=pricing_missing_question,
-                    portfolio_response=portfolio_response,
-                    document_status_message=document_status_message,
-                    runtime_atoms=processed.deterministic_atoms,
-                    response_hint=response_hint,
-                    context_pack=context_pack,
-                    response_plan=response_plan,
-                    recent_turns=_recent_turns,
-                    persona_decision=persona_decision,
-                )
+                if _callback_handled:
+                    # Fixed template: no model call, no retrieval (rule set section 12).
+                    draft = ResponseDraft(
+                        text=callback_turn.text or "", source="callback_template"
+                    )
+                else:
+                    draft = await self.response_generator.generate(
+                        message=processed,
+                        state=state,
+                        intent=intent,
+                        extraction=extraction,
+                        rag_chunks=rag_chunks,
+                        pricing_quote=pricing_quote,
+                        timeline_estimate=timeline_estimate,
+                        pricing_missing_question=pricing_missing_question,
+                        portfolio_response=portfolio_response,
+                        document_status_message=document_status_message,
+                        runtime_atoms=processed.deterministic_atoms,
+                        response_hint=response_hint,
+                        context_pack=context_pack,
+                        response_plan=response_plan,
+                        recent_turns=_recent_turns,
+                        persona_decision=persona_decision,
+                    )
             quality_report = self.response_quality_gate.evaluate(
                 text=draft.text,
                 intent=intent,
@@ -1777,6 +2034,10 @@ class ChatService:
                     # Non-Claude source and no repair/fallback available.
                     final_draft = _dev_fallback()
 
+            if _callback_handled:
+                # A fixed call-flow template is the reply as written: it is not
+                # replaced by a quality-gate fallback (it is not model output).
+                final_draft = draft
             final_text = final_draft.text
             final_source = final_draft.source
             sales_tone_report = quality_report.sales_tone
@@ -1789,9 +2050,43 @@ class ChatService:
             # Step 8 (Batch 1): Use final_draft approved_urls, not original draft.
             # If repair/fallback changed the draft, the URLs must come from the
             # final version — not the original potentially-blocked draft.
-            bubbles = self.formatter.format(
-                final_text, approved_urls=set(final_draft.approved_urls)
-            )
+            _mobile = state.device == "mobile"
+            _offer_text: str | None = None
+            if call_offer.offer:
+                # The offer is the one question this reply may ask (M-03), so the
+                # generated part must not ask another.
+                _offer_phone = _optional_string(contact_capture.contact.phone)
+                _offer_text, _ = self.callback_flow.offer_text(
+                    state.callback,
+                    action=call_offer.action,
+                    phone_last4=_phone_last4(_offer_phone) if contact_capture.has_phone else None,
+                    visitor_tz=state.visitor_timezone,
+                    reply_index=state.visit_bot_replies + 1,
+                    now_utc=_now_utc,
+                )
+                final_text = strip_questions(final_text)
+            if _offer_text is not None and not final_text.strip():
+                bubbles = []
+            else:
+                bubbles = self.formatter.format(
+                    final_text,
+                    approved_urls=set(final_draft.approved_urls),
+                    # Hard mobile limits (M-02). The offer takes one of the bubbles.
+                    max_chars=self.mobile_max_chars if _mobile else None,
+                    max_bubbles=(
+                        max(1, self.mobile_max_bubbles - (1 if _offer_text else 0))
+                        if _mobile
+                        else None
+                    ),
+                )
+            if _mobile and bubbles:
+                # What was actually delivered is what the next turn must remember.
+                final_text = " ".join(bubble.text for bubble in bubbles)
+            if _offer_text is not None:
+                bubbles.append(
+                    FormattedBubble(text=_offer_text, bubble_index=len(bubbles), rich_segments=[])
+                )
+                final_text = f"{final_text} {_offer_text}".strip()
             # Batch 3 Step 3: only show lead form if we should be asking for contact now
             # (answer-before-capture must not be suppressing contact, and user must not be
             #  in complaint/non-lead context).
@@ -1803,6 +2098,8 @@ class ChatService:
                 and not contact_capture.lead_contact_ready
                 and not _abc_suppresses
                 and bubbles
+                # On a call-flow device the call offer replaces the in-chat lead form.
+                and not _call_flow_device
             ):
                 bubbles[0].rich_segments.append(
                     {
@@ -1917,6 +2214,12 @@ class ChatService:
             # Mark that we asked for the second contact method so we never ask again.
             if lead_objective_decision.objective_move == "request_second_contact_method":
                 state.contact_second_method_requested = True
+            # A delivered reply counts toward the latest point for the call offer (M-06).
+            if bubbles:
+                state.visit_bot_replies += 1
+            _expects_reply, _reply_kind = _reply_expectation(
+                callback_turn=callback_turn, response_plan=response_plan
+            )
             # Step 2 (tone fix): persist prior turn for conversation history in next turn.
             # Store normalized message (not raw) to avoid PII in state.
             _turn_user_text = (processed.normalized or "")[:300]
@@ -2158,6 +2461,14 @@ class ChatService:
                         ],
                     },
                     "sales_tone": sales_tone_report.model_dump(mode="json"),
+                    "visitor": {
+                        "device": state.device,
+                        "visitor_type": state.visitor_type,
+                        "signup_status": state.signup_status,
+                        "visit_bot_replies": state.visit_bot_replies,
+                    },
+                    "call_offer": call_offer.model_dump(mode="json"),
+                    "callback_turn": callback_turn.model_dump(mode="json", exclude={"text"}),
                     "trg_semantic": {
                         "active_facts": [
                             f.model_dump(mode="json") for f in trg_context_for_trace.active_facts
@@ -2215,8 +2526,13 @@ class ChatService:
             if (
                 _pg in _CONSULTATION_FORM_GOALS
                 and not any(e.get("type") == "show_consultation_form" for e in base_action_events)
+                # A call-flow device gets the call offer, not the booking form (M-07).
+                and not _call_flow_device
             ):
                 _show_form_event = [{"type": "show_consultation_form"}]
+            _callback_events: list[dict[str, object]] = (
+                [callback_request.action_event()] if callback_request is not None else []
+            )
 
             return ChatTurnResponse(
                 thread_id=thread_id,
@@ -2224,8 +2540,26 @@ class ChatService:
                 intent=intent,
                 language_status=language.language,
                 debug_event_ids=self._debug_event_ids(event_ids),
-                action_events=base_action_events + _show_form_event,
+                action_events=base_action_events + _show_form_event + _callback_events,
+                expects_reply=_expects_reply,
+                reply_kind=_reply_kind,
             )
+
+    def _capture_contact_into_state(self, state: ThreadState, message: str) -> None:
+        """Run deterministic contact capture and store what it finds.
+
+        Used on paths that end the turn before the main pipeline, so contact details
+        are still learned from that message (rule K-06).
+        """
+        capture = self.contact_capture_detector.extract(message)
+        capture = self.contact_capture_detector.merge_with_state(capture, state)
+        found = capture.contact.model_dump(mode="json")
+        merged = dict(state.contact_info or {})
+        for name in ("name", "email", "phone", "source", "confidence"):
+            if found.get(name) is not None:
+                merged[name] = found[name]
+        state.contact_info = merged
+        _sync_contact_capture_to_state(state, capture)
 
     async def handle_greet(self, payload: Any) -> Any:
         """Generate a personalised proactive first message when the chat widget opens.
@@ -2385,6 +2719,113 @@ class ChatService:
             )
         else:
             self.threads[thread.thread_id].state = state
+
+    async def handle_observe(self, payload: Any) -> None:
+        """Learn from a visitor message without replying (rule K-06).
+
+        ``payload`` is an ``ObserveTurnRequest``. Used while a human agent owns the
+        conversation: the bot says nothing, but what the visitor states (contact
+        details, service, book stage, genre, length, timeline, budget) is still
+        stored as known details, so nothing is asked twice after the handback.
+        The extraction work runs once; only the save is retried on a version conflict.
+        """
+        from bookcraft.api.chat import ObserveTurnRequest as _OReq
+
+        if not isinstance(payload, _OReq):
+            return
+        _log = structlog.get_logger(__name__)
+        thread_id = payload.thread_id
+
+        async def _load() -> LoadedThread:
+            if self.thread_repository is not None:
+                return await self.thread_repository.load_or_create(
+                    thread_id=thread_id, customer_id=None
+                )
+            memory = self.threads.setdefault(thread_id, ThreadMemory())
+            return LoadedThread(
+                thread_id=thread_id,
+                state=memory.state,
+                version=0,
+                turn_count=0,
+                event_count=0,
+                last_event_hash=None,
+            )
+
+        thread = await _load()
+        language = self.language_guard.detect(
+            payload.message,
+            cached_language=getattr(thread.state, "detected_language", None) or "en",
+        )
+        processed = await self.preprocessor.process(payload.message, language=language.language)
+        extraction = await self.extractor.extract(processed, thread.state)
+        llm_deltas: list[Any] = []
+        llm_result: object | None = None
+        if self.llm_metadata_extractor is not None:
+            try:
+                llm_result = await self.llm_metadata_extractor.extract(
+                    user_text=payload.message,
+                    assistant_text=thread.state.last_assistant_text or "",
+                    state=thread.state,
+                    active_service=getattr(
+                        _active_service_from_state(thread.state), "value", None
+                    ),
+                )
+                llm_deltas = list(getattr(llm_result, "state_deltas", None) or [])
+            except Exception as _exc:  # noqa: BLE001
+                _log.warning(
+                    "observe_llm_extraction_failed",
+                    thread_id=str(thread_id),
+                    exception_class=_exc.__class__.__name__,
+                )
+
+        for _attempt in range(3):
+            state = self.state_applier.apply(thread.state, extraction)
+            if llm_deltas:
+                state = self.state_applier.apply(state, CombinedExtraction(state_deltas=llm_deltas))
+            if llm_result is not None:
+                self._apply_llm_service_metadata(state, llm_result)
+            self._capture_contact_into_state(state, payload.message)
+            state.detected_language = language.language
+            state.last_user_message = (processed.normalized or "")[:300]
+            if self.thread_repository is None:
+                self.threads[thread_id].state = state
+                break
+            try:
+                await self.thread_repository.save_state(
+                    thread_id=thread_id,
+                    state=state,
+                    expected_version=thread.version,
+                    language=language.language,
+                )
+                break
+            except ThreadVersionConflictError:
+                if _attempt == 2:
+                    _log.warning("observe_save_conflict", thread_id=str(thread_id))
+                    return
+                await asyncio.sleep(0.05 * (2**_attempt))
+                thread = await _load()
+
+        if self.thread_repository is not None:
+            try:
+                fresh = await _load()
+                await self._append_thread_event(
+                    thread_id=thread_id,
+                    sequence=fresh.event_count,
+                    previous_hash=fresh.last_event_hash,
+                    event_type="user.observed",
+                    payload=sanitize_event_payload("user.message", {"text": payload.message}),
+                )
+            except Exception as _evt_exc:  # noqa: BLE001
+                _log.warning(
+                    "observe_event_append_failed",
+                    thread_id=str(thread_id),
+                    exception_class=_evt_exc.__class__.__name__,
+                )
+        _log.info(
+            "visitor_message_observed",
+            thread_id=str(thread_id),
+            delta_count=len(extraction.state_deltas) + len(llm_deltas),
+        )
 
     async def get_thread_debug_state(self, thread_id: Any) -> dict:
         """Return a structured debug snapshot of a thread's current state.
@@ -2548,7 +2989,8 @@ class ChatService:
 
         Returns a ``ChatFactsResponse`` listing which fields were actually updated.
         """
-        from bookcraft.api.chat import ChatFactsRequest as _FR, ChatFactsResponse as _FResp
+        from bookcraft.api.chat import ChatFactsRequest as _FR
+        from bookcraft.api.chat import ChatFactsResponse as _FResp
         from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
         from bookcraft.domain.enums import Source
 
@@ -2687,6 +3129,8 @@ class ChatService:
         """
         from bookcraft.api.chat import (
             ConsultationConfirmedRequest as _CReq,
+        )
+        from bookcraft.api.chat import (
             ConsultationConfirmedResponse as _CResp,
         )
 
@@ -2807,6 +3251,8 @@ class ChatService:
         """
         from bookcraft.api.chat import (
             ConsultationCancelledRequest as _CReq,
+        )
+        from bookcraft.api.chat import (
             ConsultationCancelledResponse as _CResp,
         )
 
@@ -4932,6 +5378,82 @@ def _summarize_trimatch_payload(result: "TriMatchResult") -> dict[str, object]:
             for e in result.evidence
         ],
     }
+
+
+def _visit_key(visit_id: str) -> str:
+    """A stable, letters-only key for a visit id.
+
+    Thread state is redacted before it is stored, and redaction replaces long digit
+    runs. A raw id could be altered by that and then never match the next turn, which
+    would look like a new visit on every message. A letters-only digest cannot be.
+    """
+    digest = hashlib.sha256(visit_id.strip().encode()).hexdigest()[:20]
+    return digest.translate(str.maketrans("0123456789", "ghijklmnop"))
+
+
+def _apply_visitor_attributes(state: ThreadState, payload: object) -> None:
+    """Copy the visitor attributes from the request and roll the visit over if it changed."""
+    for name in ("device", "visitor_type", "signup_status", "visitor_timezone"):
+        value = getattr(payload, name, None)
+        if value:
+            setattr(state, name, value)
+    visit_id = getattr(payload, "visit_id", None)
+    if not visit_id:
+        return
+    key = _visit_key(str(visit_id))
+    if key == state.visit_key:
+        return
+    # A new visit: per-visit counters start again (rule set section 5).
+    state.visit_key = key
+    state.visit_bot_replies = 0
+    state.callback = state.callback.__class__()
+
+
+def _phone_last4(phone: str | None) -> str | None:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    return digits[-4:] if len(digits) >= 4 else None
+
+
+def _callback_summary(state: ThreadState, last_message: str) -> str:
+    """A short brief for the person who will make the call (rule M-09)."""
+    parts: list[str] = []
+    service = _active_service_from_state(state)
+    if service is not None:
+        parts.append(f"Service: {service.value.replace('_', ' ')}")
+    facts = (
+        ("Stage", state.project.manuscript_status.value),
+        ("Genre", state.project.genre.value),
+        ("Title", state.project.title.value),
+        ("Words", state.project.word_count.value),
+        ("Pages", state.project.page_count.value),
+        ("Timeline", state.commercial.timeline_expectation.value),
+        ("Budget", state.commercial.budget_range.value),
+    )
+    for label, value in facts:
+        if value not in (None, ""):
+            parts.append(f"{label}: {getattr(value, 'value', value)}")
+    said = [
+        user_text.strip()
+        for user_text, _ in state.recent_turns[-3:]
+        if user_text.strip() and user_text.strip() != _NO_VISITOR_MESSAGE
+    ]
+    if last_message.strip():
+        said.append(last_message.strip())
+    if said:
+        parts.append("Visitor said: " + " | ".join(text[:200] for text in said[-3:]))
+    return ". ".join(parts)[:1200]
+
+
+def _reply_expectation(
+    *, callback_turn: CallbackTurnResult, response_plan: object | None
+) -> tuple[bool, str | None]:
+    """Whether the visitor is expected to answer this reply (rule E-07)."""
+    if callback_turn.handled and not callback_turn.expects_reply:
+        return False, callback_turn.reply_kind
+    goal = getattr(response_plan, "primary_goal", None)
+    if goal in _NO_REPLY_GOALS:
+        return False, _NO_REPLY_GOALS[goal]
+    return True, None
 
 
 def _optional_string(value: object) -> str | None:
