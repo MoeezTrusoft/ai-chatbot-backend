@@ -694,7 +694,18 @@ _NON_BOOK_LAUNCH_PRECEDERS = (
     "app",
     "website",
 )
-_LAUNCH_NON_SERVICE_FOLLOWERS = ("party", "pad", "site")
+# "The launch date moved up" states a deadline; it is not a request for marketing.
+_LAUNCH_NON_SERVICE_FOLLOWERS = (
+    "party",
+    "pad",
+    "site",
+    "date",
+    "day",
+    "deadline",
+    "window",
+    "schedule",
+    "timeline",
+)
 # Referral / possessive references to *our* site — "how they found us", not a request.
 _WEBSITE_REFERRAL_PRECEDERS = ("your ", "via ", "through your", "on your", "found you")
 

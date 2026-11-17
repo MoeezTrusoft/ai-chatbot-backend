@@ -303,6 +303,10 @@ class ThreadState(BaseModel):
     # Step 3 (tone fix): track whether the bot asked for contact in the last turn,
     # so LeadObjectiveEngine can back off when the user deflects.
     last_turn_asked_contact: bool = False
+    # The visitor explicitly declined to give contact details ("I don't want to give
+    # you my email or phone"). Sticky: the bot answers without asking again until the
+    # visitor offers a detail, asks to be contacted, or asks for a consultation.
+    contact_refused: bool = False
     # Contact enrichment: set after the bot has asked once for the missing second
     # contact method (phone or email). Prevents asking more than once.
     contact_second_method_requested: bool = False

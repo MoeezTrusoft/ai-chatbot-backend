@@ -48,7 +48,8 @@ _TIME_PHRASE_RE = re.compile(
 # Timezone patterns
 _TIMEZONE_RE = re.compile(
     r"\b(?:PST|PDT|MST|MDT|CST|CDT|EST|EDT|GMT|UTC|PKT|IST|BST|CET|CEST|"
-    r"(?:Pacific|Mountain|Central|Eastern|Pakistan|India|British|European)\s+(?:time|timezone|standard\s+time))\b",
+    r"(?:Pacific|Mountain|Central|Eastern|Pakistan|India|British|European|Houston|Chicago|Texas)"
+    r"\s+(?:time|timezone|standard\s+time))\b",
     re.IGNORECASE,
 )
 

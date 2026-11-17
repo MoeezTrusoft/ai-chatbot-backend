@@ -7,6 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from bookcraft.components.context.schemas import ContextPack
 from bookcraft.components.intent.hardening import _service_from_text
 from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.preprocessor.detectors.common import (
+    match_is_counterfactual,
+    match_is_negated,
+)
 from bookcraft.components.preprocessor.detectors.document_request_detector import (
     has_agreement_request,
     has_nda_request,
@@ -191,6 +195,28 @@ def _arbitrate_service(
 # Pricing veto
 # ---------------------------------------------------------------------------
 
+_TIMELINE_CUE_RE = re.compile(
+    r"\b(?:how\s+(?:long|soon|quickly|fast)|how\s+many\s+(?:days|weeks|months)|"
+    r"time\s*line|time\s*frame|turn\s*around|deadline|"
+    r"when\s+(?:can|could|will|would|do|does)\b[^?.!]*\b(?:done|ready|finish(?:ed)?|"
+    r"complete(?:d)?|deliver(?:ed)?|start|begin|publish(?:ed)?)|"
+    r"how\s+much\s+time)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_live_timeline_cue(processed: ProcessedMessage) -> bool:
+    """True when the message asks about timing and that wording is not negated."""
+    text = processed.normalized
+    for match in _TIMELINE_CUE_RE.finditer(text):
+        if match_is_negated(text, match, processed.negation_spans):
+            continue
+        if match_is_counterfactual(text, match, processed.counterfactual_spans):
+            continue
+        return True
+    return False
+
+
 
 def _veto_negated_pricing(
     intent: IntentVote,
@@ -210,6 +236,15 @@ def _veto_negated_pricing(
         counterfactual_spans=processed.counterfactual_spans,
     ):
         audit.append("pricing_arbiter:real_pricing_preserved")
+        return intent
+
+    # A timeline question has no pricing word in it ("How long will ghostwriting
+    # take?"). It is genuine as long as its own timeline wording is not negated or
+    # counterfactual; without this it was vetoed as if a price had been declined.
+    if intent.query_primary == QueryIntentType.TIMELINE_QUESTION and _has_live_timeline_cue(
+        processed
+    ):
+        audit.append("pricing_arbiter:real_timeline_preserved")
         return intent
 
     # Pricing keyword present but negated/counterfactual → downgrade.

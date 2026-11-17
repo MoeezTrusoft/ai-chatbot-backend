@@ -854,6 +854,12 @@ class ChatService:
                     state = self.state_applier.apply(
                         state, CombinedExtraction(state_deltas=[_answer_delta])
                     )
+                # A time zone the visitor states ("11 AM Houston time", "3pm EST") is a
+                # known detail. Without storing it the booking flow asked for the time
+                # zone again on the next turn whenever the LLM extractor had not run.
+                _stated_timezone = _optional_string(extraction.consultation_request.timezone_text)
+                if _stated_timezone:
+                    state.preferred_timezone = _stated_timezone
                 self._apply_service_focus_to_state(
                     state=state,
                     processed=processed,
@@ -1106,6 +1112,19 @@ class ChatService:
                 and isinstance(action_plan.collected_slots, dict)
                 and action_plan.collected_slots.get("confirmed")
             )
+            # An explicit refusal to share contact details is remembered, so a later
+            # pricing question does not trigger the contact ask again. It is lifted
+            # when the visitor offers a detail or asks for a consultation.
+            _volunteered_contact = bool(
+                processed.deterministic_atoms.get("emails")
+                or processed.deterministic_atoms.get("phones")
+            )
+            if _volunteered_contact or intent.query_primary == QueryIntentType.CONSULTATION_REQUEST:
+                state.contact_refused = False
+            elif self.current_question_priority_detector.detect(
+                payload.message
+            ).question_type == "contact_refusal":
+                state.contact_refused = True
             lead_objective_decision = self.lead_objective_engine.decide(
                 message=payload.message,
                 intent=intent,
@@ -5639,6 +5658,7 @@ def _reconcile_consultation_action_plan(
     customer_timezone = (
         getattr(getattr(state.personal, "timezone", None), "value", None)
         or getattr(state.sales_actions.consultation, "customer_timezone", None)
+        or getattr(state, "preferred_timezone", None)
         or "America/Chicago"
     )
 

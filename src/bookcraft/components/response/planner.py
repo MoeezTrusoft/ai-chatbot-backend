@@ -575,6 +575,18 @@ def _primary_goal(
     ):
         return "greeting_welcome"
 
+    # An ambiguous project reference ("Now I need editing too": the same book or a
+    # new one?) is clarified before contact is requested. Until that is known the
+    # facts on record may not apply to what the customer is asking about, and the
+    # contact request can wait one turn. A consultation or specialist handoff the
+    # customer asked for still goes ahead.
+    if context_pack.project_event == "ambiguous_project_reference" and (
+        lead_objective_decision is None
+        or lead_objective_decision.objective_move
+        not in {"offer_consultation", "handoff_to_specialist", "create_lead"}
+    ):
+        return "clarify_project_scope"
+
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if lead_objective_decision.recommended_primary_goal:
             return lead_objective_decision.recommended_primary_goal
@@ -662,7 +674,10 @@ def _primary_goal(
 
     # Manuscript status updates (e.g. "I just finished my chapter!") should be celebrated
     # even when inside a cover design scoping flow — don't interrupt good news with scoping.
-    _has_manuscript_update = QueryIntentType.MANUSCRIPT_STATUS_UPDATE in (intent.query_secondary or [])
+    _has_manuscript_update = QueryIntentType.MANUSCRIPT_STATUS_UPDATE in (
+        intent.query_primary,
+        *(intent.query_secondary or []),
+    )
     if context_pack.active_service == "cover_design_illustration" and not _has_manuscript_update:
         return "cover_design_scoping"
 

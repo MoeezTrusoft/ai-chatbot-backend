@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.preprocessor.detectors.document_request_detector import (
     has_agreement_request,
@@ -71,12 +73,40 @@ def harden_intent_from_message(
         query = QueryIntentType.SERVICE_QUESTION
         evidence.append("deterministic_query_signal:service_question_from_discovery_cues")
 
-    if query == intent.query_primary and service == intent.service_primary:
+    # A visitor who says outright that they do not know what they are asking, and
+    # names no service, has not asked a service question. Leave it unclear so the
+    # reply asks one clarifying question; do not guess (rule K-08).
+    if (
+        query == QueryIntentType.SERVICE_QUESTION
+        and service is None
+        and detected_query is None
+        and _CONFUSION_RE.search(text)
+    ):
+        query = QueryIntentType.UNCLEAR
+        evidence.append("deterministic_query_signal:unclear_from_stated_confusion")
+
+    # A writing milestone ("I just finished the final chapter", "I just wrote my first
+    # 10,000 words!") is good news to acknowledge, whatever else the turn is about.
+    secondary = list(intent.query_secondary)
+    if (
+        "?" not in text
+        and QueryIntentType.MANUSCRIPT_STATUS_UPDATE not in (query, *secondary)
+        and _MILESTONE_RE.search(text)
+    ):
+        secondary.append(QueryIntentType.MANUSCRIPT_STATUS_UPDATE)
+        evidence.append("deterministic_query_signal:manuscript_milestone")
+
+    if (
+        query == intent.query_primary
+        and service == intent.service_primary
+        and secondary == list(intent.query_secondary)
+    ):
         return intent
 
     return intent.model_copy(
         update={
             "query_primary": query,
+            "query_secondary": secondary,
             "service_primary": service,
             "needs_clarification": query == QueryIntentType.UNCLEAR,
             "confidence": max(intent.confidence, 0.82),
@@ -87,6 +117,20 @@ def harden_intent_from_message(
             "evidence": evidence,
         }
     )
+
+
+_CONFUSION_RE = re.compile(
+    r"\b(?:don'?t\s+(?:even\s+|really\s+)?know\s+what\s+i'?m\s+(?:asking|looking\s+for|saying)|"
+    r"not\s+(?:even\s+)?sure\s+what\s+i(?:'?m|\s+am)\s+(?:asking|looking\s+for)|"
+    r"no\s+idea\s+what\s+i'?m\s+(?:asking|looking\s+for))\b",
+    re.IGNORECASE,
+)
+_MILESTONE_RE = re.compile(
+    r"\b(?:i|we)(?:'ve|\s+have)?\s+(?:just\s+|finally\s+|now\s+)?"
+    r"(?:finished|completed|wrote|written|wrapped\s+up)\b[^.?!]{0,60}?"
+    r"\b(?:chapters?|draft|manuscript|book|novel|memoir|words|pages)\b",
+    re.IGNORECASE,
+)
 
 
 def _should_upgrade_query(
