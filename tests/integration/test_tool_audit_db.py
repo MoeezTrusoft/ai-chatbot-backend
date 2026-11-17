@@ -22,6 +22,9 @@ async def test_pricing_tool_audit_persists_to_db(tmp_path: pytest.TempPathFactor
     settings = Settings(
         app_env="integration",
         database_url=database_url,
+        # A production-like environment refuses to build the chat service without a
+        # key. No model is called here: only the pricing tool is invoked.
+        anthropic_api_key="test-key-not-used",
         pricing_v2_values_approved=False,
     )
 

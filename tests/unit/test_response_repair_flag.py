@@ -45,7 +45,7 @@ async def test_repair_not_called_when_flag_off() -> None:
     from bookcraft.api.main import create_app
     from bookcraft.infra.config import Settings
 
-    app = create_app(Settings(app_env="dev", api_auth_mode="off", response_repair_enabled=False))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=False))
     service = app.state.chat_service
 
     assert not service.response_repair_enabled
@@ -81,7 +81,7 @@ async def test_repair_called_when_flag_on() -> None:
     from bookcraft.api.main import create_app
     from bookcraft.infra.config import Settings
 
-    app = create_app(Settings(app_env="dev", api_auth_mode="off", response_repair_enabled=True))
+    app = create_app(Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True))
     service = app.state.chat_service
 
     assert service.response_repair_enabled

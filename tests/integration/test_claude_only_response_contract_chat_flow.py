@@ -86,7 +86,11 @@ def test_normal_service_question_uses_claude_source_when_adapter_available() -> 
 
 
 def test_forced_bad_claude_response_triggers_repair_path() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    # The repair call is behind response_repair_enabled (off by default), so this
+    # test of the repair path switches it on.
+    app = create_app(
+        Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True)
+    )
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(
@@ -133,7 +137,11 @@ def test_bad_response_does_not_return_quality_fallback_in_production_like_mode()
 
 
 def test_portfolio_request_does_not_return_portfolio_engine_quality_fallback() -> None:
-    app = create_app(Settings(app_env="test", api_auth_mode="off"))
+    # The repair call is behind response_repair_enabled (off by default), so this
+    # test of the repair path switches it on.
+    app = create_app(
+        Settings(app_env="test", api_auth_mode="off", response_repair_enabled=True)
+    )
 
     with TestClient(app) as client:
         client.app.state.chat_service.response_generator = FakeClaudeResponseGenerator(

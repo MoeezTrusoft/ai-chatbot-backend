@@ -69,14 +69,20 @@ def test_response_plan_present_in_live_trace() -> None:
 
 def test_response_plan_cover_design_goal_and_next_question() -> None:
     """
-    After cover design is established, the plan's primary_goal must be
-    cover_design_scoping and next_question should guide toward cover_style.
+    When cover design is established, the plan's primary_goal is
+    cover_design_scoping and next_question guides toward cover_style.
+
+    Later turns follow the lead flow (ask for contact once the service and enough
+    qualifying facts are known, then back off and answer), so the scoping goal is
+    asserted on the turn that establishes the service, and the later turns are
+    checked for what must never happen: re-asking the genre or the manuscript stage.
     """
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
 
     with TestClient(app) as client:
         first = _chat(client, "I need a cover design for my children's fiction book.")
         thread_id = first["thread_id"]
+        established = _response_plan(_latest_trace(client, thread_id))
         _chat(client, "I have finished the manuscript.", thread_id=thread_id)
         _chat(
             client,
@@ -85,10 +91,17 @@ def test_response_plan_cover_design_goal_and_next_question() -> None:
         )
         trace = _latest_trace(client, thread_id)
 
+    assert established["primary_goal"] == "cover_design_scoping"
+    # Next question should point toward cover_style since the genre is known.
+    assert established["next_question"] in {"cover_style", "word_or_page_count", None}
+
     rp = _response_plan(trace)
-    assert rp["primary_goal"] == "cover_design_scoping"
-    # Next question should point toward cover_style since genre/stage are known.
-    assert rp["next_question"] in {"cover_style", "word_or_page_count", None}
+    assert rp["primary_goal"] in {
+        "cover_design_scoping",
+        "lead_contact_capture",
+        "answer_current_question",
+    }
+    assert rp["next_question"] not in {"genre", "manuscript_stage"}
 
 
 def test_response_plan_known_genre_not_re_asked() -> None:
@@ -146,16 +159,19 @@ def test_response_plan_governance_blocked_shows_safe_blocked_action() -> None:
         assert rp["primary_goal"] in {"safe_blocked_action", "clarify_intent"}
         assert rp["customer_safe_tool_summary"] is not None
     else:
-        # No action planned / allowed — plan should be sensible.
+        # No action planned / allowed — plan should be sensible. On a fresh thread
+        # that is the welcome; either way no NDA is started.
         assert rp["primary_goal"] in {
             "continue_discovery",
             "document_scoping",
             "safe_blocked_action",
+            "greeting_welcome",
         }
+    assert (trace.get("action_plan") or {}).get("action_type") != "generate_nda"
 
 
 def test_response_plan_pricing_scoping_goal() -> None:
-    """Pricing intent must produce pricing_scoping primary_goal."""
+    """Pricing intent must produce a pricing goal: scope it, or answer it first."""
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
 
     with TestClient(app) as client:
@@ -163,8 +179,11 @@ def test_response_plan_pricing_scoping_goal() -> None:
         trace = _latest_trace(client, resp["thread_id"])
 
     rp = _response_plan(trace)
-    assert rp["primary_goal"] == "pricing_scoping"
-    # Should ask for a missing pricing slot, not a random question.
+    # A pricing question is answered first (answer-before-capture) or scoped; it is
+    # never turned into unrelated discovery.
+    assert rp["primary_goal"] in {"pricing_scoping", "answer_current_question"}
+    # Next step: a missing pricing slot, or the consultation offer the
+    # consultation-first planner makes while prices are gated. Not a random question.
     if rp["next_question"] is not None:
         assert rp["next_question"] in {
             "genre",
@@ -172,6 +191,7 @@ def test_response_plan_pricing_scoping_goal() -> None:
             "word_or_page_count",
             "deadline",
             "services",
+            "consultation_interest",
         }
 
 
@@ -229,9 +249,20 @@ def test_kashif_cover_design_flow() -> None:
     assert isinstance(rp, dict)
     assert rp["max_questions"] == 1
 
-    # Goal and next-question match cover-design scoping.
-    assert rp["primary_goal"] == "cover_design_scoping"
-    assert rp["next_question"] in {"cover_style", "word_or_page_count", None}
+    # By the fourth turn the plan is cover scoping or, once the service and enough
+    # facts are known, the lead flow (contact request, then answer and back off).
+    assert rp["primary_goal"] in {
+        "cover_design_scoping",
+        "lead_contact_capture",
+        "answer_current_question",
+    }
+    assert rp["next_question"] in {
+        "cover_style",
+        "word_or_page_count",
+        "name_and_email_or_phone",
+        "consultation_interest",
+        None,
+    }
 
     # Final response must not re-ask known facts.
     assert "what genre" not in text
@@ -264,7 +295,9 @@ def test_negated_nda_does_not_start_nda_flow() -> None:
         "clarify_intent",
         "continue_discovery",
         "document_scoping",  # allowed only when governance allowed=True (no action planned)
+        "greeting_welcome",  # a fresh thread is welcomed; no NDA flow starts
     }
+    assert (trace.get("action_plan") or {}).get("action_type") != "generate_nda"
 
     # When governance blocked, plan reflects it.
     if not gov.get("allowed", True):
@@ -304,8 +337,10 @@ def test_counterfactual_consultation_does_not_book() -> None:
     assert rp["max_questions"] == 1
 
     # Goal should be consultation-related or discovery — not a confirmed booking.
+    # Explaining how it works and offering a consultation books nothing.
     assert rp["primary_goal"] in {
         "consultation_scoping",
+        "consultation_offer",
         "clarify_intent",
         "continue_discovery",
     }
@@ -325,8 +360,8 @@ def test_counterfactual_consultation_does_not_book() -> None:
 def test_pricing_missing_info_plan() -> None:
     """
     For a pricing request without project details:
-    - response_plan.primary_goal == pricing_scoping
-    - next_question is the highest-priority missing quote slot
+    - response_plan.primary_goal is pricing_scoping or answer_current_question
+    - next_question is a missing quote slot or the consultation offer
     - No dollar figures in the response (no real quote issued)
     """
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
@@ -338,9 +373,11 @@ def test_pricing_missing_info_plan() -> None:
     rp = _response_plan(trace)
     text = _joined_text(resp)
 
-    assert rp["primary_goal"] == "pricing_scoping"
+    # The pricing question is scoped or answered first; never unrelated discovery.
+    assert rp["primary_goal"] in {"pricing_scoping", "answer_current_question"}
 
-    # next_question must be a known pricing slot key (or None if all known).
+    # next_question must be a known pricing slot key, the consultation offer made
+    # while prices are gated, or None if everything is known.
     if rp["next_question"] is not None:
         assert rp["next_question"] in {
             "word_or_page_count",
@@ -348,6 +385,7 @@ def test_pricing_missing_info_plan() -> None:
             "manuscript_stage",
             "deadline",
             "services",
+            "consultation_interest",
         }
 
     # No real quote should have been issued.

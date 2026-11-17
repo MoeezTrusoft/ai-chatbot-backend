@@ -21,7 +21,7 @@ def test_pricing_request_without_service_asks_for_service() -> None:
     ), f"Expected scoping question; got: {text[:200]}"
 
 
-def test_pricing_request_with_missing_sizing_asks_for_word_count() -> None:
+def test_pricing_request_with_missing_sizing_asks_for_sizing_or_offers_consultation() -> None:
     app = create_app(Settings(app_env="test"))
     response = TestClient(app).post(
         "/api/v1/chat/turn",
@@ -31,10 +31,12 @@ def test_pricing_request_with_missing_sizing_asks_for_word_count() -> None:
     assert response.status_code == 200
     text = " ".join(bubble["text"] for bubble in response.json()["bubbles"])
     assert "$" not in text
-    # The response must ask for word/page count. Exact phrasing may vary.
-    assert any(kw in text.lower() for kw in ("word", "page", "count", "length")), (
-        f"Expected word/page count question; got: {text[:200]}"
-    )
+    # No price is given without scope. The reply either asks for the missing sizing
+    # or, under the consultation-first planner, offers a consultation instead of
+    # walking the visitor through every quote slot. Exact phrasing may vary.
+    assert any(
+        kw in text.lower() for kw in ("word", "page", "count", "length", "consultation")
+    ), f"Expected a sizing question or a consultation offer; got: {text[:200]}"
 
 
 def test_pricing_request_with_hidden_defaults_asks_for_confirmation() -> None:

@@ -172,9 +172,19 @@ class TestScenario1PublishingToConsultation:
         _chat(client, "What is IngramSpark?", thread_id=tid)
         t = _trace(client, tid)
         lo = t.get("lead_objective") or {}
-        # After acknowledgment, the bot should answer the new question.
-        assert lo.get("objective_move") in {"continue_light_discovery", "no_change"}, (
-            f"Unexpected move: {lo.get('objective_move')}"
+        # After acknowledgment, the bot answers the new question. The lead was saved
+        # with an email only, so it may ask ONCE for the phone number (a consultation
+        # can only be booked with one); it never re-opens lead or consultation capture.
+        assert lo.get("objective_move") in {
+            "continue_light_discovery",
+            "no_change",
+            "request_second_contact_method",
+        }, f"Unexpected move: {lo.get('objective_move')}"
+
+        _chat(client, "And does it work alongside Amazon KDP?", thread_id=tid)
+        again = (_trace(client, tid).get("lead_objective") or {}).get("objective_move")
+        assert again in {"continue_light_discovery", "no_change"}, (
+            f"The second contact method must be requested once only, got: {again}"
         )
 
 
