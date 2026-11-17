@@ -372,9 +372,17 @@ def test_proactive_messages_join_the_conversation_context(chat: _Chat):
 def test_too_many_proactive_messages_are_rejected(chat: _Chat):
     response = chat.client.post(
         "/api/v1/chat/turn",
-        json={"message": "hi", "proactive_messages": [{"rule_id": "I-01", "text": "x"}] * 6},
+        json={"message": "hi", "proactive_messages": [{"rule_id": "I-01", "text": "x"}] * 11},
     )
     assert response.status_code == 422
+
+
+def test_a_full_visit_of_proactive_messages_is_accepted(chat: _Chat):
+    # Opening, two idle follow-ups, three browsing prompts and the thank-you.
+    messages = [{"rule_id": f"R-{index}", "text": f"Prompt number {index}?"} for index in range(7)]
+    chat.turn("hello", proactive_messages=messages)
+    turns = chat.generator.calls[-1]["recent_turns"]
+    assert len(turns) == 5 and turns[-1][1] == "Prompt number 6?"
 
 
 # ----------------------------------------------------------------------- learn-only

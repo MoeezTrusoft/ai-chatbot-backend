@@ -64,7 +64,9 @@ class ChatTurnRequest(BaseModel):
     # Identifies the visit. A new value resets the per-visit reply and call-offer counters.
     visit_id: str | None = Field(default=None, max_length=64)
     # Proactive messages shown since the previous turn, oldest first.
-    proactive_messages: list[ProactiveMessage] = Field(default_factory=list, max_length=5)
+    # A visit can produce seven before the visitor first writes (opening, two idle
+    # follow-ups, three browsing prompts, the thank-you); the last five are kept.
+    proactive_messages: list[ProactiveMessage] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
     def _require_message_or_attachment(self) -> "ChatTurnRequest":
