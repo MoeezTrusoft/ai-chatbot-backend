@@ -4,10 +4,10 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import structlog
-
 from pydantic import ValidationError
 
 from bookcraft.components.actions.schemas import ActionPlan, ActionResult, ActionStatus, ActionType
@@ -35,19 +35,25 @@ from bookcraft.components.storage.action_idempotency_repository import (
     make_slots_hash,
 )
 
-
 logger = structlog.get_logger(__name__)
 
 
 def _make_idempotency_key(thread_id: UUID, action_type: str, slots: dict[str, object]) -> str:
-    """Stable key: prevents double-dispatch on concurrent/retried confirmations."""
-    # Sort slots for determinism; exclude per-call volatile fields.
-    stable = {k: v for k, v in sorted(slots.items()) if k not in ("requested_time_text",)}
+    """Stable key: prevents double-dispatch on concurrent/retried confirmations.
+
+    The requested time is part of the key. A retried confirmation carries the same
+    stored payload, so it still maps to the same key; a booking for a different time
+    is a different action and must not be swallowed as a duplicate.
+    """
+    stable = dict(sorted(slots.items()))
     raw = f"{thread_id}:{action_type}:{json.dumps(stable, sort_keys=True, default=str)}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 _DEV_ENVS: frozenset[str] = frozenset({"test", "dev", "development", "local"})
+
+# How long a claimed idempotency key keeps blocking an identical action.
+_CLAIM_TTL = timedelta(hours=24)
 
 
 @dataclass(slots=True)
@@ -91,6 +97,9 @@ class SalesActionDispatcher:
             thread_id=thread_id,
             action_type=str(plan.action_type),
             slots_hash=make_slots_hash(plan.collected_slots),
+            # A completed claim stops blocking after a day, so the same request can be
+            # made again later (for example, re-booking after a cancellation).
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + _CLAIM_TTL,
         )
         if not claimed:
             # Another worker or process already dispatched this action.
@@ -237,6 +246,9 @@ class SalesActionDispatcher:
                 success=False,
                 action_type=ActionType.SCHEDULE_CONSULTATION,
                 error_code="missing_contact",
+                customer_safe_summary=(
+                    "I still need your name before I can book the consultation."
+                ),
                 internal_summary="Customer name is missing — cannot schedule consultation",
                 duration_ms=_elapsed_ms(started),
             )
