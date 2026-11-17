@@ -92,6 +92,20 @@ def test_negated_timeline_is_still_vetoed(client: TestClient):
     assert body["intent"]["query_primary"] != "timeline_question"
 
 
+def test_a_statement_about_a_deadline_is_not_a_timeline_question(client: TestClient):
+    # "whenever" contains "when" and the sentence names a deadline, but nothing is
+    # being asked: it must not be handled as a high-intent timeline question.
+    body = _chat(client, "I need editing. Deadline is whenever I'm ready.")
+    assert body["intent"]["query_primary"] != "timeline_question"
+    move = (_trace(client, body["thread_id"]).get("lead_objective") or {}).get("objective_move")
+    assert move != "ask_contact"
+
+
+def test_a_question_about_turnaround_is_a_timeline_question(client: TestClient):
+    body = _chat(client, "What is the timeline for editing a novel?")
+    assert body["intent"]["query_primary"] == "timeline_question"
+
+
 # --------------------------------------------------------------------- time zones
 def test_stated_time_zone_is_stored_and_not_asked_again(client: TestClient):
     body = _chat(

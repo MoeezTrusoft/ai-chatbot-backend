@@ -532,6 +532,27 @@ def _primary_goal(
         intent, context_pack, narrative_sharing_decision, current_question_priority
     )
 
+    # An ambiguous project reference ("Now I need editing too": the same book or a
+    # new one?) is clarified before contact is requested. Until that is known the
+    # facts on record may not apply to what the customer is asking about, and the
+    # contact request can wait one turn. Anything the customer has actively set in
+    # motion still goes ahead: a consultation being scheduled, a handoff, or a lead
+    # being saved from contact details they just gave.
+    _cod_move = getattr(consultation_objective_decision, "objective_move", None)
+    _lod_move = getattr(lead_objective_decision, "objective_move", None)
+    if (
+        context_pack.project_event == "ambiguous_project_reference"
+        and _cod_move
+        not in {
+            "acknowledge_deferral",
+            "create_consultation_handoff",
+            "create_email_followup",
+            "ask_preferred_call_time",
+        }
+        and _lod_move not in {"offer_consultation", "handoff_to_specialist", "create_lead"}
+    ):
+        return "clarify_project_scope"
+
     # PR 2 — Consultation-first overrides (highest priority).
     if consultation_objective_decision is not None:
         cod_move = getattr(consultation_objective_decision, "objective_move", None)
@@ -574,18 +595,6 @@ def _primary_goal(
         context_pack
     ):
         return "greeting_welcome"
-
-    # An ambiguous project reference ("Now I need editing too": the same book or a
-    # new one?) is clarified before contact is requested. Until that is known the
-    # facts on record may not apply to what the customer is asking about, and the
-    # contact request can wait one turn. A consultation or specialist handoff the
-    # customer asked for still goes ahead.
-    if context_pack.project_event == "ambiguous_project_reference" and (
-        lead_objective_decision is None
-        or lead_objective_decision.objective_move
-        not in {"offer_consultation", "handoff_to_specialist", "create_lead"}
-    ):
-        return "clarify_project_scope"
 
     if lead_objective_decision is not None and lead_objective_decision.stop_discovery:
         if lead_objective_decision.recommended_primary_goal:
@@ -725,6 +734,12 @@ def _next_question(
     # Blocked or ambiguous turns: do not auto-issue a follow-up question.
     if primary_goal in {"safe_blocked_action", "clarify_intent"}:
         return None
+
+    # Project-scope clarification: the one question this turn is "same book or a
+    # new one?". It comes before the contact and consultation questions below,
+    # which would otherwise replace it whenever a contact request was also due.
+    if primary_goal == "clarify_project_scope":
+        return _PROJECT_CLARIFICATION_QUESTION
 
     # PR 2 — Consultation-first next questions.
     if primary_goal == "consultation_handoff_confirmation":
