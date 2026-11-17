@@ -265,8 +265,10 @@ def test_valid_consultation_confirmation_reaches_pending_or_booking() -> None:
     with TestClient(app) as client:
         resp = _chat(
             client,
+            # All required details: name, a valid phone number (a consultation is
+            # only booked with one), a day and time, and the time zone.
             "I need a consultation. My name is Alex, email alex@example.com, "
-            "phone 555-0000, available next Monday at 10am.",
+            "phone 555-201-3344, available next Monday at 10am Central time.",
         )
         trace = _latest_trace(client, resp["thread_id"])
 

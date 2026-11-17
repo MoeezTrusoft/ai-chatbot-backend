@@ -334,6 +334,20 @@ class LeadObjectiveEngine:
                 audit=audit,
             )
 
+        # The visitor explicitly declined to share contact details. Respect it: keep
+        # answering and do not ask again. (An offer of a detail, a contact-intent
+        # phrase or a consultation request lifts this before we get here.)
+        if getattr(state, "contact_refused", False) and not contact_ready:
+            audit.append("signal:contact_refused")
+            return LeadObjectiveDecision(
+                stage=current_stage,
+                objective_move="continue_light_discovery",
+                reason="Visitor declined to share contact details; answer without asking.",
+                stop_discovery=False,
+                recommended_primary_goal="answer_current_question",
+                audit=audit,
+            )
+
         # ── Step 3a: Welcome and engage on the first/second turn ─────────────
         # Never fire a contact ask on the very first informational message — welcome first.
         # Bypass conditions (already handled above, or high-intent signals):

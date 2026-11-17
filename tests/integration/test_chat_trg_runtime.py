@@ -32,7 +32,11 @@ class FailingTrgEngine:
         previous_state: object | None = None,
         state_deltas: object = (),
         arbiter_signals: object = None,
+        preloaded_graph: object = None,
+        user_embedding: object = None,
     ) -> object:
+        # Same keyword interface as TemporalRelationGraphEngine.update_after_turn, so
+        # the failure injected here is the backend error, not a signature mismatch.
         del (
             thread_id,
             turn_sequence,
@@ -41,6 +45,8 @@ class FailingTrgEngine:
             previous_state,
             state_deltas,
             arbiter_signals,
+            preloaded_graph,
+            user_embedding,
         )
         self.calls += 1
         raise RuntimeError("trg backend unavailable author@example.com")

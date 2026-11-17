@@ -34,8 +34,8 @@ def test_real_name_used_in_consultation() -> None:
     with TestClient(app) as client:
         body = _chat(
             client,
-            "My name is Maya Author, my email is maya@example.com. "
-            "I want a consultation tomorrow at 11 AM Houston time.",
+            "My name is Maya Author, my email is maya@example.com and my phone is "
+            "555-201-3344. I want a consultation tomorrow at 11 AM Houston time.",
         )
         memory = _thread_memory(client, body)
 
@@ -62,10 +62,12 @@ def test_vague_deadline_not_used_for_quote() -> None:
 
     assert memory.state.project.target_completion_date.value is None
     assert "whenever i'm ready" not in str(memory.state.project.target_completion_date.value)
-    # Response must ask a sensible next question; ResponsePlanner may prefer
-    # word_or_page_count, manuscript_stage, or deadline — all are acceptable.
+    # Response must ask a sensible next question. The consultation-first planner
+    # offers a consultation before scoping; a scoping question is also acceptable.
+    # What matters is that the vague deadline was not stored (asserted above).
     assert any(
-        term in text for term in ("deadline", "manuscript stage", "word count", "page count")
+        term in text
+        for term in ("consultation", "deadline", "manuscript stage", "word count", "page count")
     )
 
 
@@ -75,16 +77,20 @@ def test_send_pricing_details_does_not_confirm_booking() -> None:
     with TestClient(app) as client:
         first = _chat(
             client,
-            "My name is Maya Author, my email is maya@example.com. "
-            "I want a consultation tomorrow at 11 AM Houston time.",
+            "My name is Maya Author, my email is maya@example.com and my phone is "
+            "555-201-3344. I want a consultation tomorrow at 11 AM Houston time.",
         )
         thread_id = first["thread_id"]
         _chat(client, "send me pricing details", thread_id=thread_id)
         memory = _thread_memory(client, first)
 
+    # "send me pricing details" is not a yes to the pending booking: the booking is
+    # still awaiting confirmation and nothing was booked.
     assert memory.state.sales_actions.pending_confirmation.type == "schedule_consultation"
     assert memory.state.sales_actions.consultation.confirmed_appointment_id is None
-    assert _last_sales_action(memory)["action_type"] == "price_quote"
+    # The turn itself went to pricing, or to saving the lead now that contact is
+    # complete; it was never a consultation booking.
+    assert _latest_action_of_any_kind(memory)["action_type"] in {"price_quote", "create_lead"}
 
 
 def test_durable_state_not_overwritten_by_weak_later_phrase() -> None:
@@ -96,7 +102,7 @@ def test_durable_state_not_overwritten_by_weak_later_phrase() -> None:
         _chat(client, "Starting from scratch would be hard.", thread_id=thread_id)
         memory = _thread_memory(client, first)
 
-    assert memory.state.project.manuscript_status.value == "completed_draft"
+    assert memory.state.project.manuscript_status.value == "completed"
 
 
 def _chat(
@@ -128,6 +134,15 @@ def _sales_action(memory: Any) -> dict[str, Any]:
             assert isinstance(payload, dict)
             return payload
     raise AssertionError("sales_action.planned event was not recorded")
+
+
+def _latest_action_of_any_kind(memory: Any) -> dict[str, Any]:
+    for event in reversed(memory.events):
+        if event["event_type"] in {"sales_action.planned", "sales_action.processed"}:
+            payload = event["payload"]
+            assert isinstance(payload, dict)
+            return payload
+    raise AssertionError("no sales action event was recorded")
 
 
 def _last_sales_action(memory: Any) -> dict[str, Any]:

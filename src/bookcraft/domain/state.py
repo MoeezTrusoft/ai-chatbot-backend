@@ -187,6 +187,37 @@ class SalesActionsState(BaseModel):
     pending_confirmation: PendingConfirmationState = Field(default_factory=PendingConfirmationState)
 
 
+class CallbackFlowState(BaseModel):
+    """Per-thread call-offer state (Visitor Messaging Rule Set v2.4, M-06 to M-10).
+
+    Counters reset at the start of each visit. Lives here, not under
+    ``components/callbacks``, so the domain model has no component imports.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # MAX_CALL_OFFERS is counted per visit (M-10).
+    offers_this_visit: int = 0
+    # Wording keys already used this visit, so the same line is never sent twice (G-08).
+    wordings_used: list[str] = Field(default_factory=list)
+    # What the bot last asked as part of the call flow:
+    # offer_now | need_phone_now | ask_time | need_phone_scheduled.
+    pending: str | None = None
+    # The time the visitor gave while a number was still missing.
+    pending_time_text: str | None = None
+    # Bot reply index (this visit) at which the last offer was made.
+    last_offer_reply_index: int | None = None
+    # "Prefers chat or email": no further call offer this visit (M-09).
+    declined_this_visit: bool = False
+    # "I'm only researching": hold the offer until a new buying signal (M-10).
+    researching: bool = False
+    # A callback has been requested this visit: nothing more to offer.
+    requested_this_visit: bool = False
+    last_request_id: str | None = None
+    last_request_mode: str | None = None
+    last_request_at: datetime | None = None
+
+
 class ThreadState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -272,6 +303,10 @@ class ThreadState(BaseModel):
     # Step 3 (tone fix): track whether the bot asked for contact in the last turn,
     # so LeadObjectiveEngine can back off when the user deflects.
     last_turn_asked_contact: bool = False
+    # The visitor explicitly declined to give contact details ("I don't want to give
+    # you my email or phone"). Sticky: the bot answers without asking again until the
+    # visitor offers a detail, asks to be contacted, or asks for a consultation.
+    contact_refused: bool = False
     # Contact enrichment: set after the bot has asked once for the missing second
     # contact method (phone or email). Prevents asking more than once.
     contact_second_method_requested: bool = False
@@ -288,6 +323,18 @@ class ThreadState(BaseModel):
     # every message. Counts ALL user messages (any language). Defaults high so the very
     # first non-English message always sends; capped at the threshold thereafter.
     msgs_since_language_redirect: int = 10
+    # Visitor attributes supplied by the website bridge on each turn (Visitor Messaging
+    # Rule Set v2.4, section 5.2). They decide WHAT is said: device drives message
+    # length and the call offer; the others drive wording. None = not supplied.
+    device: str | None = None            # mobile | desktop
+    visitor_type: str | None = None      # new | returning
+    signup_status: str | None = None     # not_started | started | completed
+    visitor_timezone: str | None = None  # IANA zone reported by the browser
+    # Opaque key of the current visit. A change resets the per-visit counters below.
+    visit_key: str | None = None
+    # Bot replies delivered this visit. Proactive messages are not counted (M-06).
+    visit_bot_replies: int = 0
+    callback: CallbackFlowState = Field(default_factory=CallbackFlowState)
     # CSR handover context — populated when a CSR takes over and sends messages.
     csr_handover_active: bool = False
     csr_context_abstract: str = ""        # LLM-compressed summary of oldest CSR turns

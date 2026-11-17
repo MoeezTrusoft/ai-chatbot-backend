@@ -6,6 +6,9 @@ containers, and server restarts cannot double-dispatch the same action.
 Contract:
 - `claim(key, ...)` tries to INSERT a pending record. Returns True if claimed
   (caller should dispatch), False if the key already exists (skip dispatch).
+  A key whose earlier attempt FAILED, or whose claim has EXPIRED, is claimed again:
+  a failed booking must be retryable, and a completed one must not block the same
+  request for ever.
 - `mark_completed(key, ...)` updates status to completed + stores result_summary.
 - `mark_failed(key, ...)` updates status to failed + stores error_code.
 - `get_status(key)` returns the current status string or None if unknown.
@@ -20,13 +23,18 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import and_, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlmodel import select
+from sqlmodel import col, select
+
+
+def _naive_utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class _InProcessFallback:
@@ -38,6 +46,7 @@ class _InProcessFallback:
 
     def __init__(self) -> None:
         self._keys: dict[str, str] = {}  # key → status
+        self._expires: dict[str, datetime | None] = {}
 
     async def claim(
         self,
@@ -48,10 +57,18 @@ class _InProcessFallback:
         slots_hash: str,
         expires_at: datetime | None,
     ) -> bool:
-        if idempotency_key in self._keys:
+        if idempotency_key in self._keys and not self._reclaimable(idempotency_key):
             return False
         self._keys[idempotency_key] = "processing"
+        self._expires[idempotency_key] = expires_at
         return True
+
+    def _reclaimable(self, idempotency_key: str) -> bool:
+        """A failed attempt, or a claim past its expiry, does not block a new one."""
+        if self._keys.get(idempotency_key) == "failed":
+            return True
+        expires_at = self._expires.get(idempotency_key)
+        return expires_at is not None and expires_at < _naive_utc_now()
 
     async def mark_completed(self, *, idempotency_key: str, result_summary: str | None) -> None:
         self._keys[idempotency_key] = "completed"
@@ -116,8 +133,48 @@ class ActionIdempotencyRepository:
                 await session.commit()
             return True
         except IntegrityError:
-            # Duplicate idempotency_key — another worker already claimed it.
-            return False
+            # The key exists. It still blocks this dispatch unless the earlier attempt
+            # failed, or its claim has expired: a failed booking must be retryable and
+            # an old completed one must not block the same request for ever.
+            return await self._reclaim(
+                idempotency_key=idempotency_key, slots_hash=slots_hash, expires_at=expires_at
+            )
+
+    async def _reclaim(
+        self, *, idempotency_key: str, slots_hash: str, expires_at: datetime | None
+    ) -> bool:
+        from bookcraft.components.storage.models import SalesActionRecord, utc_now
+
+        assert self.session_factory is not None  # noqa: S101 - narrowed by the caller
+        now = utc_now()
+        statement = (
+            update(SalesActionRecord)
+            .where(
+                col(SalesActionRecord.idempotency_key) == idempotency_key,
+                or_(
+                    col(SalesActionRecord.status) == "failed",
+                    and_(
+                        col(SalesActionRecord.expires_at).is_not(None),
+                        col(SalesActionRecord.expires_at) < now,
+                    ),
+                ),
+            )
+            .values(
+                status="processing",
+                slots_hash=slots_hash,
+                created_at=now,
+                expires_at=expires_at,
+                completed_at=None,
+                error_code=None,
+                result_summary=None,
+            )
+            .returning(col(SalesActionRecord.id))
+        )
+        async with self.session_factory() as session:
+            result = await session.execute(statement)
+            reclaimed = result.scalar_one_or_none() is not None
+            await session.commit()
+        return reclaimed
 
     async def mark_completed(
         self,

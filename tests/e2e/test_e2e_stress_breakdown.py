@@ -103,7 +103,9 @@ def _print_report(label: str, turns: list[dict], findings: list[str]) -> None:
         else:
             icons.append("✓Q")
         icon_str = " ".join(icons)
-        print(f"  T{t['turn']:02d} [{t['intent']:25s}] goal={t['goal']:28s} lead={t['lead']:28s} {icon_str}")
+        # A blocked turn has no intent, goal or lead move: print a dash, do not crash.
+        intent, goal, lead = (t[k] or "-" for k in ("intent", "goal", "lead"))
+        print(f"  T{t['turn']:02d} [{intent:25s}] goal={goal:28s} lead={lead:28s} {icon_str}")
         print(f"       User: {t['msg']}")
         print(f"       Bot : {t['text']}")
     print("\n  FINDINGS:")
@@ -260,16 +262,24 @@ def test_stress_guarantee_pressure() -> None:
 # ===========================================================================
 
 def test_stress_empty_and_emoji_messages() -> None:
-    """Empty, emoji-only, and whitespace messages must not error or block."""
+    """Emoji-only messages must not error or block; whitespace-only is a clean 422.
+
+    A turn needs text or an attachment (see ChatTurnRequest). A message that is only
+    whitespace is rejected by validation with a 422, the same as an empty one. That
+    is a handled client error, not a crash, and it must not disturb the thread.
+    """
     label = "S4: Empty/Emoji/Whitespace Edge Cases"
     turns = []
     findings = []
 
     with _client() as client:
+        for blank in (" ", "   ", "\n\t"):
+            rejected = client.post("/api/v1/chat/turn", json={"message": blank})
+            assert rejected.status_code == 422, rejected.text[:200]
+        findings.append("Whitespace-only messages rejected with 422 ✓")
+
         msgs = [
-            " ",                     # single space (API min_length=1; trivial message)
             "🎉🎊👏",                # emoji only
-            "   ",                   # whitespace only (3 spaces)
             "I need editing help.",  # first real message
             "😊👍",                  # emoji again mid-conversation
             "My memoir is 50,000 words, fully written.",
@@ -289,10 +299,10 @@ def test_stress_empty_and_emoji_messages() -> None:
             f"T{t['turn']}: blocked without safety reason"
         )
 
-    # Empty/emoji messages must be allowed (safety=allow)
-    for i in [0, 1, 2, 4]:
+    # Emoji-only messages must be allowed (safety=allow)
+    for i in [0, 2]:
         assert turns[i]["safety"] in {"allow", None}, (
-            f"T{i+1}: empty/emoji should be allow, got safety={turns[i]['safety']}"
+            f"T{i+1}: emoji-only should be allow, got safety={turns[i]['safety']}"
         )
 
     _no_critical_failures(turns, label)
@@ -683,12 +693,10 @@ def _run_s3():
 
 
 def _run_s4():
-    # Note: API enforces min_length=1, so truly empty strings are correctly rejected.
-    # We test whitespace and emoji-only (non-empty but trivial) messages here.
+    # Empty and whitespace-only messages are rejected by request validation (422),
+    # so only emoji-only (non-empty but trivial) messages are part of the scenario.
     return _run_scenario([
-        " ",            # single space (min_length=1 passes; input_guard detects trivial)
         "🎉🎊👏",      # emoji only
-        "   ",          # whitespace only
         "I need editing help.",
         "😊👍",         # emoji mid-conversation
         "My memoir is 50,000 words.",

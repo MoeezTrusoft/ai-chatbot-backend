@@ -14,15 +14,26 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.api.admin_analysis import router as admin_analysis_router
 from bookcraft.api.chat import router as chat_router
-from bookcraft.api.holidays import router as holidays_router
 from bookcraft.api.correlation import sanitize_correlation_id
 from bookcraft.api.errors import ErrorResponse
+from bookcraft.api.holidays import router as holidays_router
 from bookcraft.api.metrics_auth import is_metrics_request_allowed
 from bookcraft.api.security import parse_allowed_origins
 from bookcraft.components.actions import SalesActionDispatcher
 from bookcraft.components.analysis import LiveTraceStore
+from bookcraft.components.callbacks import (
+    CallbackFlow,
+    CallbackHours,
+    CallbackRequestService,
+    CallOfferPolicy,
+)
+from bookcraft.components.callbacks.service import (
+    DbCallbackRepository,
+    InMemoryCallbackRepository,
+)
 from bookcraft.components.consultations import (
     ConsultationActionService,
     ConsultationRepository,
@@ -30,6 +41,9 @@ from bookcraft.components.consultations import (
     refresh_holiday_cache,
 )
 from bookcraft.components.consultations.holidays import HOLIDAY_CACHE_TTL_SECONDS
+from bookcraft.components.context import ContextPackBuilder
+from bookcraft.components.context.entity_index import ConversationEntityIndex
+from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.document_actions import (
     AgreementActionService,
     DocumentRequestRepository,
@@ -39,12 +53,7 @@ from bookcraft.components.documents.engine import DocumentEngine
 from bookcraft.components.documents.registry import DocumentTemplateRegistry
 from bookcraft.components.documents.tools import register_document_tools
 from bookcraft.components.extraction import CombinedExtractor, StateApplier
-from bookcraft.components.context import ContextPackBuilder
-from bookcraft.components.context.entity_index import ConversationEntityIndex
-from bookcraft.components.csr.summarizer import CsrContextSummarizer
 from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
-from bookcraft.components.trg.checkpointer import ConversationCheckpointer
-from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.intent import (
     EnsembleIntentClassifier,
     LLMIntentProvider,
@@ -53,7 +62,6 @@ from bookcraft.components.intent import (
 )
 from bookcraft.components.language_guard import LanguageGuard
 from bookcraft.components.leads import LeadRepository, LeadService
-import bookcraft.components.llm.adapters as _adapters_module
 from bookcraft.components.llm import AnthropicAdapter, DeepSeekAdapter, OpenAIAdapter
 from bookcraft.components.portfolio import PortfolioEngine, PortfolioRegistry
 from bookcraft.components.portfolio.tools import register_portfolio_tools
@@ -70,6 +78,9 @@ from bookcraft.components.pricing_actions import (
 )
 from bookcraft.components.rag.retriever import RagRetriever
 from bookcraft.components.response import ResponseFormatter, SonnetResponseGenerator
+from bookcraft.components.storage.action_idempotency_repository import (
+    ActionIdempotencyRepository,
+)
 from bookcraft.components.storage.db import create_engine, create_session_factory
 from bookcraft.components.storage.thread_repository import ThreadRepository
 from bookcraft.components.trg import (
@@ -77,6 +88,8 @@ from bookcraft.components.trg import (
     RedisHotGraphStore,
     TemporalRelationGraphEngine,
 )
+from bookcraft.components.trg.checkpointer import ConversationCheckpointer
+from bookcraft.components.trg.fact_store import TRGFactStore
 from bookcraft.components.trimatch import (
     RuleRepository,
     TriMatchEngine,
@@ -491,6 +504,13 @@ def build_chat_service(
         else None
     )
     csr_summarizer = CsrContextSummarizer(adapter=_extraction_adapter)
+    callback_hours = CallbackHours(
+        tz_name=settings.callback_timezone,
+        start_hour=settings.callback_start_hour,
+        end_hour=settings.callback_end_hour,
+        cutoff_minutes=settings.call_offer_cutoff_minutes,
+        callback_minutes=settings.callback_time_minutes,
+    )
     return ChatService(
         language_guard=LanguageGuard(enabled=settings.language_guard_enabled),
         preprocessor=SharedPreprocessor(sidecars=sidecars, embedding_client=embedding_client),
@@ -520,11 +540,39 @@ def build_chat_service(
         ),
         environment=settings.app_env,
         response_repair_enabled=settings.response_repair_enabled,
+        # These four settings existed but were never passed on, so the environment
+        # variables had no effect.
+        event_log_batching_enabled=settings.event_log_batching_enabled,
+        trg_background_persist_enabled=settings.trg_background_persist_enabled,
+        llm_extraction_overlap_enabled=settings.llm_extraction_overlap_enabled,
+        trimatch_event_evidence_summary=settings.trimatch_event_evidence_summary,
+        call_offer_policy=CallOfferPolicy(
+            hours=callback_hours,
+            offer_by_reply=settings.mobile_call_offer_by_reply,
+            max_offers=settings.max_call_offers_per_visit,
+            desktop_enabled=settings.call_now_desktop_enabled,
+        ),
+        callback_flow=CallbackFlow(hours=callback_hours),
+        callback_service=CallbackRequestService(
+            repository=(
+                InMemoryCallbackRepository()
+                if session_factory is None
+                else DbCallbackRepository(session_factory=session_factory)
+            ),
+            callback_minutes=settings.callback_time_minutes,
+        ),
+        mobile_max_chars=settings.mobile_max_chars,
+        mobile_max_bubbles=settings.mobile_max_bubbles,
         trg_engine=trg_engine,
         trimatch_engine=build_trimatch_engine(settings),
         trimatch_shadow_engine=build_trimatch_shadow_engine(settings),
         trimatch_extra_mode=settings.trimatch_extra_mode,
         action_dispatcher=SalesActionDispatcher(
+            # Durable claims: with a database the idempotency key is a unique row, so a
+            # restart or a second worker cannot dispatch the same action twice.
+            action_idempotency_repository=ActionIdempotencyRepository(
+                session_factory=session_factory
+            ),
             lead_service=lead_service,
             consultation_action_service=consultation_action_service,
             pricing_action_service=pricing_action_service,

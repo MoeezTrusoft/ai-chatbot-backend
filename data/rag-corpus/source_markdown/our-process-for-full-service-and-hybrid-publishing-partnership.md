@@ -1,7 +1,9 @@
 ---
-source_id: publishing_partnership
+source_id: publishing_partnership_process
 service_category: publishing_partnership
 title: "Publishing Partnership Process at BookCraft"
+section: process
+content_version: v1
 ---
 
 # Full-Service & Hybrid Publishing Partnership Process

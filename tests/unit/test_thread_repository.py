@@ -127,3 +127,45 @@ async def test_save_state_raises_on_version_conflict(db_session_factory):
             expected_version=0,  # Already incremented to 1
             language="en",
         )
+
+
+@pytest.mark.asyncio
+async def test_save_state_is_a_compare_and_set(db_session_factory):
+    """Two writers that loaded the same version cannot both save.
+
+    The version check and the write are one statement: the first save moves the
+    version on, so the second matches no row and raises instead of silently
+    overwriting the first writer's state.
+    """
+    repo = ThreadRepository(session_factory=db_session_factory)
+    thread_id = uuid4()
+    loaded = await repo.load_or_create(thread_id=thread_id, customer_id=None)
+
+    first = ThreadState()
+    first.representative_name = "first writer"
+    second = ThreadState()
+    second.representative_name = "second writer"
+
+    new_version = await repo.save_state(
+        thread_id=thread_id, state=first, expected_version=loaded.version, language="en"
+    )
+    assert new_version == loaded.version + 1
+
+    with pytest.raises(ThreadVersionConflictError):
+        await repo.save_state(
+            thread_id=thread_id, state=second, expected_version=loaded.version, language="en"
+        )
+
+    stored = await repo.load_or_create(thread_id=thread_id, customer_id=None)
+    assert stored.state.representative_name == "first writer"
+    assert stored.version == new_version
+    assert stored.turn_count == 1
+
+
+@pytest.mark.asyncio
+async def test_save_state_for_an_unknown_thread_is_not_a_conflict(db_session_factory):
+    repo = ThreadRepository(session_factory=db_session_factory)
+    with pytest.raises(KeyError):
+        await repo.save_state(
+            thread_id=uuid4(), state=ThreadState(), expected_version=0, language="en"
+        )

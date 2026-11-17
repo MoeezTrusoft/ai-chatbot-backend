@@ -52,11 +52,18 @@ class _FakeGenerator:
 
 
 def test_directed_abuse_blocks_without_assistant_response() -> None:
-    """Directed insult must block — no Claude, no bubbles, system_message returned."""
+    """Repeated directed insult must block: no Claude, no bubbles, system_message returned.
+
+    The input safety guard escalates: the first directed insult is a warning and the
+    conversation survives; a second one is blocked (see the insult escalation stress
+    test). Threats and slurs block at once and are covered by the guard's unit tests.
+    """
     app = create_app(Settings(app_env="test", api_auth_mode="off"))
 
     with TestClient(app) as client:
-        body = _chat(client, "You are fucking stupid.")
+        first = _chat(client, "You are fucking stupid.")
+        assert first.get("blocked") is False
+        body = _chat(client, "You are fucking stupid.", thread_id=first["thread_id"])
 
     assert body.get("blocked") is True
     assert body.get("bubbles") == []

@@ -177,7 +177,8 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
         "T9: representative name must be assigned"
     )
     bot_resp_t9 = turns[8]["text"].lower()
-    assert "ai" not in bot_resp_t9 or "not" in bot_resp_t9, (
+    # Whole word only: "detail" and "email" contain the letters "ai".
+    assert not re.search(r"\bai\b", bot_resp_t9) or "not" in bot_resp_t9, (
         f"T9: must not claim to be AI, got: {turns[8]['text'][:100]}"
     )
     analysis.append(f"T9 persona name assigned: {turns[8]['persona_name']}")

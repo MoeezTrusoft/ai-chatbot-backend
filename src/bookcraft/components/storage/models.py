@@ -149,6 +149,32 @@ class SalesDocumentRequestRecord(SQLModel, table=True):
     sent_at: datetime | None = None
 
 
+class SalesCallbackRequestRecord(SQLModel, table=True):
+    """A call the team owes a visitor: right now, or at a time the visitor chose.
+
+    Written by the mobile call-now flow (Visitor Messaging Rule Set v2.4, M-09 and
+    H-04). ``idempotency_key`` is unique so a repeated "yes" never becomes a second
+    call to the same number.
+    """
+
+    __tablename__ = "sales_callback_requests"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    thread_id: UUID = Field(index=True)
+    customer_id: UUID | None = Field(default=None, index=True)
+    visit_id: str | None = Field(default=None, max_length=64)
+    mode: str = Field(max_length=16, index=True)  # now | scheduled
+    status: str = Field(default="requested", max_length=32, index=True)
+    customer_phone: str = Field(max_length=50)
+    customer_name: str | None = Field(default=None, max_length=255)
+    requested_time_text: str | None = None
+    customer_timezone: str | None = Field(default=None, max_length=64)
+    summary: str = ""
+    promised_within_minutes: int | None = None
+    idempotency_key: str = Field(max_length=64, unique=True, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class SalesConsultationRecord(SQLModel, table=True):
     __tablename__ = "sales_consultations"
 

@@ -185,6 +185,6 @@ expectations_summary:
   - bot never echoes raw email or phone number in responses
   - bot does not treat user PII as BookCraft company contact
   - consultation turn only asks for preferred time if contact is ready
-  - "already shared" message gets acknowledgment, not re-ask
+  - '"already shared" message gets acknowledgment, not re-ask'
   - complaint/PII message gets apology and zero discovery questions
   - one question max per turn throughout

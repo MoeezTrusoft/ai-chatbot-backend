@@ -167,9 +167,13 @@ def test_quality_gate_response_plan_reflects_gate_state() -> None:
     assert "passed" in rq
     assert "audit" in rq
 
-    # When response_plan has max_questions=1, gate should not see too-many-questions.
+    # The plan allows one question. A draft may still ask more (the gate exists to
+    # catch exactly that); what must hold is that the reply the customer receives
+    # asks at most one, whether the draft passed or the gate replaced it.
     if rp.get("max_questions") == 1:
-        assert not any("too_many_questions" in f for f in rq["failures"])
+        assert _joined_text(resp).count("?") <= 1
+        if any("too_many_questions" in f for f in rq["failures"]):
+            assert rq["passed"] is False
 
 
 def test_quality_gate_fallback_used_when_text_contains_internal_terms() -> None:

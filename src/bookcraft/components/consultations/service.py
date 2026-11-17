@@ -298,14 +298,34 @@ _TIMEZONE_ALIASES: dict[str, str] = {
     # Pakistan
     "pkt": "Asia/Karachi",
     "pakistan": "Asia/Karachi",
+    # The business zone, as the bot itself names it ("Houston time").
+    "houston": "America/Chicago",
+    "chicago": "America/Chicago",
+    "texas": "America/Chicago",
+    # Zones the extraction regex recognises that had no alias, so a call stated in
+    # "India time" or "BST" was silently booked as Central.
+    "india": "Asia/Kolkata",
+    "ist": "Asia/Kolkata",
+    "british": "Europe/London",
+    "bst": "Europe/London",
+    "european": "Europe/Paris",
+    "cet": "Europe/Paris",
+    "cest": "Europe/Paris",
 }
+
+_TIMEZONE_SUFFIX_RE = re.compile(
+    r"\s+(?:standard\s+time|daylight\s+time|timezone|time)$", re.IGNORECASE
+)
 
 
 def _normalize_timezone(value: str | None) -> str | None:
     """Normalize common timezone aliases to IANA strings."""
     if not value:
         return None
-    normalized = _TIMEZONE_ALIASES.get(value.strip().lower())
+    key = value.strip().lower()
+    normalized = _TIMEZONE_ALIASES.get(key) or _TIMEZONE_ALIASES.get(
+        _TIMEZONE_SUFFIX_RE.sub("", key)
+    )
     return normalized or value
 
 

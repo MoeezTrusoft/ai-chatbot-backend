@@ -48,6 +48,21 @@ class ChatGreetRequest(BaseModel):
     variant: Literal["greeting", "followup"] = "greeting"
 
 
+class ObserveTurnRequest(BaseModel):
+    """A visitor message to learn from without replying.
+
+    Sent while a human agent owns the conversation, so the bot keeps learning from
+    every message (Visitor Messaging Rule Set v2.4, K-06) and can pick the
+    conversation up again without re-asking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    message: str = Field(min_length=1, max_length=8000)
+    correlation_id: str | None = Field(default=None, max_length=128)
+
+
 class CsrTurnRequest(BaseModel):
     """A single CSR + optional user message to be ingested for context (no bot response)."""
 
@@ -245,6 +260,15 @@ async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnRes
     )
     service: ChatService = request.app.state.chat_service
     return await service.handle_greet(payload)
+
+
+@router.post("/observe", status_code=204)
+async def chat_observe(payload: ObserveTurnRequest, request: Request) -> None:
+    """Learn from a visitor message without generating a reply."""
+    settings = request.app.state.settings
+    require_http_auth(request, settings)
+    service: ChatService = request.app.state.chat_service
+    await service.handle_observe(payload)
 
 
 @router.post("/csr-turn", status_code=204)

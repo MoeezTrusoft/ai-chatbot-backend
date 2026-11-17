@@ -296,6 +296,25 @@ _IDEA_PHRASES = (
     "concept",
 )
 
+# "I've finished a 70,000-word thriller", "I finished writing my novel": the author
+# states that the work itself is done. A phrase list cannot cover this because any
+# number of words can sit between the verb and the noun. "draft" and "chapter" are
+# deliberately not in the noun list: finishing a draft or a chapter is not a
+# finished book.
+_FINISHED_WORK_RE = re.compile(
+    r"\b(?:i|we)(?:\s+have|'ve|\u2019ve)?\s+(?:just\s+|finally\s+|already\s+|recently\s+)?"
+    r"(?:finished|completed)\s+(?:writing\s+)?(?:a|an|my|the|this|our)\s+"
+    r"(?:[\w,'\u2019-]+\s+){0,4}?"
+    r"(?:book|novel|novella|manuscript|memoir|thriller|biography|autobiography|romance|"
+    r"fantasy|mystery|cookbook|collection|story)\b",
+    re.IGNORECASE,
+)
+
+_CONDITIONAL_LEAD_RE = re.compile(
+    r"\b(?:once|when|whenever|after|if|until|unless|as\s+soon\s+as|by\s+the\s+time)\s*$",
+    re.IGNORECASE,
+)
+
 # Priority order (most → least specific).
 _STATUS_PRIORITY: list[tuple[ManuscriptStatus, tuple[str, ...]]] = [
     (ManuscriptStatus.PUBLISHED, _PUBLISHED_PHRASES),
@@ -395,6 +414,17 @@ def _first_match(
             if publishing_goal and not _has_already_published_phrase(text):
                 continue
         if status == ManuscriptStatus.COMPLETED:
+            finished_work = _FINISHED_WORK_RE.search(text)
+            if (
+                finished_work is not None
+                # "Once I have finished my book..." describes the future, not a fact.
+                and not _CONDITIONAL_LEAD_RE.search(text[: finished_work.start()])
+                and not match_is_negated(text, finished_work, negation_spans)
+                and not match_is_counterfactual(text, finished_work, counterfactual_spans)
+            ):
+                # An explicit statement that the work is finished stands even next to
+                # a publishing goal ("...and need editing before I publish in March").
+                return status
             if cover_complete and not _has_manuscript_keyword(text):
                 continue
             # A publishing goal ("I want to publish my finished/KDP-ready manuscript")

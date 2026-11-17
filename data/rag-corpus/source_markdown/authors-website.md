@@ -2,6 +2,8 @@
 source_id: authors_website
 service_category: author_website
 title: "Author Website Services at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Author's Website

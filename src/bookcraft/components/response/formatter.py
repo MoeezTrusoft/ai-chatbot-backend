@@ -97,15 +97,97 @@ def _normalize_response_block(text: str) -> str:
     return _flatten_single_line_markdown_table(_trim_leading_sentence_fragment(text))
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences, flattening paragraph breaks."""
+    flat = re.sub(r"\s+", " ", text or "").strip()
+    return [part.strip() for part in _SENTENCE_SPLIT_RE.split(flat) if part.strip()]
+
+
+def strip_questions(text: str) -> str:
+    """Remove every question sentence.
+
+    Used when a deterministic question (the call offer) is appended to a reply:
+    each message asks at most one question (rule M-03), so the generated part
+    must not ask another.
+    """
+    return " ".join(s for s in split_sentences(text) if not s.rstrip().endswith("?"))
+
+
+def pack_sentences(text: str, *, limit: int, max_bubbles: int | None = None) -> list[str]:
+    """Pack sentences into bubbles of at most ``limit`` characters.
+
+    Whole sentences are kept together. A single sentence longer than the limit is
+    split on word boundaries. When ``max_bubbles`` is reached the remaining
+    sentences are dropped, so the reply ends at a sentence boundary.
+    """
+    bubbles: list[str] = []
+    current = ""
+    for sentence in split_sentences(text):
+        pieces = [sentence]
+        if len(sentence) > limit:
+            pieces, chunk = [], ""
+            for word in sentence.split():
+                candidate = f"{chunk} {word}".strip()
+                if len(candidate) > limit and chunk:
+                    pieces.append(chunk)
+                    chunk = word[:limit]
+                else:
+                    chunk = candidate[:limit]
+            if chunk:
+                pieces.append(chunk)
+        for piece in pieces:
+            candidate = f"{current} {piece}".strip()
+            if len(candidate) <= limit:
+                current = candidate
+                continue
+            if current:
+                bubbles.append(current)
+            current = piece
+            if max_bubbles is not None and len(bubbles) >= max_bubbles:
+                return bubbles[:max_bubbles]
+    if current:
+        bubbles.append(current)
+    return bubbles[:max_bubbles] if max_bubbles is not None else bubbles
+
+
 @dataclass(slots=True)
 class ResponseFormatter:
     max_bubble_chars: int = 500
 
-    def format(self, text: str, *, approved_urls: set[str] | None = None) -> list[FormattedBubble]:
+    def format(
+        self,
+        text: str,
+        *,
+        approved_urls: set[str] | None = None,
+        max_chars: int | None = None,
+        max_bubbles: int | None = None,
+    ) -> list[FormattedBubble]:
+        """Split a reply into chat bubbles.
+
+        ``max_chars`` and ``max_bubbles`` are the hard mobile limits (Visitor
+        Messaging Rule Set v2.4, M-02). When either is given the reply is packed
+        sentence by sentence and cut at a sentence boundary, so a limit is never
+        met by breaking a thought in half. Desktop replies pass neither and keep
+        the paragraph-based split.
+        """
         sanitized = self._sanitize(text)
         if not sanitized:
             sanitized = "I can help with your BookCraft project. What would you like to work on?"
         sanitized = _trim_leading_sentence_fragment(sanitized)
+        if max_chars is not None or max_bubbles is not None:
+            limit = max_chars or self.max_bubble_chars
+            packed = pack_sentences(sanitized, limit=limit, max_bubbles=max_bubbles)
+            return [
+                FormattedBubble(
+                    text=chunk,
+                    bubble_index=index,
+                    rich_segments=self._rich_segments(chunk, approved_urls or set()),
+                )
+                for index, chunk in enumerate(packed)
+            ]
         paragraphs = [
             _normalize_response_block(part.strip())
             for part in re.split(r"\n\s*\n", sanitized)

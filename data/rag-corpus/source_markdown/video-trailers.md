@@ -2,6 +2,8 @@
 source_id: video_trailers
 service_category: video_trailer
 title: "Video Trailers at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Video Book Trailer

@@ -2,6 +2,8 @@
 source_id: about_book_craft
 service_category: marketing_promotion
 title: "About BookCraft Publishers"
+section: about
+content_version: v1
 ---
 
 # About BookCraft Publishers

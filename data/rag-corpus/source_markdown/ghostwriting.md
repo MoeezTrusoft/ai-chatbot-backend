@@ -2,6 +2,8 @@
 source_id: ghostwriting
 service_category: ghostwriting
 title: "Ghostwriting at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Ghostwriting at BookCraft

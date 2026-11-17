@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import col, select
 
@@ -143,29 +144,41 @@ class ThreadRepository:
         expected_version: int,
         language: str,
     ) -> int:
+        # Atomic compare-and-set. The version check and the write are one statement,
+        # so two turns that loaded the same version cannot both succeed: the second
+        # UPDATE matches no row and is reported as a conflict. (A read followed by a
+        # separate write let both pass the check and the later one silently win.)
+        now = utc_now()
+        statement = (
+            update(ThreadRecord)
+            .where(ThreadRecord.id == thread_id, ThreadRecord.version == expected_version)
+            .values(
+                state=sanitize_thread_state_for_persistence(state),
+                version=ThreadRecord.version + 1,
+                turn_count=ThreadRecord.turn_count + 1,
+                language=language,
+                updated_at=now,
+                last_message_at=now,
+            )
+            .returning(ThreadRecord.version)
+        )
         async with self.session_factory() as session:
-            record = await session.get(ThreadRecord, thread_id)
-            if record is None:
-                raise KeyError(f"Thread not found: {thread_id}")
-
-            if record.version != expected_version:
+            result = await session.execute(statement)
+            new_version = result.scalar_one_or_none()
+            if new_version is None:
+                await session.rollback()
+                found = await session.execute(
+                    select(ThreadRecord.version).where(ThreadRecord.id == thread_id)
+                )
+                current = found.scalar_one_or_none()
+                if current is None:
+                    raise KeyError(f"Thread not found: {thread_id}")
                 raise ThreadVersionConflictError(
                     f"Thread {thread_id} version conflict: "
-                    f"expected {expected_version}, found {record.version}"
+                    f"expected {expected_version}, found {current}"
                 )
-
-            record.state = sanitize_thread_state_for_persistence(state)
-            record.version += 1
-            record.turn_count += 1
-            record.language = language
-            record.updated_at = utc_now()
-            record.last_message_at = utc_now()
-
-            session.add(record)
             await session.commit()
-            await session.refresh(record)
-
-            return record.version
+            return int(new_version)
 
     async def _event_tail(
         self,
