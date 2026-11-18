@@ -1,7 +1,9 @@
 ---
-source_id: catalog_transition
+source_id: catalog_transition_process
 service_category: catalog_transition
 title: "Catalog Transition Process at BookCraft"
+section: process
+content_version: v1
 ---
 
 # Catalog Transition & Rights Recovery Process

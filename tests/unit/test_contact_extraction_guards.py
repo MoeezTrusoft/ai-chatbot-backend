@@ -126,7 +126,6 @@ class TestDeterministicPreextractorPhone:
     from the preprocessor atoms (the (1770-1810) production bug entered here)."""
 
     def _msg(self, raw: str, phones: list[str]):
-        import pytest as _pytest
 
         from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
 
@@ -178,7 +177,9 @@ class TestLLMExtractorGuards:
         assert "personal.phone" not in {d.path for d in _facts_to_deltas(facts)}
 
     def test_age_range_phone_dropped(self) -> None:
-        facts = LLMExtractedFacts(phone=ExtractedValue(value="6-12", source_quote="children (6-12)"))
+        facts = LLMExtractedFacts(
+            phone=ExtractedValue(value="6-12", source_quote="children (6-12)")
+        )
         assert "personal.phone" not in {d.path for d in _facts_to_deltas(facts)}
 
     def test_valid_name_and_phone_pass(self) -> None:

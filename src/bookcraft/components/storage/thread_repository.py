@@ -134,7 +134,7 @@ class ThreadRepository:
                     )
                 )
             await session.commit()
-        return events[-1]["event_hash"]
+        return str(events[-1]["event_hash"])
 
     async def save_state(
         self,
@@ -151,7 +151,10 @@ class ThreadRepository:
         now = utc_now()
         statement = (
             update(ThreadRecord)
-            .where(ThreadRecord.id == thread_id, ThreadRecord.version == expected_version)
+            .where(
+                col(ThreadRecord.id) == thread_id,
+                col(ThreadRecord.version) == expected_version,
+            )
             .values(
                 state=sanitize_thread_state_for_persistence(state),
                 version=ThreadRecord.version + 1,
@@ -160,7 +163,7 @@ class ThreadRepository:
                 updated_at=now,
                 last_message_at=now,
             )
-            .returning(ThreadRecord.version)
+            .returning(col(ThreadRecord.version))
         )
         async with self.session_factory() as session:
             result = await session.execute(statement)

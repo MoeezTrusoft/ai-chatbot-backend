@@ -12,8 +12,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from bookcraft.components.persona.representative import (
-    BookCraftPersona,
     _IDENTITY_QUESTION_RE,
+    BookCraftPersona,
 )
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
 from bookcraft.domain.state import ThreadState
@@ -22,7 +22,6 @@ from bookcraft.services.chat import (
     _RAG_TOP_K_NARROW,
     _rag_top_k_for_intent,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Persona identity detection

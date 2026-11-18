@@ -5,7 +5,6 @@ encounters a version conflict, rather than propagating a 500 error.
 """
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -15,9 +14,9 @@ from bookcraft.api.chat import ChatFactsRequest
 
 
 def _make_service():
-    from bookcraft.services.chat import ChatService
     from bookcraft.components.extraction import StateApplier
     from bookcraft.components.response.generator import SonnetResponseGenerator
+    from bookcraft.services.chat import ChatService
 
     svc = ChatService.__new__(ChatService)
     svc.thread_repository = None  # use in-memory dict
@@ -56,10 +55,14 @@ async def test_inject_facts_does_not_overwrite_high_confidence():
     svc = _make_service()
     tid = uuid4()
     mem = svc.threads.setdefault(tid, ThreadMemory())
-    mem.state.personal.name = FieldMeta(value="Chris Jordan", confidence=0.99, source=Source.AI_EXTRACTED)
+    mem.state.personal.name = FieldMeta(
+        value="Chris Jordan", confidence=0.99, source=Source.AI_EXTRACTED
+    )
 
     result = await svc.handle_inject_facts(
-        ChatFactsRequest(thread_id=tid, name="Wrong Name", email=None, phone=None, source_label="signup_form")
+        ChatFactsRequest(
+            thread_id=tid, name="Wrong Name", email=None, phone=None, source_label="signup_form"
+        )
     )
     # EXTERNAL_FORM_CONFIDENCE (0.90) < 0.99 → not applied
     assert "name" not in result.fields_applied
@@ -89,7 +92,13 @@ async def test_inject_facts_succeeds_after_conflict_in_memory():
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.handle_inject_facts(
-            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="signup_form")
+            ChatFactsRequest(
+                thread_id=tid,
+                name="Jake Biddulph",
+                email=None,
+                phone=None,
+                source_label="signup_form",
+            )
         )
 
     assert call_n["n"] == 2
@@ -109,7 +118,13 @@ async def test_inject_facts_gives_up_after_max_retries():
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         result = await svc.handle_inject_facts(
-            ChatFactsRequest(thread_id=tid, name="Jake Biddulph", email=None, phone=None, source_label="signup_form")
+            ChatFactsRequest(
+                thread_id=tid,
+                name="Jake Biddulph",
+                email=None,
+                phone=None,
+                source_label="signup_form",
+            )
         )
 
     assert result.fields_applied == []
@@ -126,7 +141,9 @@ async def test_inject_facts_empty_payload_returns_immediately():
     tid = uuid4()
 
     result = await svc.handle_inject_facts(
-        ChatFactsRequest(thread_id=tid, name=None, email=None, phone=None, source_label="signup_form")
+        ChatFactsRequest(
+            thread_id=tid, name=None, email=None, phone=None, source_label="signup_form"
+        )
     )
     assert result.fields_applied == []
     # Thread never touched

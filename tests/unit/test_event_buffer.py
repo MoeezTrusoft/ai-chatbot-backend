@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import inspect
-
-import pytest
 from uuid import uuid4
 
-from bookcraft.services.chat import _EventBuffer, _IMMEDIATE_EVENT_TYPES
+from bookcraft.services.chat import _IMMEDIATE_EVENT_TYPES, _EventBuffer
 
 
 class TestEventBuffer:

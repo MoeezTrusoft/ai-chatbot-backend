@@ -1,5 +1,5 @@
 import re
-from typing import Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, status
@@ -259,7 +259,7 @@ async def chat_greet(payload: ChatGreetRequest, request: Request) -> ChatTurnRes
         update={"correlation_id": sanitize_correlation_id(payload.correlation_id)}
     )
     service: ChatService = request.app.state.chat_service
-    return await service.handle_greet(payload)
+    return cast(ChatTurnResponse, await service.handle_greet(payload))
 
 
 @router.post("/observe", status_code=204)
@@ -286,11 +286,11 @@ async def chat_handover(payload: HandoverRequest, request: Request) -> HandoverR
     settings = request.app.state.settings
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
-    return await service.handle_handover(payload)
+    return cast(HandoverResponse, await service.handle_handover(payload))
 
 
 @router.get("/debug/state/{thread_id}")
-async def chat_debug_state(thread_id: UUID, request: Request) -> dict:
+async def chat_debug_state(thread_id: UUID, request: Request) -> dict[str, Any]:
     """Return the thread's extracted state for debugging in the CSR dashboard.
 
     Shows: personal facts (name/email/phone/timezone), project facts
@@ -322,7 +322,7 @@ async def chat_inject_facts(payload: ChatFactsRequest, request: Request) -> Chat
     settings = request.app.state.settings
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
-    return await service.handle_inject_facts(payload)
+    return cast(ChatFactsResponse, await service.handle_inject_facts(payload))
 
 
 @router.post("/consultation-confirmed", response_model=ConsultationConfirmedResponse)
@@ -340,7 +340,7 @@ async def chat_consultation_confirmed(
     settings = request.app.state.settings
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
-    return await service.handle_consultation_confirmed(payload)
+    return cast(ConsultationConfirmedResponse, await service.handle_consultation_confirmed(payload))
 
 
 @router.post("/consultation-cancelled", response_model=ConsultationCancelledResponse)
@@ -357,7 +357,7 @@ async def chat_consultation_cancelled(
     settings = request.app.state.settings
     require_http_auth(request, settings)
     service: ChatService = request.app.state.chat_service
-    return await service.handle_consultation_cancelled(payload)
+    return cast(ConsultationCancelledResponse, await service.handle_consultation_cancelled(payload))
 
 
 @router.websocket("/ws/{thread_id}")

@@ -48,10 +48,11 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Any, Callable
+from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bootstrap: make the package importable and run from the repo root so the app's
@@ -67,6 +68,7 @@ for _name in ("httpx", "httpcore", "opentelemetry", "bookcraft", "uvicorn"):
 logging.basicConfig(level=logging.ERROR)
 
 from fastapi.testclient import TestClient  # noqa: E402
+
 from bookcraft.api.main import create_app  # noqa: E402
 from bookcraft.infra.config import Settings  # noqa: E402
 
@@ -280,7 +282,9 @@ class LiveTracker:
 # ─────────────────────────────────────────────────────────────────────────────
 # Session driver
 # ─────────────────────────────────────────────────────────────────────────────
-def run_session(client: TestClient, tracker: LiveTracker, session_id: int, scenario: Scenario) -> str | None:
+def run_session(
+    client: TestClient, tracker: LiveTracker, session_id: int, scenario: Scenario
+) -> str | None:
     """Run one multi-turn session sequentially; return its thread_id (or None)."""
     thread_id: str | None = None
     for i, message in enumerate(scenario.turns, start=1):
@@ -343,7 +347,9 @@ def _word_count(state: dict[str, Any]) -> str | None:
     return wc.get("value") if isinstance(wc, dict) else None
 
 
-def verify_multi_project(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_multi_project(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     """After A(80k) → B(45k) → back to A, the active word_count must not be the
     leaked 45k of book B if partitioning restored A — and must never be empty."""
     state = _debug_state(client, thread_id)
@@ -364,7 +370,9 @@ def verify_multi_project(client: TestClient, tracker: LiveTracker, scenario: Sce
     ))
 
 
-def verify_contradiction(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_contradiction(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     state = _debug_state(client, thread_id)
     wc = _word_count(state)
     # After confirming 100000, the live word_count should reflect the corrected value
@@ -376,7 +384,9 @@ def verify_contradiction(client: TestClient, tracker: LiveTracker, scenario: Sce
     ))
 
 
-def verify_reask(client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str) -> None:
+def verify_reask(
+    client: TestClient, tracker: LiveTracker, scenario: Scenario, thread_id: str
+) -> None:
     state = _debug_state(client, thread_id)
     wc = _word_count(state)
     # A fact captured on turn 1 must persist through later unrelated turns so the bot
@@ -423,7 +433,9 @@ def validate_websocket(client: TestClient, tracker: LiveTracker) -> None:
         ))
     except Exception as exc:  # noqa: BLE001
         tracker.add_check(CheckResult(
-            "websocket", "ws_bubble_stream", passed=False, detail=f"{type(exc).__name__}:{exc}"[:120],
+            "websocket", "ws_bubble_stream",
+            passed=False,
+            detail=f"{type(exc).__name__}:{exc}"[:120],
         ))
 
 
@@ -460,7 +472,9 @@ def analyze(records: list[TurnRecord], wall_seconds: float, max_in_flight: int) 
         "p50": _pct(lat, 50), "p90": _pct(lat, 90), "p95": _pct(lat, 95),
         "p99": _pct(lat, 99), "max": lat[-1] if lat else 0.0,
         "mean": mean(lat) if lat else 0.0,
-        "per_kind": {k: (_pct(sorted(v), 50), _pct(sorted(v), 95), len(v)) for k, v in per_kind.items()},
+        "per_kind": {
+            k: (_pct(sorted(v), 50), _pct(sorted(v), 95), len(v)) for k, v in per_kind.items()
+        },
     }
 
 
@@ -495,7 +509,8 @@ def print_report(stats: dict[str, Any], tracker: LiveTracker, *, label: str) -> 
     verdict = "PASS" if hard_ok else "FAIL"
     print(line)
     print(f"  VERDICT: {verdict}   "
-          f"(hard gate: 0 exceptions, 0 non-200 — got {stats['errors']} exc, {stats['non200']} non-200)")
+          f"(hard gate: 0 exceptions, 0 non-200 — got {stats['errors']} exc, "
+          f"{stats['non200']} non-200)")
     print(line)
     return hard_ok
 
@@ -545,8 +560,10 @@ def run_suite(*, optimized: bool, workers: int, replicate: int, quiet: bool, lab
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="BookCraft chatbot E2E concurrent validation harness")
-    ap.add_argument("--workers", type=int, default=16, help="concurrent worker threads (default 16)")
-    ap.add_argument("--replicate", type=int, default=3, help="times to replicate the scenario set (default 3)")
+    ap.add_argument("--workers", type=int, default=16,
+                    help="concurrent worker threads (default 16)")
+    ap.add_argument("--replicate", type=int, default=3,
+                    help="times to replicate the scenario set (default 3)")
     ap.add_argument("--quiet", action="store_true", help="suppress per-turn live lines")
     ap.add_argument("--compare-flags", action="store_true",
                     help="run the suite with upgrade flags OFF then ON and print both reports")

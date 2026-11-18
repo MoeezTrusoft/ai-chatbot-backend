@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.response.planner import ResponsePlan
-from bookcraft.components.response.quality_gate import ResponseQualityGate
+from bookcraft.components.response.quality_gate import (
+    ResponseQualityGate,
+    _engine_text_is_safe,
+    _verbatim_rag_overlap,
+)
 from bookcraft.components.response.style_policy import ResponseStylePolicy, SalesToneReport
 from bookcraft.components.tools.governance import ToolGovernanceDecision
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory
@@ -754,12 +760,6 @@ def test_quality_gate_includes_sales_tone_failure_and_repair_suggestions() -> No
 
 
 # ── Chat 6211: general verbatim RAG/document-bleed detection (Check 24) ────────
-from types import SimpleNamespace
-
-from bookcraft.components.response.quality_gate import (
-    _engine_text_is_safe,
-    _verbatim_rag_overlap,
-)
 
 
 def _chunk(content: str) -> SimpleNamespace:

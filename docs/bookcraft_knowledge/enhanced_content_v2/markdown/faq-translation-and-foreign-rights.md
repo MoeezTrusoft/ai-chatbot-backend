@@ -1,7 +1,9 @@
 ---
-source_id: translation_foreign_rights
+source_id: translation_foreign_rights_faq
 service_category: translation_foreign_rights
 title: "Translation and Foreign Rights FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Translation & Foreign-Rights / Localization__

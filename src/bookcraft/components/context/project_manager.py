@@ -169,7 +169,11 @@ class ProjectContextManager:
                 deactivated = [
                     p.model_copy(update={
                         "active": False,
-                        "known_facts": _snapshot_state_facts(state) if p.project_id == current_active_id else p.known_facts,
+                        "known_facts": (
+                            _snapshot_state_facts(state)
+                            if p.project_id == current_active_id
+                            else p.known_facts
+                        ),
                     })
                     for p in projects
                 ]
@@ -200,11 +204,16 @@ class ProjectContextManager:
             inactive = [p for p in projects if not p.active]
             if inactive:
                 target = inactive[-1]  # most recently deactivated
-                # Snapshot current project's facts before deactivation; restore target's preserved facts.
+                # Snapshot current project's facts before deactivation; restore the
+                # target's preserved facts.
                 updated = [
                     p.model_copy(update={
                         "active": p.project_id == target.project_id,
-                        "known_facts": _snapshot_state_facts(state) if p.project_id == current_active_id else p.known_facts,
+                        "known_facts": (
+                            _snapshot_state_facts(state)
+                            if p.project_id == current_active_id
+                            else p.known_facts
+                        ),
                     })
                     for p in projects
                 ]

@@ -16,7 +16,13 @@ Output JSON format:
     {
         "version": "calibrated-2024-01-01",
         "patches": [
-            {"rule_id": "SERVICE-GW-EX-001", "old_confidence": 0.85, "new_confidence": 0.91, "n_correct": 45, "n_total": 50}
+            {
+                "rule_id": "SERVICE-GW-EX-001",
+                "old_confidence": 0.85,
+                "new_confidence": 0.91,
+                "n_correct": 45,
+                "n_total": 50
+            }
         ]
     }
 """
@@ -100,7 +106,10 @@ def calibrate(
     patches = []
     for rule_id, (n_correct, n_total) in outcomes.items():
         if n_total < min_observations:
-            print(f"Skipping {rule_id}: only {n_total} observations (min={min_observations})", file=sys.stderr)
+            print(
+                f"Skipping {rule_id}: only {n_total} observations (min={min_observations})",
+                file=sys.stderr,
+            )
             continue
 
         rule = rules.get(rule_id)
@@ -148,12 +157,28 @@ def calibrate(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Calibrate TriMatch rule confidence using beta posteriors.")
-    parser.add_argument("--rule-dir", type=Path, default=Path("data/trimatch/rules"), help="Rule pack directory")
+    parser = argparse.ArgumentParser(
+        description="Calibrate TriMatch rule confidence using beta posteriors."
+    )
+    parser.add_argument(
+        "--rule-dir", type=Path, default=Path("data/trimatch/rules"), help="Rule pack directory"
+    )
     parser.add_argument("--eval-file", type=Path, required=True, help="Evaluation JSONL file")
-    parser.add_argument("--output", type=Path, default=Path("data/trimatch/calibration/confidence_patch.json"), help="Output patch file")
-    parser.add_argument("--min-observations", type=int, default=5, help="Minimum observations per rule")
-    parser.add_argument("--max-delta", type=float, default=0.3, help="Maximum allowed confidence change per calibration run")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/trimatch/calibration/confidence_patch.json"),
+        help="Output patch file",
+    )
+    parser.add_argument(
+        "--min-observations", type=int, default=5, help="Minimum observations per rule"
+    )
+    parser.add_argument(
+        "--max-delta",
+        type=float,
+        default=0.3,
+        help="Maximum allowed confidence change per calibration run",
+    )
 
     args = parser.parse_args()
 

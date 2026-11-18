@@ -39,7 +39,8 @@ def _restore_contact_fields(raw: dict[str, Any], snapshot: dict[str, Any]) -> No
     restored; each field's ``raw_excerpt`` (the source message snippet) stays redacted
     via ``_sanitize_raw_excerpts``.
     """
-    raw_personal = raw.get("personal") if isinstance(raw.get("personal"), dict) else {}
+    _raw_personal = raw.get("personal")
+    raw_personal: dict[str, Any] = _raw_personal if isinstance(_raw_personal, dict) else {}
     snap_personal = snapshot.get("personal")
     if isinstance(snap_personal, dict):
         for key in _CONTACT_KEYS:
@@ -52,7 +53,8 @@ def _restore_contact_fields(raw: dict[str, Any], snapshot: dict[str, Any]) -> No
             ):
                 snap_fm["value"] = raw_fm["value"]
 
-    raw_ci = raw.get("contact_info") if isinstance(raw.get("contact_info"), dict) else {}
+    _raw_ci = raw.get("contact_info")
+    raw_ci: dict[str, Any] = _raw_ci if isinstance(_raw_ci, dict) else {}
     snap_ci = snapshot.get("contact_info")
     if isinstance(snap_ci, dict):
         for key in _CONTACT_KEYS:

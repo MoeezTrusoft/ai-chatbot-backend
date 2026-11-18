@@ -1,6 +1,7 @@
 import re
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 from prometheus_client import Counter, Histogram
@@ -47,10 +48,10 @@ _ROMAN_URDU_MARKERS = frozenset(
         "choro", "chhoro", "karlo", "ghora", "ghoray", "masnoi", "zahanat",
         # Transliteration variants that leaked through (chat: "kia haal he kese ho?").
         # Roman Urdu has no fixed spelling, so common respellings must be covered.
-        "kese", "kesay", "kaisay", "kesa", "kesi", "kesy", "kese", "haal",
+        "kese", "kesay", "kaisay", "kesa", "kesi", "kesy", "haal",
         "hou", "houn", "kro", "krna", "krni", "kren", "krein", "krlo",
         "kyunke", "kyunkay", "kripya", "shukriya", "shukria", "meharbani",
-        "thek", "thik", "kaha", "kahan", "kaisay", "batana", "samajh", "samjha",
+        "thek", "thik", "batana", "samajh", "samjha",
         "chahye", "chahiya", "hoga", "hogi", "hoge", "tha", "thi", "thay",
     }
 )
@@ -160,10 +161,10 @@ _NON_LATIN_SCRIPT_RANGES = (
 # set stays proportional to the languages actually seen — mostly English in practice.
 # NB: the FIRST detection after a fresh process pays a one-time (~2 s) model-load cost;
 # lingua is only reached for longer, non-ASCII / ambiguous messages, so this is rare.
-_LINGUA_DETECTOR = None
+_LINGUA_DETECTOR: Any = None
 
 
-def _get_lingua_detector():
+def _get_lingua_detector() -> Any:
     global _LINGUA_DETECTOR
     if _LINGUA_DETECTOR is None:
         from lingua import LanguageDetectorBuilder

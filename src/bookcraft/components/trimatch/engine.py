@@ -255,7 +255,7 @@ class TriMatchEngine:
             if idx is None:
                 continue
             _, rule_emb = self.compiled_pack.semantic_embeddings[idx]
-            cosine = sum(a * b for a, b in zip(query_unit, rule_emb))
+            cosine = sum(a * b for a, b in zip(query_unit, rule_emb, strict=False))
             if cosine >= 0.6:  # threshold: ~36° angle
                 damped_confidence, flags = dampen_confidence(
                     processed_message.normalized[:100],

@@ -2,6 +2,8 @@
 source_id: marketing_promotion
 service_category: marketing_promotion
 title: "Marketing and Promotion at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Marketing & Promotion

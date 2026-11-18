@@ -490,7 +490,9 @@ def reduce_consultation_state(
     # extractor stores "Eastern time" → "America/New_York"). Without this, a booking
     # whose timezone only lives in personal.timezone stalls forever at
     # time_captured_needs_timezone even though the timezone IS known (BUG-6040).
-    _tz_from_personal = getattr(getattr(getattr(state, "personal", None), "timezone", None), "value", None)
+    _tz_from_personal = getattr(
+        getattr(getattr(state, "personal", None), "timezone", None), "value", None
+    )
     # Require a known timezone before booking ANY clock time — not just relative
     # windows. A definite "Monday 11am" with no stated zone must NOT be silently
     # booked as Central; confirm the customer's timezone first (audit chat 6070).

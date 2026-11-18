@@ -12,6 +12,7 @@ an explicit Q&A extraction rule with worked examples for every major slot.
 
 from __future__ import annotations
 
+from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.extraction.llm_extractor import (
     _EXTRACTION_SYSTEM,
     _EXTRACTION_USER_TEMPLATE,
@@ -20,12 +21,10 @@ from bookcraft.components.extraction.llm_extractor import (
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.extraction.state_applier import StateApplier
-from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,7 +81,10 @@ class TestExtractionTemplateStructure:
                "not_started" in _EXTRACTION_USER_TEMPLATE
 
     def test_template_has_examples_for_word_count_qa(self):
-        assert "130,000" in _EXTRACTION_USER_TEMPLATE or "word count" in _EXTRACTION_USER_TEMPLATE.lower()
+        assert (
+            "130,000" in _EXTRACTION_USER_TEMPLATE
+            or "word count" in _EXTRACTION_USER_TEMPLATE.lower()
+        )
 
     def test_rule1_now_allows_qa_implied_extractions(self):
         """Rule 1 must clarify that direct answers to questions ARE explicit statements."""
@@ -100,13 +102,20 @@ class TestChat5266QAPairs:
 
     def test_template_renders_its_all_in_head_as_answer_to_question(self):
         """The rendered prompt must show the bot's question before the user's brief answer."""
-        bot_q = "For a world this layered, do you have any of this written down (notes, outlines, lore docs), or is it all in your head right now?"
+        bot_q = (
+            "For a world this layered, do you have any of this written down (notes, outlines, "
+            "lore docs), or is it all in your head right now?"
+        )
         user_a = "Its all in head right now."
         rendered = _render_template(user_a, bot_q)
         # Bot question must appear before user answer
         assert rendered.index(bot_q) < rendered.index(user_a)
         # The extraction instruction must be present
-        assert "EXTRACTION INSTRUCTION" in rendered or "Q&A" in rendered or "replying" in rendered.lower()
+        assert (
+            "EXTRACTION INSTRUCTION" in rendered
+            or "Q&A" in rendered
+            or "replying" in rendered.lower()
+        )
 
     def test_around_130000_extraction_delta(self):
         """'around 130,000' → word_count 130000 at hedged confidence."""

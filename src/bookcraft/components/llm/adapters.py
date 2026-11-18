@@ -431,7 +431,7 @@ def _parse_structured_response(raw: str, output_model: type[BaseModel]) -> BaseM
                 # inputs are not permitted" errors on the raw envelope, which
                 # pointed nowhere near the real cause (chat 5876).
                 kinds = sorted(
-                    {b.get("type") for b in content if isinstance(b, dict) and b.get("type")}
+                    {str(b.get("type")) for b in content if isinstance(b, dict) and b.get("type")}
                 )
                 raise ValueError(
                     "model hit max_tokens before producing any text block "

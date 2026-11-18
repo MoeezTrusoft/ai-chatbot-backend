@@ -69,7 +69,7 @@ class ChatTurnRequest(BaseModel):
     proactive_messages: list[ProactiveMessage] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
-    def _require_message_or_attachment(self) -> "ChatTurnRequest":
+    def _require_message_or_attachment(self) -> ChatTurnRequest:
         if not self.message.strip() and not self.attachments:
             raise ValueError("a message or at least one attachment is required")
         return self

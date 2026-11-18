@@ -219,6 +219,7 @@ def test_consultation_accepts_email_when_provided() -> None:
 def test_consultation_parser_respects_absolute_houston_date() -> None:
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     from bookcraft.components.consultations.service import _parse_requested_start
 
     business_tz = ZoneInfo("America/Chicago")
@@ -248,6 +249,7 @@ _TZ_NAME = "America/Chicago"
 
 def _parse(text: str, now):
     from zoneinfo import ZoneInfo
+
     from bookcraft.components.consultations.service import _parse_requested_start
 
     tz = ZoneInfo(_TZ_NAME)

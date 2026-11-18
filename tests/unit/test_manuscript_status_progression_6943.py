@@ -39,7 +39,6 @@ from bookcraft.domain.enums import (
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -151,7 +150,9 @@ def test_applier_advances_draft_to_published_end_to_end():
     state.project.manuscript_status = _status_field(ManuscriptStatus.DRAFT, confidence=0.92)
     state = StateApplier().apply(
         state,
-        CombinedExtraction(state_deltas=[_status_delta(ManuscriptStatus.PUBLISHED, confidence=0.86)]),
+        CombinedExtraction(
+            state_deltas=[_status_delta(ManuscriptStatus.PUBLISHED, confidence=0.86)]
+        ),
     )
     assert state.project.manuscript_status.value == ManuscriptStatus.PUBLISHED.value
 

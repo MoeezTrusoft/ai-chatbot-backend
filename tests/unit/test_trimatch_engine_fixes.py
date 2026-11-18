@@ -13,14 +13,13 @@ import re
 import pytest
 
 from bookcraft.components.preprocessor.schemas import ProcessedMessage, TokenInfo
+from bookcraft.components.trg.schemas import ServiceShiftEvent, TRGContext
 from bookcraft.components.trimatch import (
     RulePack,
     TriMatchEngine,
     TriMatchMode,
 )
-from bookcraft.components.trg.schemas import ServiceShiftEvent, TRGContext
 from bookcraft.domain.enums import ServiceCategory
-
 
 # ---------------------------------------------------------------------------
 # Shared helper — mirrors the _processed() helper in test_trimatch_engine.py
@@ -200,7 +199,9 @@ class TestTRGArbitration:
         )
         trg_context = TRGContext(service_shifts=[declined_shift])
 
-        result = engine.classify(_processed("I need ghostwriting and editing"), trg_context=trg_context)
+        result = engine.classify(
+            _processed("I need ghostwriting and editing"), trg_context=trg_context
+        )
 
         # Ghostwriting was declined — no evidence or primary result for it.
         assert all(

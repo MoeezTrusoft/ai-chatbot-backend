@@ -11,28 +11,22 @@ Three bugs diagnosed:
 
 from __future__ import annotations
 
-import pytest
-
 from bookcraft.components.context import ContextPackBuilder
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.extraction.llm_extractor import (
-    LLMExtractionResult,
-    LLMMetadataExtractor,
     _EXTRACTION_SYSTEM,
-    _build_known_facts_block,
     _facts_to_deltas,
 )
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
+from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.leads import ContactCaptureResult, LeadObjectiveDecision
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.response.generator import _response_user_prompt
 from bookcraft.components.response.planner import ResponsePlanner, _contact_next_question
-from bookcraft.components.preprocessor.schemas import ProcessedMessage
-from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.domain.enums import QueryIntentType, SalesStage, ServiceCategory, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ServiceInterest, ThreadState
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,7 +67,9 @@ def _intent(
     )
 
 
-def _pack_with_known_facts(known_facts: list[KnownFact], *, forbidden: list[str] | None = None) -> ContextPack:
+def _pack_with_known_facts(
+    known_facts: list[KnownFact], *, forbidden: list[str] | None = None
+) -> ContextPack:
     return ContextPack(
         known_facts=known_facts,
         missing_facts=[],
@@ -227,7 +223,7 @@ class TestGeneratorMissingStr:
         prompt = self._build_prompt(state, pack)
         # The missing section should not list manuscript stage.
         assert "What we still need" in prompt
-        missing_line = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        missing_line = [line for line in prompt.splitlines() if "still need" in line.lower()]
         assert missing_line, "Prompt must contain 'What we still need' line"
         assert "manuscript" not in missing_line[0].lower()
 
@@ -242,7 +238,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=["manuscript_stage"],
         )
         prompt = self._build_prompt(state, pack)
-        missing_line = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        missing_line = [line for line in prompt.splitlines() if "still need" in line.lower()]
         assert missing_line
         assert "manuscript" in missing_line[0].lower()
 
@@ -257,7 +253,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [line for line in prompt.splitlines() if "already know" in line.lower()]
         assert known_line, "Prompt must contain 'What we already know' line"
         assert "christopher james" in known_line[0].lower()
 
@@ -272,7 +268,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [line for line in prompt.splitlines() if "already know" in line.lower()]
         assert known_line
         assert "author email" in known_line[0].lower()
 
@@ -287,7 +283,7 @@ class TestGeneratorMissingStr:
             allowed_next_questions=[],
         )
         prompt = self._build_prompt(state, pack)
-        known_line = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_line = [line for line in prompt.splitlines() if "already know" in line.lower()]
         assert known_line
         assert "author phone" in known_line[0].lower()
 
@@ -642,7 +638,7 @@ class TestChristopherJamesScenario:
             context_pack=pack,
         )
         # "What we still need" line must not mention manuscript.
-        still_need_lines = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        still_need_lines = [line for line in prompt.splitlines() if "still need" in line.lower()]
         for line in still_need_lines:
             assert "manuscript" not in line.lower(), (
                 f"'manuscript' appeared in 'still need' line after extraction: {line!r}"
@@ -664,7 +660,7 @@ class TestChristopherJamesScenario:
             runtime_atoms={},
             context_pack=pack,
         )
-        known_lines = [l for l in prompt.splitlines() if "already know" in l.lower()]
+        known_lines = [line for line in prompt.splitlines() if "already know" in line.lower()]
         assert known_lines, "Prompt must have a 'What we already know' line"
         assert "christopher james" in known_lines[0].lower(), (
             f"Author name not in 'already know' line: {known_lines[0]!r}"

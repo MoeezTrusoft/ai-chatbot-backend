@@ -5,17 +5,17 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from bookcraft.components.attachments.intake import ChatAttachment
+from bookcraft.components.consultations.slots import suggest_consultation_slot_labels
 from bookcraft.components.context.delegation import SlotResolutionStatus, load_slot_statuses
 from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.consultations.slots import suggest_consultation_slot_labels
-from bookcraft.components.sales.consultation_state import (
-    ConsultationStage,
-    is_definite_call_time,
-)
 from bookcraft.components.leads.contact_utils import (
     contact_is_complete,
     contact_status_from_dict,
+)
+from bookcraft.components.sales.consultation_state import (
+    ConsultationStage,
+    is_definite_call_time,
 )
 from bookcraft.components.trg.schemas import TRGContext
 from bookcraft.domain.enums import QueryIntentType, ServiceCategory
@@ -578,7 +578,8 @@ class ContextPackBuilder:
             if _known_meta_key not in forbidden_reasks:
                 forbidden_reasks.append(_known_meta_key)
 
-        # Token-budget trimming: cap known_facts at _MAX_TOTAL_FACTS, preferring higher-priority facts
+        # Token-budget trimming: cap known_facts at _MAX_TOTAL_FACTS, preferring
+        # higher-priority facts
         if len(known_facts) > _MAX_TOTAL_FACTS:
             known_facts = _trim_facts_by_priority(known_facts, _MAX_TOTAL_FACTS)
 
@@ -767,15 +768,25 @@ def _forbidden_reasks(
         forbidden.append("unrelated service drift")
     # Contact fields already in state must never be re-asked.
     if state is not None:
-        if getattr(getattr(state, "personal", None), "name", None) and getattr(state.personal.name, "value", None):
+        if getattr(getattr(state, "personal", None), "name", None) and getattr(
+            state.personal.name, "value", None
+        ):
             forbidden.extend(["name", "author_name", "your name"])
-        if getattr(getattr(state, "personal", None), "email", None) and getattr(state.personal.email, "value", None):
+        if getattr(getattr(state, "personal", None), "email", None) and getattr(
+            state.personal.email, "value", None
+        ):
             forbidden.extend(["email", "author_email", "your email"])
-        if getattr(getattr(state, "personal", None), "phone", None) and getattr(state.personal.phone, "value", None):
+        if getattr(getattr(state, "personal", None), "phone", None) and getattr(
+            state.personal.phone, "value", None
+        ):
             forbidden.extend(["phone", "author_phone", "your phone", "phone number"])
-        if getattr(getattr(state, "personal", None), "timezone", None) and getattr(state.personal.timezone, "value", None):
+        if getattr(getattr(state, "personal", None), "timezone", None) and getattr(
+            state.personal.timezone, "value", None
+        ):
             forbidden.extend(["timezone", "your timezone", "what timezone", "time zone"])
-        if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(state.personal.preferred_contact_method, "value", None):
+        if getattr(getattr(state, "personal", None), "preferred_contact_method", None) and getattr(
+            state.personal.preferred_contact_method, "value", None
+        ):
             forbidden.extend(["preferred contact", "how to reach", "best way to contact"])
     # The customer declined a voice call — every call-scheduling question below is
     # now a re-ask of something they already answered (chat 6816: "can they text
@@ -783,7 +794,8 @@ def _forbidden_reasks(
     if getattr(state, "call_opt_out", False):
         forbidden.extend(
             [
-                "call time (customer asked to be texted instead — do not ask them to schedule a call)",
+                "call time (customer asked to be texted instead — "
+                "do not ask them to schedule a call)",
                 "what time works for your call",
                 "when can we call you",
                 "best time to call",
@@ -793,7 +805,8 @@ def _forbidden_reasks(
     if getattr(state, "consultation_deferred", False):
         forbidden.extend(
             [
-                "consultation booking (customer postponed — do not push scheduling until they raise it)",
+                "consultation booking (customer postponed — "
+                "do not push scheduling until they raise it)",
                 "what day works for you",
                 "what time works for you",
             ]

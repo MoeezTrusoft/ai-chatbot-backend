@@ -2,6 +2,8 @@
 source_id: cover_design_illustration
 service_category: cover_design_illustration
 title: "Cover Design and Illustration at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Cover Design & Illustration

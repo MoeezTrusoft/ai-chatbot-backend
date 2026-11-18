@@ -680,8 +680,12 @@ def test_manuscript_update_template_never_splices_raw_rag_text():
     from bookcraft.domain.state import ThreadState
 
     intent = IntentVote(
-        query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE, funnel_stage=SalesStage.SERVICE_DISCOVERY,
-        needs_clarification=False, confidence=0.9, rationale="t", evidence=[],
+        query_primary=QueryIntentType.MANUSCRIPT_STATUS_UPDATE,
+        funnel_stage=SalesStage.SERVICE_DISCOVERY,
+        needs_clarification=False,
+        confidence=0.9,
+        rationale="t",
+        evidence=[],
     )
     response = _humanized_template_response(
         intent=intent, state=ThreadState(), message=_processed("finished my draft"),

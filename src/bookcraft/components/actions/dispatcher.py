@@ -5,7 +5,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import structlog
 from pydantic import ValidationError

@@ -29,7 +29,9 @@ from bookcraft.components.preprocessor.embedding import EmbeddingClient
 logger = structlog.get_logger(__name__)
 
 ENTITY_UPSERTS = Counter("entity_index_upserts_total", "Entity index upserts.", ["outcome"])
-ENTITY_RETRIEVALS = Counter("entity_index_retrievals_total", "Entity index retrievals.", ["outcome"])
+ENTITY_RETRIEVALS = Counter(
+    "entity_index_retrievals_total", "Entity index retrievals.", ["outcome"]
+)
 ENTITY_RETRIEVAL_SECONDS = Histogram("entity_retrieval_seconds", "Entity retrieval latency.")
 
 INDEX_NAME = "conversation_entities"
@@ -206,9 +208,9 @@ class ConversationEntityIndex:
                 vector_hits = await self._vector(thread_id, embedding, top_k)
                 merged = _reciprocal_rank_fusion([bm25_hits, vector_hits], top_k=top_k)
                 result = [
-                    bm25_hits.get(hit_id) or vector_hits.get(hit_id)
+                    hit
                     for hit_id, _ in merged
-                    if (bm25_hits.get(hit_id) or vector_hits.get(hit_id)) is not None
+                    if (hit := bm25_hits.get(hit_id) or vector_hits.get(hit_id)) is not None
                 ]
             ENTITY_RETRIEVALS.labels(outcome="success").inc()
             return result

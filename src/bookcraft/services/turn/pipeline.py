@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import inspect
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from typing import Union
 
 from bookcraft.infra.observability import STAGE_LATENCY
 
 from .context import TurnContext
 
-Stage = Callable[[TurnContext], Union[TurnContext, None, Awaitable[Union[TurnContext, None]]]]
+Stage = Callable[[TurnContext], TurnContext | None | Awaitable[TurnContext | None]]
 
 
 def stage(name: str) -> Callable[[Stage], Stage]:
@@ -36,7 +35,7 @@ def _stage_name(fn: Stage) -> str:
 
 
 @contextmanager
-def timed_stage(ctx: TurnContext, name: str, *, record_metric: bool = True):
+def timed_stage(ctx: TurnContext, name: str, *, record_metric: bool = True) -> Iterator[None]:
     """Time a block into ``ctx.timings[name]`` (ms) and ``STAGE_LATENCY``."""
     start = time.perf_counter()
     try:

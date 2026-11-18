@@ -277,6 +277,8 @@ def merge_call_time(existing: CallTimeParts, incoming: CallTimeParts) -> CallTim
     day = incoming.day or existing.day
     window = incoming.window or existing.window
 
+    clock: str | None
+    clock_end: str | None
     if incoming.clock:
         clock, clock_end = incoming.clock, incoming.clock_end
     else:

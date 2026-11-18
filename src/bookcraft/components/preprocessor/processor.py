@@ -6,6 +6,7 @@ from typing import Any
 
 from prometheus_client import Counter, Histogram
 
+from bookcraft.components.leads.contact_utils import is_identifier_number
 from bookcraft.components.preprocessor.detectors import (
     detect_book_format,
     detect_genre,
@@ -17,7 +18,6 @@ from bookcraft.components.preprocessor.detectors import (
     has_pricing_intent,
     split_questions,
 )
-from bookcraft.components.leads.contact_utils import is_identifier_number
 from bookcraft.components.preprocessor.embedding import EmbeddingClient
 from bookcraft.components.preprocessor.negation_targets import NegationTargetResolver
 from bookcraft.components.preprocessor.schemas import ProcessedMessage, Span, TokenInfo

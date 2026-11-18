@@ -1,7 +1,9 @@
 ---
-source_id: fine_art_monograph
+source_id: fine_art_monograph_faq
 service_category: fine_art_monograph
 title: "Fine-Art Monograph Publishing FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Fine-Art & Premium Monograph Publishing__

@@ -2,6 +2,8 @@
 source_id: editing_proofreading
 service_category: editing_proofreading
 title: "Editing and Proofreading at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Editing & Proofreading

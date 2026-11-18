@@ -14,17 +14,16 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bookcraft.api.main import create_app
-from bookcraft.components.csr.commitment_detector import CsrCommitment, detect_commitments
+from bookcraft.components.csr.commitment_detector import detect_commitments
 from bookcraft.components.csr.summarizer import CsrContextSummarizer
-from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor, LLMExtractionResult
+from bookcraft.components.extraction.llm_extractor import LLMMetadataExtractor
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.extraction.schemas import StateDelta
 from bookcraft.components.trg import InMemoryGraphRepository, TemporalRelationGraphEngine
@@ -32,7 +31,6 @@ from bookcraft.components.trg.schemas import GraphNodeType
 from bookcraft.domain.enums import Source
 from bookcraft.domain.state import ThreadState
 from bookcraft.infra.config import Settings
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -126,12 +124,18 @@ class _MockAdapter:
 async def test_llm_extractor_high_confidence_produces_full_delta() -> None:
     """≥0.85 confidence → delta keeps the raw confidence (override-capable)."""
     facts = LLMExtractedFacts(
-        name=ExtractedValue(value="Layla Hassan", confidence=0.95, source_quote="my name is Layla Hassan"),
-        email=ExtractedValue(value="layla@example.com", confidence=0.92, source_quote="layla@example.com"),
+        name=ExtractedValue(
+            value="Layla Hassan", confidence=0.95, source_quote="my name is Layla Hassan"
+        ),
+        email=ExtractedValue(
+            value="layla@example.com", confidence=0.92, source_quote="layla@example.com"
+        ),
         word_count=ExtractedValue(value=72000, confidence=0.90, source_quote="72,000 words"),
     )
     extractor = LLMMetadataExtractor(adapter=_MockAdapter(facts))
-    result = await extractor.extract("My name is Layla Hassan, email layla@example.com, 72k words", "", ThreadState())
+    result = await extractor.extract(
+        "My name is Layla Hassan, email layla@example.com, 72k words", "", ThreadState()
+    )
 
     assert len(result.state_deltas) == 3
     paths = {d.path for d in result.state_deltas}
@@ -148,7 +152,9 @@ async def test_llm_extractor_high_confidence_produces_full_delta() -> None:
 async def test_llm_extractor_low_confidence_downscaled_to_fill_value() -> None:
     """<0.85 confidence → forced to 0.3 so StateApplier only fills empty fields."""
     facts = LLMExtractedFacts(
-        genre=ExtractedValue(value="maybe thriller", confidence=0.60, source_quote="maybe thriller"),
+        genre=ExtractedValue(
+            value="maybe thriller", confidence=0.60, source_quote="maybe thriller"
+        ),
     )
     extractor = LLMMetadataExtractor(adapter=_MockAdapter(facts))
     result = await extractor.extract("maybe thriller", "", ThreadState())
@@ -253,8 +259,11 @@ async def test_trg_engagement_weight_higher_for_questions() -> None:
         user_text="I need editing.", assistant_text="OK.",
     )
     questioning = await engine.update_after_turn(
-        thread_id=thread_id, turn_sequence=2,
-        user_text="Can you tell me the pricing? How long will it take? What formats do you support?",
+        thread_id=thread_id,
+        turn_sequence=2,
+        user_text=(
+            "Can you tell me the pricing? How long will it take? What formats do you support?"
+        ),
         assistant_text="Let me explain...",
     )
 
@@ -331,7 +340,9 @@ async def test_trg_compaction_never_drops_state_fact_nodes() -> None:
 
     # Verify STATE_FACT node was created
     graph_after_correction = await engine.repository.load(thread_id)
-    fact_nodes_before = [n for n in graph_after_correction.nodes if n.node_type == GraphNodeType.STATE_FACT]
+    fact_nodes_before = [
+        n for n in graph_after_correction.nodes if n.node_type == GraphNodeType.STATE_FACT
+    ]
     assert len(fact_nodes_before) > 0, "STATE_FACT node should exist after contradiction"
 
     # Now drive compaction with 10 more turns (compact_keep=4, so most turns drop)
@@ -425,16 +436,28 @@ async def test_csr_summarizer_fourth_turn_compresses_oldest() -> None:
     summarizer = CsrContextSummarizer()  # no adapter → naive fallback
     state = ThreadState()
 
-    await summarizer.ingest(state, user_message="Hi", csr_message="Hello, I am Sarah from BookCraft.")
-    await summarizer.ingest(state, user_message="Tell me about editing", csr_message="We offer developmental editing.")
-    await summarizer.ingest(state, user_message="What's the price?", csr_message="Editing starts at $800.")
+    await summarizer.ingest(
+        state, user_message="Hi", csr_message="Hello, I am Sarah from BookCraft."
+    )
+    await summarizer.ingest(
+        state, user_message="Tell me about editing", csr_message="We offer developmental editing."
+    )
+    await summarizer.ingest(
+        state, user_message="What's the price?", csr_message="Editing starts at $800."
+    )
     # 4th turn — oldest should compress into abstract
-    await summarizer.ingest(state, user_message="How long does it take?", csr_message="Typically 3 weeks turnaround.")
+    await summarizer.ingest(
+        state, user_message="How long does it take?", csr_message="Typically 3 weeks turnaround."
+    )
 
     assert len(state.csr_context_recent_verbatim) == 3
     # Abstract must not be empty — oldest turn ("Hello, I am Sarah...") went there
     assert state.csr_context_abstract, "Abstract should contain compressed first turn"
-    assert "Sarah" in state.csr_context_abstract or "BookCraft" in state.csr_context_abstract or "Hello" in state.csr_context_abstract
+    assert (
+        "Sarah" in state.csr_context_abstract
+        or "BookCraft" in state.csr_context_abstract
+        or "Hello" in state.csr_context_abstract
+    )
 
 
 @pytest.mark.asyncio
@@ -444,7 +467,7 @@ async def test_csr_summarizer_window_always_keeps_latest_three() -> None:
     state = ThreadState()
 
     messages = [f"CSR says turn {i}" for i in range(8)]
-    for i, msg in enumerate(messages):
+    for msg in messages:
         await summarizer.ingest(state, user_message=None, csr_message=msg)
 
     verbatim = state.csr_context_recent_verbatim
@@ -463,7 +486,10 @@ async def test_csr_summarizer_with_llm_adapter_called_on_overflow() -> None:
 
     class _TrackingAdapter:
         name = "tracker"
-        async def structured(self, *, system: str, user: str, output_model: Any, purpose: str) -> Any:
+
+        async def structured(
+            self, *, system: str, user: str, output_model: Any, purpose: str
+        ) -> Any:
             compress_calls.append(user[:80])
             # Return an instance of whatever output_model the summarizer passes in
             # (it's _AbstractModel with a `text` field)
@@ -539,7 +565,9 @@ def test_csr_turn_populates_verbatim_window() -> None:
 
         _csr_turn(client, thread_id, csr_message="Formatting covers interior layout and design.")
         _csr_turn(client, thread_id, csr_message="We support epub, mobi, and print-ready PDF.")
-        _csr_turn(client, thread_id, csr_message="Our turnaround for formatting is 10 business days.")
+        _csr_turn(
+            client, thread_id, csr_message="Our turnaround for formatting is 10 business days."
+        )
 
         state = _state(client, thread_id)
         assert len(state.csr_context_recent_verbatim) == 3
@@ -554,9 +582,17 @@ def test_csr_turn_overflows_to_abstract_on_fourth() -> None:
         thread_id = r1["thread_id"]
 
         _csr_turn(client, thread_id, csr_message="Let me explain our NDA process first.")
-        _csr_turn(client, thread_id, csr_message="We require a signed agreement before any project begins.")
-        _csr_turn(client, thread_id, csr_message="Ghostwriting engagements start with a discovery call.")
-        _csr_turn(client, thread_id, csr_message="Packages for ghostwriting range from $5,000 to $15,000.")
+        _csr_turn(
+            client,
+            thread_id,
+            csr_message="We require a signed agreement before any project begins.",
+        )
+        _csr_turn(
+            client, thread_id, csr_message="Ghostwriting engagements start with a discovery call."
+        )
+        _csr_turn(
+            client, thread_id, csr_message="Packages for ghostwriting range from $5,000 to $15,000."
+        )
 
         state = _state(client, thread_id)
         assert len(state.csr_context_recent_verbatim) == 3
@@ -668,7 +704,10 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
     app = _app()
     with TestClient(app) as client:
         # ── Bot discovery phase (turns 1–4) ──────────────────────────────
-        r1 = _turn(client, "Hi, I'm Abdullah Malik. I've written a 78,000-word thriller called 'Dark Signal'.")
+        r1 = _turn(
+            client,
+            "Hi, I'm Abdullah Malik. I've written a 78,000-word thriller called 'Dark Signal'.",
+        )
         thread_id = r1["thread_id"]
         assert thread_id
 
@@ -757,15 +796,21 @@ def test_full_12_turn_bot_csr_bot_journey() -> None:
         assert state_csr_phase.csr_commitments, "CSR commitments should be recorded"
         commitment_types = {c["type"] for c in state_csr_phase.csr_commitments}
         assert "price_quoted" in commitment_types, f"Expected price_quoted, got: {commitment_types}"
-        assert "timeline_promised" in commitment_types, f"Expected timeline_promised, got: {commitment_types}"
-        assert "discount_offered" in commitment_types, f"Expected discount_offered, got: {commitment_types}"
+        assert "timeline_promised" in commitment_types, (
+            f"Expected timeline_promised, got: {commitment_types}"
+        )
+        assert "discount_offered" in commitment_types, (
+            f"Expected discount_offered, got: {commitment_types}"
+        )
 
         # Validate csr_name stored correctly
         for c in state_csr_phase.csr_commitments:
             assert c.get("csr_name") == "Sarah Thompson", f"Wrong csr_name: {c}"
 
         # ── Handover back to bot ──────────────────────────────────────────
-        ho2 = _handover(client, thread_id, "to_bot", csr_id="csr-sarah-01", csr_name="Sarah Thompson")
+        ho2 = _handover(
+            client, thread_id, "to_bot", csr_id="csr-sarah-01", csr_name="Sarah Thompson"
+        )
         assert ho2["csr_handover_active"] is False
 
         state_post_handover = _state(client, thread_id)
