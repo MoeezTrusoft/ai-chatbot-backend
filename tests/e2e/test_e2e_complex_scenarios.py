@@ -88,7 +88,9 @@ def _summarise_turn(
     return {
         "turn": turn,
         "user": message[:80] + ("…" if len(message) > 80 else ""),
-        "source": body.get("bubbles", [{}])[0].get("source") if body.get("bubbles") else trace.get("assistant", {}).get("source"),
+        "source": body.get("bubbles", [{}])[0].get("source")
+        if body.get("bubbles")
+        else trace.get("assistant", {}).get("source"),
         "primary_goal": rp.get("primary_goal"),
         "next_question": rp.get("next_question"),
         "lead_move": lead.get("objective_move"),
@@ -186,29 +188,83 @@ def test_thread1_publishing_journey_with_pivot() -> None:
 
     with _build_client() as client:
         # Turn 1: first message with service signal — must welcome, not demand contact.
-        r1 = _chat(client, "Hellloooo! I just finished my fantasy novel — 85,000 words. I need help publishing it.")
+        r1 = _chat(
+            client,
+            "Hellloooo! I just finished my fantasy novel — 85,000 words. I need help publishing "
+            "it.",
+        )
         tid = r1["thread_id"]
-        turns.append(_summarise_turn(turn=1, message="Hellloooo! I just finished my fantasy novel — 85,000 words. I need help publishing it.", body=r1, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=1,
+                message=(
+                    "Hellloooo! I just finished my fantasy novel — 85,000 words. I need help "
+                    "publishing it."
+                ),
+                body=r1,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 2: asking a direct question — must answer, not ask for contact.
         r2 = _chat(client, "Tell me how the publishing process works?", thread_id=tid)
-        turns.append(_summarise_turn(turn=2, message="Tell me how the publishing process works?", body=r2, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=2,
+                message="Tell me how the publishing process works?",
+                body=r2,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 3: pricing question — allowed to ask contact after turn 2.
         r3 = _chat(client, "How much does publishing distribution cost?", thread_id=tid)
-        turns.append(_summarise_turn(turn=3, message="How much does publishing distribution cost?", body=r3, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=3,
+                message="How much does publishing distribution cost?",
+                body=r3,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 4: service pivot — cover design.
-        r4 = _chat(client, "Actually forget publishing for now — I need a cover design first. My genre is fantasy.", thread_id=tid)
-        turns.append(_summarise_turn(turn=4, message="Actually forget publishing for now — I need a cover design first.", body=r4, trace=_trace(client, tid)))
+        r4 = _chat(
+            client,
+            "Actually forget publishing for now — I need a cover design first. My genre is "
+            "fantasy.",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=4,
+                message="Actually forget publishing for now — I need a cover design first.",
+                body=r4,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 5: provide contact + book slot.
         r5 = _chat(client, "Maya Author maya@example.com +1 555 987 6543", thread_id=tid)
-        turns.append(_summarise_turn(turn=5, message="Maya Author maya@example.com +1 555 987 6543", body=r5, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=5,
+                message="Maya Author maya@example.com +1 555 987 6543",
+                body=r5,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 6: manuscript status update → should celebrate, not scope.
         r6 = _chat(client, "I just finished the final chapter — it's done!", thread_id=tid)
-        turns.append(_summarise_turn(turn=6, message="I just finished the final chapter — it's done!", body=r6, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=6,
+                message="I just finished the final chapter — it's done!",
+                body=r6,
+                trace=_trace(client, tid),
+            )
+        )
 
     _print_thread_report(thread_name, turns)
 
@@ -221,9 +277,11 @@ def test_thread1_publishing_journey_with_pivot() -> None:
     )
 
     # Turn 6: manuscript status update → must map to celebrate_and_advance.
-    assert turns[5]["primary_goal"] in {"celebrate_and_advance", "answer_current_question", "continue_discovery"}, (
-        f"Manuscript status update must not produce scoping goal, got: {turns[5]['primary_goal']}"
-    )
+    assert turns[5]["primary_goal"] in {
+        "celebrate_and_advance",
+        "answer_current_question",
+        "continue_discovery",
+    }, f"Manuscript status update must not produce scoping goal, got: {turns[5]['primary_goal']}"
 
 
 # ===========================================================================
@@ -243,23 +301,56 @@ def test_thread2_consultation_booking_flow() -> None:
         # Turn 1: consultation request.
         r1 = _chat(client, "I need the free consultation you offer.")
         tid = r1["thread_id"]
-        turns.append(_summarise_turn(turn=1, message="I need the free consultation you offer.", body=r1, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=1,
+                message="I need the free consultation you offer.",
+                body=r1,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 2: provide contact + call time (relative window).
-        r2 = _chat(client, "Maya Author maya@example.com +1 555 987 6543 — Friday afternoon works for me.", thread_id=tid)
-        turns.append(_summarise_turn(turn=2, message="Maya Author maya@example.com +1 555 987 6543 — Friday afternoon.", body=r2, trace=_trace(client, tid)))
+        r2 = _chat(
+            client,
+            "Maya Author maya@example.com +1 555 987 6543 — Friday afternoon works for me.",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=2,
+                message="Maya Author maya@example.com +1 555 987 6543 — Friday afternoon.",
+                body=r2,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 3: status question — must not re-ask contact.
         r3 = _chat(client, "Have my consultation been scheduled?", thread_id=tid)
-        turns.append(_summarise_turn(turn=3, message="Have my consultation been scheduled?", body=r3, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=3,
+                message="Have my consultation been scheduled?",
+                body=r3,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 4: provide timezone.
         r4 = _chat(client, "I'm in EST timezone.", thread_id=tid)
-        turns.append(_summarise_turn(turn=4, message="I'm in EST timezone.", body=r4, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=4, message="I'm in EST timezone.", body=r4, trace=_trace(client, tid)
+            )
+        )
 
         # Turn 5: confirmation.
         r5 = _chat(client, "Yes please book it.", thread_id=tid)
-        turns.append(_summarise_turn(turn=5, message="Yes please book it.", body=r5, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=5, message="Yes please book it.", body=r5, trace=_trace(client, tid)
+            )
+        )
 
     _print_thread_report(thread_name, turns)
     _assert_no_contact_on_first_turn(turns, thread_name)
@@ -271,11 +362,15 @@ def test_thread2_consultation_booking_flow() -> None:
     )
 
     # Turn 3: status question — must not ask for contact again.
-    t3_text = ""  # can't easily get the text here but check lead move
+    # Can't easily get the text here, so check the lead move instead.
     assert turns[2]["lead_move"] != "ask_contact" or turns[2]["consultation_stage"] in {
-        "time_captured_needs_timezone", "ready_to_schedule", "pending_confirmation", "scheduled"
+        "time_captured_needs_timezone",
+        "ready_to_schedule",
+        "pending_confirmation",
+        "scheduled",
     }, (
-        f"Turn 3 (status question): must not re-ask contact, consultation_stage={turns[2]['consultation_stage']}"
+        "Turn 3 (status question): must not re-ask contact, "
+        f"consultation_stage={turns[2]['consultation_stage']}"
     )
 
 
@@ -304,31 +399,57 @@ def test_thread3_multi_intent_bundle() -> None:
 
         # Turn 2: pricing detail.
         r2 = _chat(client, "My thriller is 90,000 words, fully written.", thread_id=tid)
-        turns.append(_summarise_turn(turn=2, message="My thriller is 90,000 words, fully written.", body=r2, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=2,
+                message="My thriller is 90,000 words, fully written.",
+                body=r2,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 3: payment question (late-funnel signal).
         r3 = _chat(client, "How do I pay for services? Do you accept credit card?", thread_id=tid)
-        turns.append(_summarise_turn(turn=3, message="How do I pay? Do you accept credit card?", body=r3, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=3,
+                message="How do I pay? Do you accept credit card?",
+                body=r3,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 4: ready-to-start.
-        r4 = _chat(client, "I'm ready to start — John Smith john@example.com 5551234567", thread_id=tid)
-        turns.append(_summarise_turn(turn=4, message="I'm ready to start — John Smith john@example.com", body=r4, trace=_trace(client, tid)))
+        r4 = _chat(
+            client, "I'm ready to start — John Smith john@example.com 5551234567", thread_id=tid
+        )
+        turns.append(
+            _summarise_turn(
+                turn=4,
+                message="I'm ready to start — John Smith john@example.com",
+                body=r4,
+                trace=_trace(client, tid),
+            )
+        )
 
     _print_thread_report(thread_name, turns)
     _assert_no_contact_on_first_turn(turns, thread_name)
     _assert_quality_passes(turns, thread_name)
 
     # Turn 3: payment question must map to payment_guidance goal.
-    assert turns[2]["primary_goal"] in {"payment_guidance", "answer_current_question", "continue_discovery"}, (
-        f"Payment question must not produce generic scoping, got: {turns[2]['primary_goal']}"
-    )
+    assert turns[2]["primary_goal"] in {
+        "payment_guidance",
+        "answer_current_question",
+        "continue_discovery",
+    }, f"Payment question must not produce generic scoping, got: {turns[2]['primary_goal']}"
     assert turns[2]["lead_move"] != "ask_contact", (
         "Payment question must not immediately trigger contact ask"
     )
 
     # Turn 4: contact provided + ready-to-start → create_lead.
     assert turns[3]["lead_move"] in {"create_lead", "ask_contact"}, (
-        f"Turn 4: with contact + buying intent, should move to create_lead, got: {turns[3]['lead_move']}"
+        "Turn 4: with contact + buying intent, should move to create_lead, got: "
+        f"{turns[3]['lead_move']}"
     )
 
 
@@ -349,31 +470,84 @@ def test_thread4_frustrated_user_recovery() -> None:
         # Turn 1: normal first message.
         r1 = _chat(client, "I need editing for my memoir.")
         tid = r1["thread_id"]
-        turns.append(_summarise_turn(turn=1, message="I need editing for my memoir.", body=r1, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=1, message="I need editing for my memoir.", body=r1, trace=_trace(client, tid)
+            )
+        )
 
         # Turn 2: casual frustration — should be warn or allow, not block.
-        r2 = _chat(client, "This is so confusing — what the hell do I even need to do?", thread_id=tid)
-        turns.append(_summarise_turn(turn=2, message="This is so confusing — what the hell!", body=r2, trace=_trace(client, tid)))
+        r2 = _chat(
+            client, "This is so confusing — what the hell do I even need to do?", thread_id=tid
+        )
+        turns.append(
+            _summarise_turn(
+                turn=2,
+                message="This is so confusing — what the hell!",
+                body=r2,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 3: deflection after a contact ask (simulating backoff scenario).
-        r3 = _chat(client, "Ok ok hold on, tell me more about your editing service first.", thread_id=tid)
-        turns.append(_summarise_turn(turn=3, message="Tell me more about your editing service first.", body=r3, trace=_trace(client, tid)))
+        r3 = _chat(
+            client, "Ok ok hold on, tell me more about your editing service first.", thread_id=tid
+        )
+        turns.append(
+            _summarise_turn(
+                turn=3,
+                message="Tell me more about your editing service first.",
+                body=r3,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 4: revision question (long-tail intent).
         r4 = _chat(client, "Can you revise Chapter 3? It needs a complete rewrite.", thread_id=tid)
-        turns.append(_summarise_turn(turn=4, message="Can you revise Chapter 3?", body=r4, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=4, message="Can you revise Chapter 3?", body=r4, trace=_trace(client, tid)
+            )
+        )
 
         # Turn 5: user recovers and provides info.
-        r5 = _chat(client, "My memoir is 65,000 words, fully written. I need copy editing.", thread_id=tid)
-        turns.append(_summarise_turn(turn=5, message="65,000 words, fully written, copy editing.", body=r5, trace=_trace(client, tid)))
+        r5 = _chat(
+            client, "My memoir is 65,000 words, fully written. I need copy editing.", thread_id=tid
+        )
+        turns.append(
+            _summarise_turn(
+                turn=5,
+                message="65,000 words, fully written, copy editing.",
+                body=r5,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 6: pricing question.
         r6 = _chat(client, "How much does copy editing cost for 65k words?", thread_id=tid)
-        turns.append(_summarise_turn(turn=6, message="How much does copy editing cost for 65k words?", body=r6, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=6,
+                message="How much does copy editing cost for 65k words?",
+                body=r6,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 7: provide contact.
-        r7 = _chat(client, "Maya Author maya@example.com +1 555 987 6543. I want to get a quote.", thread_id=tid)
-        turns.append(_summarise_turn(turn=7, message="Maya Author maya@example.com I want a quote.", body=r7, trace=_trace(client, tid)))
+        r7 = _chat(
+            client,
+            "Maya Author maya@example.com +1 555 987 6543. I want to get a quote.",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=7,
+                message="Maya Author maya@example.com I want a quote.",
+                body=r7,
+                trace=_trace(client, tid),
+            )
+        )
 
     _print_thread_report(thread_name, turns)
     _assert_no_contact_on_first_turn(turns, thread_name)
@@ -385,9 +559,11 @@ def test_thread4_frustrated_user_recovery() -> None:
     )
 
     # Turn 4: revision question → revision_response or answer goal.
-    assert turns[3]["primary_goal"] in {"revision_response", "answer_current_question", "continue_discovery"}, (
-        f"Revision question must map to revision goal, got: {turns[3]['primary_goal']}"
-    )
+    assert turns[3]["primary_goal"] in {
+        "revision_response",
+        "answer_current_question",
+        "continue_discovery",
+    }, f"Revision question must map to revision goal, got: {turns[3]['primary_goal']}"
     assert turns[3]["lead_move"] != "ask_contact", (
         "Revision question must not trigger immediate contact ask"
     )
@@ -417,31 +593,95 @@ def test_thread5_off_topic_redirect_to_ghostwriting() -> None:
         # Turn 1: off-topic question.
         r1 = _chat(client, "What's the best coffee shop in Chicago?")
         tid = r1["thread_id"]
-        turns.append(_summarise_turn(turn=1, message="What's the best coffee shop in Chicago?", body=r1, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=1,
+                message="What's the best coffee shop in Chicago?",
+                body=r1,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 2: unclear/garbled message.
         r2 = _chat(client, "asdf lkjh qwerty I don't even know what I'm asking", thread_id=tid)
-        turns.append(_summarise_turn(turn=2, message="asdf lkjh qwerty I don't know what I'm asking", body=r2, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=2,
+                message="asdf lkjh qwerty I don't know what I'm asking",
+                body=r2,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 3: real question about ghostwriting.
-        r3 = _chat(client, "I have an idea for a business book but I don't know how to write it. Can you help?", thread_id=tid)
-        turns.append(_summarise_turn(turn=3, message="I have a business book idea, can you help write it?", body=r3, trace=_trace(client, tid)))
+        r3 = _chat(
+            client,
+            "I have an idea for a business book but I don't know how to write it. Can you help?",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=3,
+                message="I have a business book idea, can you help write it?",
+                body=r3,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 4: manuscript status update (milestone).
         r4 = _chat(client, "I just wrote my first 10,000 words!", thread_id=tid)
-        turns.append(_summarise_turn(turn=4, message="I just wrote my first 10,000 words!", body=r4, trace=_trace(client, tid)))
+        turns.append(
+            _summarise_turn(
+                turn=4,
+                message="I just wrote my first 10,000 words!",
+                body=r4,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 5: topic switch — from ghostwriting to publishing.
-        r5 = _chat(client, "Actually, I already have a full manuscript — forget ghostwriting. I need publishing distribution.", thread_id=tid)
-        turns.append(_summarise_turn(turn=5, message="Actually I have a full manuscript — need publishing distribution.", body=r5, trace=_trace(client, tid)))
+        r5 = _chat(
+            client,
+            "Actually, I already have a full manuscript — forget ghostwriting. I need publishing "
+            "distribution.",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=5,
+                message="Actually I have a full manuscript — need publishing distribution.",
+                body=r5,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 6: contact ask backoff scenario.
-        r6 = _chat(client, "Ok ok wait — tell me more about what platforms you support.", thread_id=tid)
-        turns.append(_summarise_turn(turn=6, message="Tell me more about what platforms you support.", body=r6, trace=_trace(client, tid)))
+        r6 = _chat(
+            client, "Ok ok wait — tell me more about what platforms you support.", thread_id=tid
+        )
+        turns.append(
+            _summarise_turn(
+                turn=6,
+                message="Tell me more about what platforms you support.",
+                body=r6,
+                trace=_trace(client, tid),
+            )
+        )
 
         # Turn 7: provide contact + booking intent.
-        r7 = _chat(client, "John Smith john@example.com 5551234567 — I want to book a consultation.", thread_id=tid)
-        turns.append(_summarise_turn(turn=7, message="John Smith john@example.com book a consultation.", body=r7, trace=_trace(client, tid)))
+        r7 = _chat(
+            client,
+            "John Smith john@example.com 5551234567 — I want to book a consultation.",
+            thread_id=tid,
+        )
+        turns.append(
+            _summarise_turn(
+                turn=7,
+                message="John Smith john@example.com book a consultation.",
+                body=r7,
+                trace=_trace(client, tid),
+            )
+        )
 
     _print_thread_report(thread_name, turns)
     _assert_no_contact_on_first_turn(turns, thread_name)
@@ -458,14 +698,18 @@ def test_thread5_off_topic_redirect_to_ghostwriting() -> None:
     )
 
     # Turn 2: unclear → gentle_clarify.
-    assert turns[1]["primary_goal"] in {"gentle_clarify", "continue_discovery", "greeting_welcome"}, (
-        f"Unclear message must not produce scoping goal, got: {turns[1]['primary_goal']}"
-    )
+    assert turns[1]["primary_goal"] in {
+        "gentle_clarify",
+        "continue_discovery",
+        "greeting_welcome",
+    }, f"Unclear message must not produce scoping goal, got: {turns[1]['primary_goal']}"
 
     # Turn 4: manuscript status update → should celebrate.
-    assert turns[3]["primary_goal"] in {"celebrate_and_advance", "answer_current_question", "continue_discovery"}, (
-        f"Manuscript status update must celebrate, not scope, got: {turns[3]['primary_goal']}"
-    )
+    assert turns[3]["primary_goal"] in {
+        "celebrate_and_advance",
+        "answer_current_question",
+        "continue_discovery",
+    }, f"Manuscript status update must celebrate, not scope, got: {turns[3]['primary_goal']}"
 
     # Turn 7: contact + consultation request → consultation or create_lead.
     assert turns[6]["lead_move"] in {"create_lead", "ask_contact", "offer_consultation"}, (
@@ -512,7 +756,7 @@ def test_combined_performance_report() -> None:
     }
     for thread_name, results in all_results.items():
         if "error" in results:
-            assert False, f"{thread_name}: CRASHED — {results['error']}"
+            raise AssertionError(f"{thread_name}: CRASHED — {results['error']}")
         # Multi-intent high-value bundles (pricing+portfolio+NDA) legitimately bypass welcome.
         _first_intent = (results.get("goals_used") or [""])[0]
         _is_high_intent_thread = results.get("action_types") and any(
@@ -534,7 +778,8 @@ def _run_thread1() -> dict:
     turns = []
     with _build_client() as client:
         messages = [
-            "Hellloooo! I just finished my fantasy novel — 85,000 words. I need help publishing it.",
+            "Hellloooo! I just finished my fantasy novel — 85,000 words. I need help publishing "
+            "it.",
             "Tell me how the publishing process works step by step?",
             "How much does publishing distribution cost?",
             "Actually forget publishing for now — I need a cover design first.",
@@ -575,7 +820,8 @@ def _run_thread3() -> dict:
     turns = []
     with _build_client() as client:
         messages = [
-            "Hi, how much does cover design cost, can you show thriller samples, and I need an NDA.",
+            "Hi, how much does cover design cost, can you show thriller samples, and I need an "
+            "NDA.",
             "My thriller is 90,000 words, fully written.",
             "How do I pay for services? Do you accept credit card?",
             "I'm ready to start — John Smith john@example.com 5551234567",
@@ -674,9 +920,22 @@ def _print_combined_report(all_results: dict[str, dict]) -> None:
         contact_icon = "✗" if results["first_turn_contact_ask"] else "✓"
         print(f"\n  {icon} {thread_name}")
         print(f"     Turns        : {results['total_turns']}")
-        print(f"     Quality Pass : {results['quality_pass_rate']:.0%}  {'✓ all passed' if results['quality_pass_rate']==1.0 else '✗ failures: ' + str(results['quality_failures'])}")
-        print(f"     Welcome-First: {contact_icon}  {'✓ no contact on turn 1' if not results['first_turn_contact_ask'] else '✗ ASKED CONTACT ON TURN 1'}")
-        print(f"     Contact Made : {'✓' if results['contact_achieved'] else '○ (no contact in this thread)'}")
+        quality_note = (
+            "✓ all passed"
+            if results["quality_pass_rate"] == 1.0
+            else "✗ failures: " + str(results["quality_failures"])
+        )
+        print(f"     Quality Pass : {results['quality_pass_rate']:.0%}  {quality_note}")
+        welcome_note = (
+            "✓ no contact on turn 1"
+            if not results["first_turn_contact_ask"]
+            else "✗ ASKED CONTACT ON TURN 1"
+        )
+        print(f"     Welcome-First: {contact_icon}  {welcome_note}")
+        print(
+            "     Contact Made : "
+            f"{'✓' if results['contact_achieved'] else '○ (no contact in this thread)'}"
+        )
         print(f"     Goals Used   : {', '.join(str(g) for g in results['goals_used'])}")
         print(f"     Sources      : {', '.join(str(s) for s in results['sources_used'])}")
         if results["action_types"]:

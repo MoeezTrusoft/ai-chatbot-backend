@@ -116,7 +116,8 @@ class _FakeLLMExtractor:
         if m:
             deltas.append(StateDelta(
                 path="personal.name", value=m.group(1).strip(), confidence=0.92,
-                source=Source.AI_EXTRACTED, extracted_by="fake_llm.v1", raw_excerpt=m.group(1).strip(),
+                source=Source.AI_EXTRACTED, extracted_by="fake_llm.v1",
+                raw_excerpt=m.group(1).strip(),
             ))
         return LLMExtractionResult(state_deltas=deltas, rich_metadata={}, coreference_notes=[])
 
@@ -207,7 +208,7 @@ async def main() -> int:
     r = await turn("I'd like to book a free consultation for ghostwriting.", None)
     tid2 = r["thread_id"]
     await turn("My name is Maya Author, maya@example.com, +1 555 987 6543.", tid2)
-    rprop = await turn("Let's schedule the call for Friday afternoon, Eastern time.", tid2)
+    await turn("Let's schedule the call for Friday afternoon, Eastern time.", tid2)
     # The booking proposal should now be pending confirmation.
     dbg_prop = await chat.get_thread_debug_state(tid2)
     check("consultation reaches pending confirmation",
@@ -225,11 +226,15 @@ async def main() -> int:
         check("consultation.customer_name == 'Maya Author'",
               consult.customer_name == "Maya Author", repr(consult.customer_name))
         check("consultation has CSR assigned", bool(consult.csr_name), repr(consult.csr_name))
-        check("consultation.status == 'scheduled'", consult.status == "scheduled", repr(consult.status))
-    csr_post = next((p for p in CSR_NODE_POSTS if (p.get("email") or "") == "maya@example.com"), None)
+        check("consultation.status == 'scheduled'",
+              consult.status == "scheduled", repr(consult.status))
+    csr_post = next(
+        (p for p in CSR_NODE_POSTS if (p.get("email") or "") == "maya@example.com"), None
+    )
     check("CSR Node POST captured", csr_post is not None)
     if csr_post:
-        check("CSR POST name == 'Maya Author'", csr_post["name"] == "Maya Author", repr(csr_post["name"]))
+        check("CSR POST name == 'Maya Author'",
+              csr_post["name"] == "Maya Author", repr(csr_post["name"]))
         check("CSR POST has startsAtUtc", bool(csr_post["startsAtUtc"]))
         check("CSR POST source == 'ai_chatbot'", csr_post["source"] == "ai_chatbot")
 
@@ -237,13 +242,14 @@ async def main() -> int:
     print("\n▶ S3: Cross-turn contact (email turn 1, name later) survives persistence")
     r = await turn("I want a consultation. My email is clifford@safarisolutions.com", None)
     tid3 = r["thread_id"]
-    rn = await turn("My name is Ann Carter", tid3)
+    await turn("My name is Ann Carter", tid3)
     leads3 = await _leads(sf)
     lead3 = next((x for x in leads3 if (x.email or "") == "clifford@safarisolutions.com"), None)
     check("lead assembled across turns (email survived)", lead3 is not None)
     if lead3:
         check("lead3.name == 'Ann Carter'", lead3.name == "Ann Carter", repr(lead3.name))
-        check("lead3.email survived turn 1", lead3.email == "clifford@safarisolutions.com", repr(lead3.email))
+        check("lead3.email survived turn 1",
+              lead3.email == "clifford@safarisolutions.com", repr(lead3.email))
 
     # ── Scenario 4: extraction guards (bad data never becomes contact) ──
     print("\n▶ S4: Extraction guards — period not phone, timezone not name")
@@ -263,7 +269,8 @@ async def main() -> int:
     nameval = name4b.get("value") if isinstance(name4b, dict) else name4b
     check("'EST' NOT captured as name", nameval != "EST", repr(nameval))
     check("email still captured from 'EST - email'",
-          isinstance(email4b, dict) and "clifford2@safarisolutions.com" in str(email4b.get("value")),
+          isinstance(email4b, dict)
+          and "clifford2@safarisolutions.com" in str(email4b.get("value")),
           repr(email4b.get("value") if isinstance(email4b, dict) else None))
 
     # ── Scenario 5 (chat 6040): sign-off name (LLM-only) must reach lead + CSR ──
@@ -293,7 +300,11 @@ async def main() -> int:
     tid6 = r["thread_id"]
     # Digit-bearing name only the LLM catches (deterministic capture rejects "E2E"),
     # email but NO phone — contact must go ready SAME turn and the phone ask must fire.
-    await turn("My name is E2E Smoke Test and my email is carlos@example.com. Let's do this via email.", tid6)
+    await turn(
+        "My name is E2E Smoke Test and my email is carlos@example.com. "
+        "Let's do this via email.",
+        tid6,
+    )
     dbg6 = await chat.get_thread_debug_state(tid6)
     stage6 = (dbg6.get("consultation") or {}).get("stage")
     check("bot asks for phone even with email (stage=requested_phone_needed)",

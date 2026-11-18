@@ -5,8 +5,8 @@ import dataclasses
 
 import pytest
 
-from bookcraft.components.trimatch.schemas import CompiledRulePack, RulePack
 from bookcraft.components.trimatch.repository import RuleRepository
+from bookcraft.components.trimatch.schemas import CompiledRulePack, RulePack
 
 
 class TestCompiledRulePackDataclass:
@@ -64,7 +64,6 @@ class TestBuildCompiledPack:
 
     def test_exact_union_pattern_matches_known_phrase(self):
         """Union pattern should match phrases from EXACT rules in the real pack."""
-        from bookcraft.components.trimatch.schemas import TriMatchLayer
 
         repo = self._make_repo()
         cp = repo.build_compiled_pack()
@@ -118,7 +117,7 @@ class TestBuildCompiledPack:
         assert isinstance(cp.exact_rule_by_id, dict)
         # All values in exact_rule_by_id should be TriMatchRule objects
         from bookcraft.components.trimatch.schemas import TriMatchRule
-        for rule_id, rule in cp.exact_rule_by_id.items():
+        for rule in cp.exact_rule_by_id.values():
             assert isinstance(rule, TriMatchRule)
 
 

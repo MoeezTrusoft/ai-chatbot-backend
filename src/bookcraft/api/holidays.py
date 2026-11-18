@@ -9,6 +9,7 @@ bridge endpoints (``require_http_auth``).
 
 import re
 from datetime import date
+from typing import cast
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
@@ -68,7 +69,7 @@ def _repository(request: Request) -> HolidayRepository:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"error": "holiday store is not available"},
         )
-    return repo
+    return cast(HolidayRepository, repo)
 
 
 @router.get("", response_model=HolidayListResponse)

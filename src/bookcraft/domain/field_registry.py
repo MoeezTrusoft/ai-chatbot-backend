@@ -14,9 +14,9 @@ Usage:
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
-
+from typing import Any, Literal
 
 FieldType = Literal["str", "int", "float", "bool", "enum", "list", "range"]
 ExtractionSource = Literal["deterministic", "llm", "both", "none"]

@@ -12,6 +12,8 @@ contact survives the round-trip and a lead assembled across turns becomes ready.
 """
 from __future__ import annotations
 
+import contextlib
+
 from bookcraft.components.leads.contact import ContactCaptureDetector
 from bookcraft.components.leads.contact_utils import is_real_contact_value
 from bookcraft.components.storage.state_sanitizer import (
@@ -29,15 +31,17 @@ def _state_with(*, name=None, email=None, phone=None) -> ThreadState:
         state.personal.name = FieldMeta[str](value=name, confidence=0.92, source=Source.USER_STATED)
         ci["name"] = name
     if email is not None:
-        state.personal.email = FieldMeta[str](value=email, confidence=0.98, source=Source.USER_STATED)
+        state.personal.email = FieldMeta[str](
+            value=email, confidence=0.98, source=Source.USER_STATED
+        )
         ci["email"] = email
     if phone is not None:
-        state.personal.phone = FieldMeta[str](value=phone, confidence=0.95, source=Source.USER_STATED)
+        state.personal.phone = FieldMeta[str](
+            value=phone, confidence=0.95, source=Source.USER_STATED
+        )
         ci["phone"] = phone
-    try:
+    with contextlib.suppress(Exception):
         state.contact_info = ci  # type: ignore[attr-defined]
-    except Exception:
-        pass
     return state
 
 

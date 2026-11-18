@@ -109,7 +109,9 @@ def test_form_submitted_name_is_not_listed_as_a_conversation_fact():
 
 def test_chat_stated_name_stays_a_conversation_fact():
     state = ThreadState()
-    state.personal.name = FieldMeta(value="Dana Example", confidence=0.92, source=Source.USER_STATED)
+    state.personal.name = FieldMeta(
+        value="Dana Example", confidence=0.92, source=Source.USER_STATED
+    )
 
     prompt = _prompt(state=state, text="hi", runtime_atoms={})
 

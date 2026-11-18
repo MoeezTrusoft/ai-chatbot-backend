@@ -415,7 +415,13 @@ class ChatService:
                 a.filename for a in payload.attachments if getattr(a, "filename", None)
             )
             payload = payload.model_copy(
-                update={"message": f"Attachment received: {_att_names}" if _att_names else "Attachment received"}
+                update={
+                    "message": (
+                        f"Attachment received: {_att_names}"
+                        if _att_names
+                        else "Attachment received"
+                    )
+                }
             )
 
         CHAT_TURNS_TOTAL.inc()
@@ -448,7 +454,11 @@ class ChatService:
             )
             if _landing_service is not None and _active_service_from_state(state) is None:
                 _append_service_focus(state, _landing_service)
-            _evt_buf: _EventBuffer | None = _EventBuffer() if self.event_log_batching_enabled and self.thread_repository is not None else None
+            _evt_buf: _EventBuffer | None = (
+                _EventBuffer()
+                if self.event_log_batching_enabled and self.thread_repository is not None
+                else None
+            )
             _preloaded_trg_graph: TemporalRelationGraph | None = None
 
             # Visitor attributes and visit rollover (Visitor Messaging Rule Set v2.4,
@@ -611,8 +621,11 @@ class ChatService:
                             expected_version=thread.version,
                             language=language.language,
                         )
-                    except Exception:  # noqa: BLE001 - best-effort; a conflict just skips stickiness
-                        pass
+                    except Exception as _sticky_exc:
+                        # Best-effort: a version conflict just skips stickiness.
+                        structlog.get_logger(__name__).debug(
+                            "blocked_turn_state_save_skipped", error=str(_sticky_exc)
+                        )
                 elif thread_id in self.threads:
                     self.threads[thread_id].state = state
                 self._record_live_trace(
@@ -660,7 +673,11 @@ class ChatService:
                     sequence=event_sequence,
                     previous_hash=previous_event_hash,
                     event_type="trimatch.voted",
-                    payload=_summarize_trimatch_payload(trimatch_result) if self.trimatch_event_evidence_summary else trimatch_result.model_dump(mode="json"),
+                    payload=(
+                        _summarize_trimatch_payload(trimatch_result)
+                        if self.trimatch_event_evidence_summary
+                        else trimatch_result.model_dump(mode="json")
+                    ),
                     _buf=_evt_buf,
                 )
                 event_ids.append(event_id)
@@ -678,7 +695,11 @@ class ChatService:
                             sequence=event_sequence,
                             previous_hash=previous_event_hash,
                             event_type="trimatch.extra_shadow_voted",
-                            payload=_summarize_trimatch_payload(trimatch_shadow_result) if self.trimatch_event_evidence_summary else trimatch_shadow_result.model_dump(mode="json"),
+                            payload=(
+                                _summarize_trimatch_payload(trimatch_shadow_result)
+                                if self.trimatch_event_evidence_summary
+                                else trimatch_shadow_result.model_dump(mode="json")
+                            ),
                             _buf=_evt_buf,
                         )
                         event_ids.append(event_id)
@@ -870,7 +891,7 @@ class ChatService:
             # current response already benefits from richer facts (book title, cover preferences,
             # section structure, page dimensions, etc.) that regex cannot capture.
             _llm_extraction_delta_count = 0
-            _llm_extraction_task: asyncio.Task | None = None
+            _llm_extraction_task: asyncio.Task[Any] | None = None
             _llm_active_svc = getattr(_active_service_from_state(state), "value", None)
             if self.llm_metadata_extractor is not None and self.llm_extraction_overlap_enabled:
                 _llm_extraction_task = asyncio.create_task(
@@ -1536,7 +1557,9 @@ class ChatService:
                     if _llm_result.state_deltas:
                         _llm_extraction_delta_count = len(_llm_result.state_deltas)
                         _llm_combined = CombinedExtraction(state_deltas=_llm_result.state_deltas)
-                        state = self.state_applier.apply(state, _llm_combined, rejected_paths=_rejected_delta_paths)
+                        state = self.state_applier.apply(
+                            state, _llm_combined, rejected_paths=_rejected_delta_paths
+                        )
                         extraction.state_deltas.extend(_llm_result.state_deltas)
                     if _llm_result.rich_metadata:
                         if "book_specs" not in state.service_metadata:
@@ -1561,7 +1584,11 @@ class ChatService:
                         for _rk, _rv in _llm_result.rich_metadata.items():
                             try:
                                 await self.entity_index.upsert_free_text_fact(
-                                    thread_id=thread_id, key=_rk, value=_rv, confidence=0.9, turn_index=event_sequence,
+                                    thread_id=thread_id,
+                                    key=_rk,
+                                    value=_rv,
+                                    confidence=0.9,
+                                    turn_index=event_sequence,
                                 )
                             except Exception:
                                 ENTITY_INDEX_FAILURES.labels(kind="free_text_fact").inc()
@@ -1616,7 +1643,9 @@ class ChatService:
                 )
             response_hint = context_pack.response_hint or trg_response_hint
             if _entity_hint:
-                response_hint = f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
+                response_hint = (
+                    f"{response_hint}\n{_entity_hint}" if response_hint else _entity_hint
+                )
 
             # CSR context injection: if a CSR conversation has been ingested, give the bot
             # the abstract + recent verbatim turns + commitment list as read-only context.
@@ -1830,8 +1859,12 @@ class ChatService:
                     update={"normalized": rag_query.query_text}
                 )
                 try:
+                    _question_atoms = processed.deterministic_atoms.get("questions")
                     _questions = [
-                        str(item) for item in (processed.deterministic_atoms.get("questions") or [])
+                        str(item)
+                        for item in (
+                            _question_atoms if isinstance(_question_atoms, list | tuple) else []
+                        )
                     ]
                     if len(_questions) >= 2:
                         # One 400-char query cannot represent a dozen distinct questions:
@@ -1886,7 +1919,7 @@ class ChatService:
             # back to the single prior pair for old threads that predate the ring.
             _recent_turns: list[tuple[str, str]] | None = None
             if state.recent_turns:
-                _recent_turns = [tuple(pair) for pair in state.recent_turns[-5:]]
+                _recent_turns = [(pair[0], pair[1]) for pair in state.recent_turns[-5:]]
             elif state.last_user_message and state.last_assistant_text:
                 _recent_turns = [(state.last_user_message, state.last_assistant_text)]
             with STAGE_LATENCY.labels(stage="response_generation").time():
@@ -1904,7 +1937,9 @@ class ChatService:
                         "reply in the other language."
                     )
                     response_hint = (
-                        f"{response_hint}\n{_mixed_directive}" if response_hint else _mixed_directive
+                        f"{response_hint}\n{_mixed_directive}"
+                        if response_hint
+                        else _mixed_directive
                     )
 
                 # Consultation button: when a "Book a consultation" button will be shown
@@ -2324,7 +2359,11 @@ class ChatService:
                 self.threads[thread_id].state = state
 
             # Persist TRG facts to PostgreSQL so cold-start reload works after Redis TTL.
-            if not self.trg_background_persist_enabled and self.trg_fact_store is not None and self.trg_engine is not None:
+            if (
+                not self.trg_background_persist_enabled
+                and self.trg_fact_store is not None
+                and self.trg_engine is not None
+            ):
                 try:
                     _pg_graph = await self.trg_engine.repository.load(thread_id)
                     if _pg_graph is not None and _pg_graph.semantic_facts:
@@ -2355,9 +2394,15 @@ class ChatService:
                         exception_class=_cp_exc.__class__.__name__,
                     )
 
-            if _evt_buf is not None and _evt_buf.events:
+            if (
+                _evt_buf is not None
+                and _evt_buf.events
+                and self.thread_repository is not None
+            ):
                 try:
-                    await self.thread_repository.append_events_batch(thread_id=thread_id, events=_evt_buf.events)
+                    await self.thread_repository.append_events_batch(
+                        thread_id=thread_id, events=_evt_buf.events
+                    )
                 except Exception as _buf_exc:
                     structlog.get_logger(__name__).warning(
                         "event_buffer_flush_failed",
@@ -2727,7 +2772,9 @@ class ChatService:
                 if _llm_result.state_deltas:
                     from bookcraft.components.extraction.schemas import CombinedExtraction as _CE
 
-                    state = self.state_applier.apply(state, _CE(state_deltas=_llm_result.state_deltas))
+                    state = self.state_applier.apply(
+                        state, _CE(state_deltas=_llm_result.state_deltas)
+                    )
                 self._apply_llm_service_metadata(state, _llm_result)
             except Exception as _exc:  # noqa: BLE001
                 structlog.get_logger(__name__).warning(
@@ -2856,7 +2903,7 @@ class ChatService:
             delta_count=len(extraction.state_deltas) + len(llm_deltas),
         )
 
-    async def get_thread_debug_state(self, thread_id: Any) -> dict:
+    async def get_thread_debug_state(self, thread_id: Any) -> dict[str, Any]:
         """Return a structured debug snapshot of a thread's current state.
 
         Used by the CSR dashboard to show the AI chatbot's extracted facts,
@@ -2885,7 +2932,7 @@ class ChatService:
             state = memory.state
             turn_count = 0
 
-        def _fv(field_obj: object) -> dict | None:
+        def _fv(field_obj: object) -> dict[str, Any] | None:
             val = getattr(field_obj, "value", None)
             if val is None:
                 return None
@@ -2979,6 +3026,8 @@ class ChatService:
 
         async def _retrieve_one(question: str) -> list[RetrievedChunk]:
             try:
+                if self.rag_retriever is None:
+                    return []
                 return await self.rag_retriever.retrieve(
                     processed.model_copy(update={"normalized": question}),
                     intent,
@@ -3944,10 +3993,10 @@ class ChatService:
         turn_sequence: int,
         user_text: str,
         assistant_text: str,
-        previous_state: "ThreadState | None",
-        state_deltas: list,
+        previous_state: ThreadState | None,
+        state_deltas: list[Any],
         arbiter_signals: list[str],
-        preloaded_graph: "TemporalRelationGraph | None",
+        preloaded_graph: TemporalRelationGraph | None,
     ) -> None:
         if self.trg_engine is None:
             return
@@ -3962,7 +4011,11 @@ class ChatService:
                 arbiter_signals=arbiter_signals,
                 preloaded_graph=preloaded_graph,
             )
-            if self.trg_fact_store is not None and trg_result.graph is not None and trg_result.graph.semantic_facts:
+            if (
+                self.trg_fact_store is not None
+                and trg_result.graph is not None
+                and trg_result.graph.semantic_facts
+            ):
                 await self.trg_fact_store.upsert_facts(
                     thread_id=thread_id,
                     facts=trg_result.graph.semantic_facts,
@@ -3989,7 +4042,9 @@ class ChatService:
             trg_context=trg_context,
         )
 
-    async def _build_trg_context(self, thread_id: UUID) -> tuple[TRGContext | None, TemporalRelationGraph | None]:
+    async def _build_trg_context(
+        self, thread_id: UUID
+    ) -> tuple[TRGContext | None, TemporalRelationGraph | None]:
         if self.trg_engine is None:
             return None, None
 
@@ -4092,7 +4147,7 @@ class ChatService:
         previous_hash: str | None,
         event_type: str,
         payload: dict[str, object],
-        _buf: "_EventBuffer | None" = None,
+        _buf: _EventBuffer | None = None,
     ) -> tuple[str, int, str]:
         safe_payload = redact_mapping(payload) or {}
         if self.thread_repository is None:
@@ -5392,7 +5447,7 @@ def _is_proof_copy_request(text: str) -> bool:
     return bool(_PROOF_COPY_RE.search(text))
 
 
-def _summarize_trimatch_payload(result: "TriMatchResult") -> dict[str, object]:
+def _summarize_trimatch_payload(result: TriMatchResult) -> dict[str, object]:
     return {
         "service_primary": result.service_primary.value if result.service_primary else None,
         "query_primary": result.query_primary.value if result.query_primary else None,
@@ -6118,14 +6173,26 @@ def _normalise_page_slug(page: str | None) -> str | None:
 _LANDING_SERVICE_PATTERNS: list[tuple[tuple[str, ...], ServiceCategory]] = [
     (("ghostwrit", "ghost-writ", "book-writing", "write-my-book"), ServiceCategory.GHOSTWRITING),
     (("cover", "illustration", "jacket", "book-cover"), ServiceCategory.COVER_DESIGN_ILLUSTRATION),
-    (("proofread", "editing", "editor", "line-edit", "copy-edit"), ServiceCategory.EDITING_PROOFREADING),
+    (
+        ("proofread", "editing", "editor", "line-edit", "copy-edit"),
+        ServiceCategory.EDITING_PROOFREADING,
+    ),
     (("interior", "formatting", "typeset", "layout"), ServiceCategory.INTERIOR_FORMATTING),
     (("audiobook", "narration", "audio-book"), ServiceCategory.AUDIOBOOK_PRODUCTION),
-    (("translation", "foreign-rights", "foreign-right"), ServiceCategory.TRANSLATION_FOREIGN_RIGHTS),
+    (
+        ("translation", "foreign-rights", "foreign-right"),
+        ServiceCategory.TRANSLATION_FOREIGN_RIGHTS,
+    ),
     (("video-trailer", "book-trailer", "trailer"), ServiceCategory.VIDEO_TRAILER),
     (("author-website", "website"), ServiceCategory.AUTHOR_WEBSITE),
-    (("marketing", "promotion", "book-launch", "book-marketing"), ServiceCategory.MARKETING_PROMOTION),
-    (("publishing", "distribution", "self-publish", "publish"), ServiceCategory.PUBLISHING_DISTRIBUTION),
+    (
+        ("marketing", "promotion", "book-launch", "book-marketing"),
+        ServiceCategory.MARKETING_PROMOTION,
+    ),
+    (
+        ("publishing", "distribution", "self-publish", "publish"),
+        ServiceCategory.PUBLISHING_DISTRIBUTION,
+    ),
 ]
 
 
@@ -6199,10 +6266,11 @@ async def _llm_proactive_greeting(
     else:
         system = (
             "You are a BookCraft AI chat assistant. "
-            "BookCraft is a full-service publishing company that helps authors write, edit, design, "
-            "format, and publish their books.\n\n"
+            "BookCraft is a full-service publishing company that helps authors write, edit, "
+            "design, format, and publish their books.\n\n"
             "Your task: write ONE warm, professional opening message for a visitor who just opened "
-            "the chat widget. Return a JSON object with a single key: {\"text\": \"<your message>\"}.\n\n"
+            "the chat widget. Return a JSON object with a single key: "
+            "{\"text\": \"<your message>\"}.\n\n"
             "Rules:\n"
             "- 1-2 sentences, 30 words maximum.\n"
             "- Never quote a price or make a commitment.\n"
@@ -6228,7 +6296,7 @@ async def _llm_proactive_greeting(
         text = (getattr(result, "text", None) or "").strip()
         if text and len(text) > 10:
             return text
-    except Exception:
-        pass
+    except Exception as exc:
+        structlog.get_logger(__name__).debug("greeting_generation_failed", error=str(exc))
 
     return _FOLLOWUP_FALLBACK if variant == "followup" else _greet_fallback(_landing_service)

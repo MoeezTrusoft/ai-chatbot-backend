@@ -21,7 +21,6 @@ from bookcraft.components.trg import (
 )
 from bookcraft.components.trg.engine import extract_questions
 
-
 # ---------------------------------------------------------------------------
 # TestQuestionResolution
 #

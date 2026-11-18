@@ -312,7 +312,8 @@ Examples of Q&A extractions that MUST be captured:
   Assistant asked "what's your book's title?" → User: "the past & the future written by Thomas Ray"
   → book_title: "The Past & The Future"  (NOT name — "Thomas Ray" is the AUTHOR, not the customer)
 
-  Assistant asked "do you have notes or are you starting from scratch?" → User: "starting from scratch"
+  Assistant asked "do you have notes or are you starting from scratch?" → \
+User: "starting from scratch"
   → manuscript_status: "not_started", confidence 0.92
 
   Assistant asked "do you have an outline or draft chapters?" → User: "partially outlined"

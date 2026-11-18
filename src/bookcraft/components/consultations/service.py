@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-import structlog
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
+import structlog
 
 from bookcraft.components.consultations.holidays import is_blackout_date
 from bookcraft.components.consultations.repository import ConsultationRepositoryProtocol
@@ -180,7 +180,10 @@ class ConsultationActionService:
         but a direct call guarantees the consultation shows on the CSR dashboard
         even if the event sync chain fails.
         """
-        url = f"{self.csr_node_api_url.rstrip('/')}/api/consultations"
+        base_url = self.csr_node_api_url
+        if not base_url:
+            return
+        url = f"{base_url.rstrip('/')}/api/consultations"
         # No auth header — CSR Node.js has no token-based auth.
         # This is server-to-server (localhost), so CORS doesn't apply.
         headers = {"Content-Type": "application/json"}

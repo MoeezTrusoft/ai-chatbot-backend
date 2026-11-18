@@ -190,7 +190,7 @@ class TestBuilderFlagWiring:
 
     def test_flag_on_oversized_hint_within_budget_and_drops_recorded(self):
         budget = 25
-        builder = ContextPackBuilder(budget_enabled=True, hint_token_budget=budget)
+        ContextPackBuilder(budget_enabled=True, hint_token_budget=budget)
 
         # Build the segments the builder will see for this rich pack, to know which
         # labels must drop, then assert the counter moves for each.

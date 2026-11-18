@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from bookcraft.api.chat import ChatTurnRequest as ApiRequest
+from bookcraft.api.chat import ChatTurnResponse as ApiResponse
 from bookcraft.components.response.chat_schemas import ChatTurnRequest, ChatTurnResponse
-from bookcraft.api.chat import ChatTurnRequest as ApiRequest, ChatTurnResponse as ApiResponse
 
 
 class TestChatSchemasShared:

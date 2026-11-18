@@ -156,7 +156,9 @@ def test_thread1_full_publishing_pipeline_10turns() -> None:
 
     # T1: welcome first, no contact ask
     assert turns[0]["lead"] != "ask_contact", "T1 must welcome, not demand contact"
-    assert turns[0]["goal"] == "greeting_welcome", f"T1 must be greeting_welcome, got: {turns[0]['goal']}"
+    assert turns[0]["goal"] == "greeting_welcome", (
+        f"T1 must be greeting_welcome, got: {turns[0]['goal']}"
+    )
 
     # T3: successor service advice — after ghostwriting, editing is next
     # The response_hint should contain workflow advice
@@ -302,7 +304,8 @@ def test_thread3_identity_plus_contradiction_and_backoff_10turns() -> None:
             # T4: deflect contact ask
             "Not ready to share my details yet. Tell me more about the editing process first.",
             # T5: fact contradiction
-            "Actually my book isn't fantasy. It's a business memoir. I gave you wrong info earlier.",
+            "Actually my book isn't fantasy. It's a business memoir. I gave you wrong info "
+            "earlier.",
             # T6: ask about the corrected genre
             "For a business memoir, what type of editing do I need?",
             # T7: manuscript status update
@@ -565,7 +568,14 @@ def test_quality_review_all_5_threads() -> None:
     for t in identity_turns:
         assert t["persona_name"] is not None, f"Identity question turn must have name: {t}"
         bot_text = t.get("text", "").lower()
-        for ai_kw in ["i am an ai", "i'm an ai", "i am a bot", "i'm a bot", "chatgpt", "i am claude"]:
+        for ai_kw in [
+            "i am an ai",
+            "i'm an ai",
+            "i am a bot",
+            "i'm a bot",
+            "chatgpt",
+            "i am claude",
+        ]:
             assert ai_kw not in bot_text, (
                 f"Bot admitted AI identity on identity question turn: {t['text'][:100]}"
             )
@@ -612,18 +622,21 @@ def _run_t1() -> list[dict]:
 
 
 def _run_t2() -> list[dict]:
-    return _run_scenario([
-        "I need pricing for editing, thriller cover samples, and an NDA before sharing my manuscript.",
-        "My manuscript is 75,000 words, fully written, thriller.",
-        "Can you also revise Chapter 1? It needs a complete rewrite.",
-        "How do I pay? Do you take PayPal?",
-        "What publishing platforms do you support — KDP, IngramSpark?",
-        "I'd like to book the free consultation.",
-        "Maya Author maya@example.com +1 555 987 6543, Friday at 3pm.",
-        "Is my consultation booked?",
-        "Quick — what's the best way to get reviews on Amazon?",
-        "Ok coming back — I'm ready to start with editing my 75k thriller.",
-    ])
+    return _run_scenario(
+        [
+            "I need pricing for editing, thriller cover samples, and an NDA before sharing my "
+            "manuscript.",
+            "My manuscript is 75,000 words, fully written, thriller.",
+            "Can you also revise Chapter 1? It needs a complete rewrite.",
+            "How do I pay? Do you take PayPal?",
+            "What publishing platforms do you support — KDP, IngramSpark?",
+            "I'd like to book the free consultation.",
+            "Maya Author maya@example.com +1 555 987 6543, Friday at 3pm.",
+            "Is my consultation booked?",
+            "Quick — what's the best way to get reviews on Amazon?",
+            "Ok coming back — I'm ready to start with editing my 75k thriller.",
+        ]
+    )
 
 
 def _run_t3() -> list[dict]:
@@ -706,11 +719,17 @@ def _print_quality_report(threads: dict, all_turns: list[dict]) -> None:
         )
         print(f"     Goals: {', '.join(t_goals)}")
 
-    print(f"\n  ── OVERALL ──────────────────────────────────────────────────────")
+    print("\n  ── OVERALL ──────────────────────────────────────────────────────")
     print(f"  Total turns           : {total_turns}")
     print(f"  Quality gate pass     : {q_passed}/{total_turns} ({100*q_passed//total_turns}%)")
-    print(f"  Critical failures     : {total_critical}  {'✓ none' if total_critical == 0 else '✗ FAILURES'}")
-    print(f"  Identity Q handled    : {identity_correct}/{identity_total}  {'✓' if identity_correct == identity_total else '✗'}")
+    print(
+        f"  Critical failures     : {total_critical}  "
+        f"{'✓ none' if total_critical == 0 else '✗ FAILURES'}"
+    )
+    print(
+        f"  Identity Q handled    : {identity_correct}/{identity_total}  "
+        f"{'✓' if identity_correct == identity_total else '✗'}"
+    )
 
     # Failure breakdown
     all_failures: dict[str, int] = {}

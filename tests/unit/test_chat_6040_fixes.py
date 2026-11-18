@@ -40,7 +40,10 @@ class TestPastedMediaUrlAttachment:
         assert any("media_url_detected" in a for a in r.audit)
 
     def test_pdf_and_image_urls(self) -> None:
-        assert _attachments_from_message("my draft https://x.io/files/draft.pdf")[0].filename == "draft.pdf"
+        assert (
+            _attachments_from_message("my draft https://x.io/files/draft.pdf")[0].filename
+            == "draft.pdf"
+        )
         # Category is inferred during process(), not on the raw synthesized attachment.
         r = AttachmentIntakeProcessor().process(
             attachments=None, message="cover https://x.io/c/cover-art.png"
@@ -61,7 +64,14 @@ def _intent():
     return SimpleNamespace(query_primary=None)
 
 
-def _reduce(*, state=None, has_email=True, has_phone=False, require_phone=True, message="let's book a consultation"):
+def _reduce(
+    *,
+    state=None,
+    has_email=True,
+    has_phone=False,
+    require_phone=True,
+    message="let's book a consultation",
+):
     return reduce_consultation_state(
         state=state or ThreadState(),
         message=message,
@@ -123,21 +133,33 @@ class TestTimezoneFromPersonalUnblocksBooking:
         # test_consultation_slot_suggestions.py).
         st.preferred_call_time = "Tuesday afternoon at 2pm"
         if tz:
-            st.personal.timezone = FieldMeta[str](value=tz, confidence=0.92, source=Source.USER_STATED)
+            st.personal.timezone = FieldMeta[str](
+                value=tz, confidence=0.92, source=Source.USER_STATED
+            )
         return st
 
     def test_personal_timezone_reaches_ready_to_schedule(self) -> None:
         d = reduce_consultation_state(
-            state=self._state_with_tz("America/New_York"), message="book a consultation",
-            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+            state=self._state_with_tz("America/New_York"),
+            message="book a consultation",
+            intent=_intent(),
+            contact_ready=True,
+            has_email=True,
+            has_phone=True,
+            require_phone=True,
         )
         assert d.stage == ConsultationStage.READY_TO_SCHEDULE
         assert d.can_schedule is True
 
     def test_no_timezone_anywhere_still_asks(self) -> None:
         d = reduce_consultation_state(
-            state=self._state_with_tz(None), message="book a consultation",
-            intent=_intent(), contact_ready=True, has_email=True, has_phone=True, require_phone=True,
+            state=self._state_with_tz(None),
+            message="book a consultation",
+            intent=_intent(),
+            contact_ready=True,
+            has_email=True,
+            has_phone=True,
+            require_phone=True,
         )
         assert d.stage == ConsultationStage.TIME_CAPTURED_NEEDS_TIMEZONE
 

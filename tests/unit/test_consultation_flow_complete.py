@@ -19,18 +19,26 @@ Additionally covers the "timezone asked twice" regression from the Subhan transc
 
 from __future__ import annotations
 
-from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
-from bookcraft.components.consultations import ConsultationActionRequest, InMemoryConsultationRepository
-from bookcraft.components.consultations.service import ConsultationActionService, _normalize_timezone, _safe_zoneinfo
-from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM, _EXTRACTION_USER_TEMPLATE
-from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
-from bookcraft.components.extraction.llm_extractor import _facts_to_deltas
+from bookcraft.components.consultations import (
+    ConsultationActionRequest,
+    InMemoryConsultationRepository,
+)
+from bookcraft.components.consultations.service import (
+    ConsultationActionService,
+    _normalize_timezone,
+    _safe_zoneinfo,
+)
 from bookcraft.components.context import ContextPackBuilder
+from bookcraft.components.extraction.llm_extractor import (
+    _EXTRACTION_SYSTEM,
+    _EXTRACTION_USER_TEMPLATE,
+    _facts_to_deltas,
+)
+from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
@@ -174,7 +182,8 @@ class TestConsultationRequestWithTimezone:
 
     @pytest.mark.asyncio
     async def test_schedule_with_eastern_timezone_succeeds(self):
-        """End-to-end: 'eastern timezone' → normalized → valid ConsultationActionRequest → scheduled."""
+        """End-to-end: 'eastern timezone' → normalized → valid
+        ConsultationActionRequest → scheduled."""
         repo = InMemoryConsultationRepository()
         service = ConsultationActionService(repository=repo)
         result = await service.schedule(

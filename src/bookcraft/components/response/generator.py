@@ -1,5 +1,6 @@
 import json
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, cast
@@ -12,7 +13,7 @@ from bookcraft.components.context.schemas import ContextPack, KnownFact
 from bookcraft.components.extraction.schemas import CombinedExtraction
 from bookcraft.components.intent.schemas import IntentVote
 from bookcraft.components.llm.metrics import LLM_CALLS
-from bookcraft.components.llm.protocols import LLMProvider
+from bookcraft.components.llm.protocols import LLMProvider, StreamingLLMProvider
 from bookcraft.components.portfolio.schemas import PortfolioResponse, PortfolioStatus
 from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.pricing.models import PricingTimelineQuote, QuoteStatus
@@ -343,7 +344,7 @@ class SonnetResponseGenerator:
         response_plan: ResponsePlan | None = None,
         recent_turns: list[tuple[str, str]] | None = None,
         persona_decision: Any | None = None,
-    ):
+    ) -> AsyncIterator[str]:
         """Stream the response text as an async generator of string chunks.
 
         Two paths, both of which yield ≥ 1 chunk and never raise mid-stream:
@@ -413,7 +414,7 @@ class SonnetResponseGenerator:
                     error=str(exc),
                     note="streaming path failed mid-flight; falling back to generate()",
                 )
-                accumulated = None  # signal: discard partial, fall back below
+                accumulated.clear()  # discard partial, fall back below
             else:
                 # Validate the fully-streamed text with the same gate generate()
                 # uses.  If it passes, the streamed turn is complete and we stop.
@@ -425,7 +426,7 @@ class SonnetResponseGenerator:
                     provider=self.provider_name,
                     preview=streamed_text[:120],
                 )
-                accumulated = None  # fall back to generate()
+                accumulated.clear()  # fall back to generate()
 
             # NOTE: we already yielded partial chunks above.  Falling back here
             # re-yields the full validated text; the WS consumer accumulates by
@@ -463,7 +464,7 @@ class SonnetResponseGenerator:
         response_plan: ResponsePlan | None,
         recent_turns: list[tuple[str, str]] | None,
         persona_decision: Any | None,
-    ):
+    ) -> AsyncIterator[str]:
         """Yield text deltas from ``adapter.stream_text`` for this turn.
 
         Builds the same system/user prompts as :meth:`_try_llm` so the streamed
@@ -493,7 +494,8 @@ class SonnetResponseGenerator:
             known_facts_render_cap=self.known_facts_render_cap,
             rag_within_prompt_dedup=self.rag_within_prompt_dedup,
         )
-        async for chunk in self.adapter.stream_text(
+        streaming_adapter = cast(StreamingLLMProvider, self.adapter)
+        async for chunk in streaming_adapter.stream_text(
             system=system,
             messages=[{"role": "user", "content": user}],
             max_tokens=1024,
@@ -627,9 +629,9 @@ class SonnetResponseGenerator:
                 rag_chunks=len(rag_chunks),
                 rag_tokens=_approx_tokens(rag_text),
             )
-        except Exception:
+        except Exception as exc:
             # Instrumentation must never affect the response path.
-            pass
+            logger.debug("response_prompt_metrics_failed", error=str(exc))
 
         try:
             generated = cast(
@@ -1455,8 +1457,10 @@ def _response_system_prompt(
         "email' or by insisting they book or share details in chat first, give the email, then "
         "they can proceed however they prefer.\n"
         "Manuscript / document submission: When an author says they want to send their manuscript, "
-        "document, or file by email (e.g. 'I can't upload', 'I'll email it', 'my document won't load'), "
-        "tell them they can send it to inquiry@bookcraftpublishers.com and that the team will follow up.\n"
+        "document, or file by email (e.g. 'I can't upload', 'I'll email it', "
+        "'my document won't load'), "
+        "tell them they can send it to inquiry@bookcraftpublishers.com and that the team "
+        "will follow up.\n"
         "File or attachment received: When the user uploads a file or attachment:\n"
         "- ALWAYS confirm receipt by the file's name when the known facts include "
         "'attachment_filename', name the file in your acknowledgement (e.g. \"Got your file "
@@ -1479,7 +1483,8 @@ def _response_system_prompt(
         "the free editorial assessment: \"Got your file 'Chapter 2.docx', our editorial "
         "specialist will review it and provide a professional assessment. To send you the report, "
         "I just need your name, phone number, and preferred timezone for your consultation call.'\n"
-        "- If the attachment is something else (cover design, brief, etc.), acknowledge by name and "
+        "- If the attachment is something else (cover design, brief, etc.), acknowledge by name "
+        "and "
         "route to specialist assessment: \"Got your file 'brief.pdf', a specialist will review it. "
         "To connect you, I just need your name, phone number, and timezone.'\n"
         "Free editorial assessment pitch: When the context hint includes "
@@ -1490,7 +1495,8 @@ def _response_system_prompt(
         "using the 📎 attach button at the bottom of this chat. "
         "Our editorial team will give you professional feedback before your consultation.' "
         "Say this once, blend it naturally, never repeat it.\n"
-        "CRITICAL: Never use the above contact details as a substitute for scheduling a consultation. "
+        "CRITICAL: Never use the above contact details as a substitute for scheduling a "
+        "consultation. "
         "When an author asks to schedule a consultation, collect their details in this chat, "
         "do NOT tell them to email or call us instead.\n\n"
         "Consultation scheduling flow:\n"
@@ -1499,7 +1505,8 @@ def _response_system_prompt(
         "'schedule me a specialist', 'I want to speak to someone', 'yes', 'sure', 'go ahead', "
         "'just schedule me', or any frustration like 'stop talking and book it'), "
         "you are in CONSULTATION MODE. In this mode:\n"
-        "- Do NOT ask about genre, word count, service type, manuscript stage, or ANY scoping detail.\n"
+        "- Do NOT ask about genre, word count, service type, manuscript stage, or ANY scoping "
+        "detail.\n"
         "- Do NOT re-ask for name, phone, or email if already captured, check Known Facts.\n"
         "- If the customer raises a service topic mid-consultation, acknowledge in ONE sentence "
         "('Our specialist will cover that on the call') and return to contact collection.\n"
@@ -1553,7 +1560,8 @@ def _response_system_prompt(
         "Language disambiguation:\n"
         "- 'print a sample' or 'sample copy' or 'proof copy' in the context of publishing "
         "means the author wants a physical proof of THEIR OWN book, this is an Interior "
-        "Formatting or Publishing service question, NOT a request for BookCraft portfolio samples.\n"
+        "Formatting or Publishing service question, NOT a request for BookCraft portfolio "
+        "samples.\n"
         "- 'show me samples' or 'see your work' or 'portfolio examples' means they want to "
         "view BookCraft's existing work, that IS a portfolio request.\n"
         "- 'publish a journal' is a legitimate BookCraft Publishing & Distribution service. "
@@ -2117,7 +2125,10 @@ def _response_plan_prompt_section(response_plan: ResponsePlan | None) -> str:
         "consultation_handoff",
         "specialist_handoff",
     }:
-        parts.append("- Ask for name, email, and phone. You may settle for one of email or phone number but tactfully attempt to acquire both.")
+        parts.append(
+            "- Ask for name, email, and phone. You may settle for one of email or phone number "
+            "but tactfully attempt to acquire both."
+        )
         parts.append("- Do not provide final pricing or timeline commitments in this step.")
         parts.append("- Do not act as the final consultant; route to senior specialist follow-up.")
 

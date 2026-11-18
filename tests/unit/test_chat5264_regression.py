@@ -13,19 +13,18 @@ Issue map:
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from bookcraft.components.context import ContextPackBuilder
-from bookcraft.components.context.schemas import ContextPack, KnownFact
-from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM
+from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM, _facts_to_deltas
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
-from bookcraft.components.extraction.llm_extractor import _facts_to_deltas
 from bookcraft.components.extraction.schemas import CombinedExtraction, StateDelta
 from bookcraft.components.extraction.state_applier import StateApplier
 from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.response.generator import _response_system_prompt as _build_response_system_prompt
+from bookcraft.components.response.generator import (
+    _response_system_prompt as _build_response_system_prompt,
+)
 from bookcraft.components.response.quality_gate import ResponseQualityGate
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
@@ -74,7 +73,8 @@ class TestPersonaPhrasing:
         # The phrase appears ONLY inside a prohibition ("never", "do not", "avoid").
         idx = lowered.find("very much human")
         if idx != -1:
-            # Look in a wider window (80 chars) to catch "never describe yourself as ... 'very much human'"
+            # Look in a wider window (80 chars) to catch
+            # "never describe yourself as ... 'very much human'"
             surrounding = lowered[max(0, idx - 80): idx + 40]
             assert any(kw in surrounding for kw in ("never", "not", "avoid", "do not")), (
                 f"'very much human' appears outside a prohibition context: {surrounding!r}"
@@ -92,6 +92,7 @@ class TestPersonaPhrasing:
 
     def test_identity_forbidden_phrases_documented_in_generator_source(self):
         import inspect
+
         from bookcraft.components.response import generator as gen
         src = inspect.getsource(gen)
         # The source must forbid "very much human" phrasing
@@ -138,7 +139,8 @@ class TestRagDocumentBodyBleed:
     def test_normal_pricing_prose_passes(self):
         """Legitimate pricing-related prose must not be flagged."""
         result = _evaluate(
-            "Pricing depends on scope and service — a free consultation gives you an accurate quote."
+            "Pricing depends on scope and service — a free consultation gives you an accurate "
+            "quote."
         )
         assert result.passed
 
@@ -168,7 +170,10 @@ class TestManuscriptStatusExtraction5264:
         assert "lore" in _EXTRACTION_SYSTEM.lower()
 
     def test_rule8_contains_chapter_summary(self):
-        assert "chapter summary" in _EXTRACTION_SYSTEM.lower() or "summary" in _EXTRACTION_SYSTEM.lower()
+        assert (
+            "chapter summary" in _EXTRACTION_SYSTEM.lower()
+            or "summary" in _EXTRACTION_SYSTEM.lower()
+        )
 
     def test_rule8_contains_just_ideas(self):
         assert "ideas" in _EXTRACTION_SYSTEM.lower()
@@ -331,7 +336,9 @@ class TestConsultationCtaSuppression:
 class TestPreferredContactExtraction:
     def test_rule11_present_in_extraction_prompt(self):
         assert "preferred_contact_method" in _EXTRACTION_SYSTEM.lower()
-        assert "prefer email" in _EXTRACTION_SYSTEM.lower() or "prefer" in _EXTRACTION_SYSTEM.lower()
+        assert (
+            "prefer email" in _EXTRACTION_SYSTEM.lower() or "prefer" in _EXTRACTION_SYSTEM.lower()
+        )
 
     def test_email_preference_extracted(self):
         facts = LLMExtractedFacts(
@@ -377,7 +384,6 @@ class TestBurstModel:
 
     def _socket_src(self):
         import os
-        import pytest
         for path in (
             "/var/www/server.trusoft.pk/src/config/socket.js",
             os.path.expanduser("~/server.trusoft.pk/src/config/socket.js"),

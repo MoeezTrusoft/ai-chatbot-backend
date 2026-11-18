@@ -16,18 +16,16 @@ import pytest
 
 from bookcraft.components.consultations import ConsultationActionRequest
 from bookcraft.components.context import ContextPackBuilder
-from bookcraft.components.context.schemas import ContextPack, KnownFact
-from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM
+from bookcraft.components.context.schemas import ContextPack
+from bookcraft.components.extraction.llm_extractor import _EXTRACTION_SYSTEM, _facts_to_deltas
 from bookcraft.components.extraction.llm_schemas import ExtractedValue, LLMExtractedFacts
-from bookcraft.components.extraction.llm_extractor import _facts_to_deltas
-from bookcraft.components.intent.schemas import IntentVote
-from bookcraft.components.response.generator import _response_user_prompt
-from bookcraft.components.preprocessor.schemas import ProcessedMessage
 from bookcraft.components.extraction.schemas import CombinedExtraction
+from bookcraft.components.intent.schemas import IntentVote
+from bookcraft.components.preprocessor.schemas import ProcessedMessage
+from bookcraft.components.response.generator import _response_user_prompt
 from bookcraft.domain.enums import QueryIntentType, SalesStage, Source
 from bookcraft.domain.meta import FieldMeta
 from bookcraft.domain.state import ThreadState
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -204,7 +202,7 @@ class TestManuscriptStatusSuppressionAfterExtraction:
             rag_chunks=[], route_name="service_question",
             runtime_atoms={}, context_pack=pack,
         )
-        still_need_lines = [l for l in prompt.splitlines() if "still need" in l.lower()]
+        still_need_lines = [line for line in prompt.splitlines() if "still need" in line.lower()]
         for line in still_need_lines:
             assert "manuscript" not in line.lower(), (
                 f"manuscript appeared in 'still need' after extraction: {line!r}"
@@ -231,6 +229,7 @@ class TestAttachmentSystemPromptGuidance:
     def test_attachment_guidance_in_generator_source(self):
         """The generator module must contain the attachment → consultation guidance rule."""
         import inspect
+
         from bookcraft.components.response import generator as gen_mod
         src = inspect.getsource(gen_mod)
         lowered = src.lower()
@@ -243,9 +242,8 @@ class TestAttachmentSystemPromptGuidance:
 
     def test_attachment_received_goal_routes_to_consultation_interest(self):
         """Planner must return consultation_interest as next_question for attachment turns."""
-        from bookcraft.components.response.planner import ResponsePlanner
-        from bookcraft.components.context.schemas import ContextPack
         from bookcraft.components.attachments.intake import ChatAttachment
+        from bookcraft.components.response.planner import ResponsePlanner
 
         planner = ResponsePlanner()
         pack = ContextPack(
@@ -254,7 +252,10 @@ class TestAttachmentSystemPromptGuidance:
             forbidden_reasks=[],
             allowed_next_questions=[],
             attachments_received=[
-                ChatAttachment(filename="manuscript.docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                ChatAttachment(
+                    filename="manuscript.docx",
+                    mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
             ],
         )
         plan = planner.plan(
@@ -278,12 +279,14 @@ class TestAttachmentSystemPromptGuidance:
 class TestConsultationSystemPromptUpdated:
     def test_system_prompt_mentions_phone_required(self):
         import inspect
+
         from bookcraft.components.response import generator as gen_mod
         src = inspect.getsource(gen_mod)
         assert "phone" in src.lower() and "required" in src.lower()
 
     def test_system_prompt_mentions_timezone(self):
         import inspect
+
         from bookcraft.components.response import generator as gen_mod
         src = inspect.getsource(gen_mod)
         assert "timezone" in src.lower()

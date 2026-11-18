@@ -1061,7 +1061,8 @@ _METADATA_REASK_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
-# Consultation time-confirmation phrases — broader than scheduling claim (catches "12 PM is confirmed").
+# Consultation time-confirmation phrases — broader than scheduling claim
+# (catches "12 PM is confirmed").
 _TIME_CONFIRMATION_RE = re.compile(
     r"\b(?:\d{1,2}\s*(?::\d{2}\s*)?(?:am|pm)|tomorrow|monday|tuesday|wednesday|thursday|friday|"
     r"saturday|sunday|next\s+\w+)\b",
@@ -1404,7 +1405,9 @@ def _build_safe_fallback(
 
     # Prefer governance blocked_message when that is the trigger.
     if tool_governance is not None and not tool_governance.allowed:
-        if tool_governance.blocked_message and _engine_text_is_safe(tool_governance.blocked_message):
+        if tool_governance.blocked_message and _engine_text_is_safe(
+            tool_governance.blocked_message
+        ):
             return tool_governance.blocked_message
 
     # Use plan's customer_safe_tool_summary when available.

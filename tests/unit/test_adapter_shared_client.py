@@ -20,7 +20,10 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from bookcraft.components.llm.adapters import AnthropicAdapter, get_shared_client, close_shared_client
+from bookcraft.components.llm.adapters import (
+    AnthropicAdapter,
+    close_shared_client,
+)
 
 
 class _EmptyModel(BaseModel):
@@ -34,7 +37,7 @@ class _EmptyModel(BaseModel):
 
 def _anthropic_adapter(read_timeout: float | None = None) -> AnthropicAdapter:
     return AnthropicAdapter(
-        api_key="test-key",
+        api_key="placeholder",
         base_url="https://api.anthropic.com",
         timeout_seconds=30.0,
         read_timeout=read_timeout,
@@ -57,7 +60,6 @@ async def test_structured_does_not_recreate_client() -> None:
     # Reset shared client state before the test.
     await close_shared_client()
 
-    import bookcraft.components.llm.adapters as _adapters_module
 
     _init_call_count = 0
     _original_init = httpx.AsyncClient.__init__
@@ -79,8 +81,12 @@ async def test_structured_does_not_recreate_client() -> None:
     with patch.object(httpx.AsyncClient, "__init__", _counting_init):
         # Patch the actual HTTP post so no real network call is made.
         with patch.object(httpx.AsyncClient, "post", new=AsyncMock(side_effect=_fake_post)):
-            await adapter.structured(system="sys", user="usr", output_model=_EmptyModel, purpose="test")
-            await adapter.structured(system="sys", user="usr", output_model=_EmptyModel, purpose="test")
+            await adapter.structured(
+                system="sys", user="usr", output_model=_EmptyModel, purpose="test"
+            )
+            await adapter.structured(
+                system="sys", user="usr", output_model=_EmptyModel, purpose="test"
+            )
 
     # AsyncClient.__init__ should only have been called once (initial creation).
     assert _init_call_count == 1, (
@@ -112,7 +118,9 @@ async def test_bounded_timeout_applied() -> None:
     fake_response.raise_for_status = MagicMock()
     fake_response.text = '{"name": "avery"}'
 
-    async def _capture_post(url: str, *, headers, json, timeout):  # type: ignore[no-untyped-def]
+    async def _capture_post(  # type: ignore[no-untyped-def]
+        url: str, *, headers, json, timeout  # noqa: ASYNC109 - mirrors httpx.AsyncClient.post
+    ):
         if isinstance(timeout, httpx.Timeout):
             captured_timeouts.append(timeout)
         return fake_response
@@ -145,7 +153,9 @@ async def test_unbounded_timeout_when_none() -> None:
     fake_response.raise_for_status = MagicMock()
     fake_response.text = '{"name": "avery"}'
 
-    async def _capture_post(url: str, *, headers, json, timeout):  # type: ignore[no-untyped-def]
+    async def _capture_post(  # type: ignore[no-untyped-def]
+        url: str, *, headers, json, timeout  # noqa: ASYNC109 - mirrors httpx.AsyncClient.post
+    ):
         if isinstance(timeout, httpx.Timeout):
             captured_timeouts.append(timeout)
         return fake_response

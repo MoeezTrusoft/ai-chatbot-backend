@@ -131,7 +131,8 @@ class ResponsePlan(BaseModel):
     customer_safe_tool_summary: str | None = None
     audit: list[str] = Field(default_factory=list)
     # P4-T4: contradiction-confirmation flow.
-    contradiction_pending: bool = False  # True if there are unresolved contradictions worth confirming
+    # True if there are unresolved contradictions worth confirming
+    contradiction_pending: bool = False
     contradiction_hint: str | None = None  # What the contradiction is about
 
 
@@ -296,7 +297,11 @@ class ResponsePlanner:
         # picking one.  Only activates when contradiction_confirmation_enabled=True.
         contradiction_pending = False
         contradiction_hint: str | None = None
-        if self.contradiction_confirmation_enabled and trg_context is not None and trg_context.contradictions:
+        if (
+            self.contradiction_confirmation_enabled
+            and trg_context is not None
+            and trg_context.contradictions
+        ):
             _PRICING_PATHS = {
                 "project.word_count",
                 "project.page_count",
@@ -585,7 +590,10 @@ def _primary_goal(
     # Only confirm lead creation on the turn it was JUST created (lod_move == "create_lead").
     # context_pack.lead_created persists across all subsequent turns and must not keep
     # triggering lead_created_confirmation after the first acknowledgement.
-    if lead_objective_decision is not None and getattr(lead_objective_decision, "objective_move", None) == "create_lead":
+    if (
+        lead_objective_decision is not None
+        and getattr(lead_objective_decision, "objective_move", None) == "create_lead"
+    ):
         return "lead_created_confirmation"
 
     # Greeting-only turns map to greeting_welcome ONLY on a fresh thread. On an

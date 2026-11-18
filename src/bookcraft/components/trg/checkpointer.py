@@ -13,6 +13,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlmodel import col
 
 from bookcraft.components.storage.models import ConversationCheckpoint
 from bookcraft.domain.state import ThreadState
@@ -76,9 +77,9 @@ class ConversationCheckpointer:
     async def _already_checkpointed(self, thread_id: UUID, milestone: str) -> bool:
         async with self._session_factory() as session:
             result = await session.execute(
-                select(ConversationCheckpoint.id).where(
-                    ConversationCheckpoint.thread_id == thread_id,
-                    ConversationCheckpoint.milestone == milestone,
+                select(col(ConversationCheckpoint.id)).where(
+                    col(ConversationCheckpoint.thread_id) == thread_id,
+                    col(ConversationCheckpoint.milestone) == milestone,
                 )
             )
             return result.scalar_one_or_none() is not None

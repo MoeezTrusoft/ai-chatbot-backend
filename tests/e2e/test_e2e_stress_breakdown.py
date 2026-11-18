@@ -156,7 +156,9 @@ def test_stress_contradiction_changing_facts() -> None:
         assert "maya@example.com" not in t["text"].lower(), (
             f"T{t['turn']}: PII echo detected — email in response"
         )
-        assert "555 987 6543" not in t["text"], f"T{t['turn']}: PII echo detected — phone in response"
+        assert "555 987 6543" not in t["text"], (
+            f"T{t['turn']}: PII echo detected — phone in response"
+        )
 
     _no_critical_failures(turns, label)
     findings.append("No PII echoed in any turn ✓")
@@ -291,7 +293,9 @@ def test_stress_empty_and_emoji_messages() -> None:
                 tid = r["thread_id"]
             t = _summary(i, msg, r, _trace(client, tid))
             turns.append(t)
-            findings.append(f"T{i} '{msg[:20] or '<empty>'}' → safety={t['safety']}, blocked={t['blocked']}")
+            findings.append(
+                f"T{i} '{msg[:20] or '<empty>'}' → safety={t['safety']}, blocked={t['blocked']}"
+            )
 
     # None of these should error or produce a block
     for t in turns:
@@ -347,8 +351,12 @@ def test_stress_insult_escalation() -> None:
 
     # T4: second insult → block
     # (depends on state.safety_events which resets per-client in test mode)
-    findings.append(f"T2 (first insult): safety={turns[1]['safety']}, blocked={turns[1]['blocked']}")
-    findings.append(f"T4 (second insult): safety={turns[3]['safety']}, blocked={turns[3]['blocked']}")
+    findings.append(
+        f"T2 (first insult): safety={turns[1]['safety']}, blocked={turns[1]['blocked']}"
+    )
+    findings.append(
+        f"T4 (second insult): safety={turns[3]['safety']}, blocked={turns[3]['blocked']}"
+    )
 
     _no_critical_failures(turns, label)
     _print_report(label, turns, findings)
@@ -374,7 +382,8 @@ def test_stress_long_rambling_message() -> None:
         "is named Ariana and she discovers she has magical powers but she's afraid to use them "
         "because her mother was persecuted for being a witch in their small town. Anyway the point "
         "is I've finally finished it after all these years and I want to get it published but I "
-        "don't know what the steps are. I've heard about self-publishing and traditional publishing "
+        "don't know what the steps are. I've heard about self-publishing and traditional "
+        "publishing "
         "and there's also this thing called hybrid publishing which I don't fully understand. My "
         "sister told me I should just put it on Amazon but my friend who works in marketing said "
         "that the cover is really important and without a professional cover nobody will click on "
@@ -408,8 +417,7 @@ def test_stress_long_rambling_message() -> None:
     assert len(_text(r1)) > 0, "Long message must produce a non-empty response"
 
     # State extraction from long message
-    trace1 = _trace(client, tid)
-    state_in_trace = trace1.get("context_pack") or {}
+    _trace(client, tid)
 
     findings.append(f"T1 intent: {t1['intent']}")
     findings.append(f"T1 goal: {t1['goal']}")
@@ -438,7 +446,8 @@ def test_stress_service_correction() -> None:
     with _client() as client:
         msgs = [
             "I need help with my book.",
-            "Actually, I already have a complete manuscript — I don't need ghostwriting. I need editing.",
+            "Actually, I already have a complete manuscript — I don't need ghostwriting. I need "
+            "editing.",
             "My manuscript is 70,000 words, fully written. I need copy editing.",
             "How does the editing process work?",
             "What's the difference between copy editing and proofreading?",
@@ -624,7 +633,7 @@ def test_stress_consolidated_analysis() -> None:
 
     for name, r in results.items():
         if r.get("crashed"):
-            assert False, f"{name}: CRASHED — {r['error']}"
+            raise AssertionError(f"{name}: CRASHED — {r['error']}")
         for critical in _CRITICAL:
             assert critical not in str(r.get("all_failures", "")), (
                 f"{name}: CRITICAL failure — {critical}"
@@ -792,7 +801,9 @@ def _print_analysis(results: dict) -> None:
     print(f"  Critical failures: {critical_hits} {'✓' if critical_hits == 0 else '✗ CRITICAL'}")
     print(f"  PII echo         : {pii_echos} {'✓' if pii_echos == 0 else '✗ PRIVACY BUG'}")
     print(f"  Unverified sched : {unverified} {'✓' if unverified == 0 else '✗ TRUST BUG'}")
-    print(f"  Bad first turn   : {first_turn_bad} {'✓' if first_turn_bad == 0 else '✗ LEAD PUSHING'}")
+    print(
+        f"  Bad first turn   : {first_turn_bad} {'✓' if first_turn_bad == 0 else '✗ LEAD PUSHING'}"
+    )
 
     print("\n  Per-Thread Summary:")
     print(f"  {'Scenario':45s} {'Q%':5s} {'Goals Used':50s} {'Blocked':8s} {'CritFail':8s}")

@@ -12,7 +12,6 @@ Requires ANTHROPIC_API_KEY in .env.
 from __future__ import annotations
 
 import os
-import sys
 
 import pytest
 
@@ -95,7 +94,7 @@ async def test_extracts_name_cameroon_green():
         state=_empty_state(),
     )
     names = [d for d in result.state_deltas if d.path == "personal.name"]
-    assert names, f"No name extracted."
+    assert names, "No name extracted."
     assert "cameroon" in names[0].value.lower() or "green" in names[0].value.lower()
     print(f"\n✓ name extracted: '{names[0].value}'")
 
@@ -123,7 +122,9 @@ async def test_extracts_timezone_eastern():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="eastern",
-        assistant_text="What timezone are you in so we can schedule the call at a good time for you?",
+        assistant_text=(
+            "What timezone are you in so we can schedule the call at a good time for you?"
+        ),
         state=_empty_state(),
     )
     tzs = [d for d in result.state_deltas if d.path == "personal.timezone"]
@@ -160,7 +161,10 @@ async def test_no_crash_on_preferred_time():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="8 jun 3 PM",
-        assistant_text="What day and time works best for a call? Our specialists are available Monday-Friday, 10 AM to 7 PM Central Time.",
+        assistant_text=(
+            "What day and time works best for a call? Our specialists are available "
+            "Monday-Friday, 10 AM to 7 PM Central Time."
+        ),
         state=_empty_state(),
     )
     # Should not raise; may extract nothing or manuscript_status etc.
@@ -174,7 +178,9 @@ async def test_extracts_email():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="cameroon.green@gmail.com",
-        assistant_text="Perfect, Cameroon - what's the best email to send your consultation details to?",
+        assistant_text=(
+            "Perfect, Cameroon - what's the best email to send your consultation details to?"
+        ),
         state=_empty_state(),
     )
     emails = [d for d in result.state_deltas if d.path == "personal.email"]
@@ -190,7 +196,8 @@ async def test_extracts_genre_from_long_message():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text=(
-            "The Solarian Chronicles is an epic fantasy and science-fiction saga set in the world of Solaria. "
+            "The Solarian Chronicles is an epic fantasy and science-fiction saga set in the world "
+            "of Solaria. "
             "I have lore, character arcs, how the main saga ends... just no middle part."
         ),
         assistant_text="Welcome to BookCraft! What are you working on?",
@@ -213,7 +220,10 @@ async def test_extracts_manuscript_status_from_scratch():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="Starting from scratch, haven't written anything yet",
-        assistant_text="Where does the project stand right now - do you have an outline, some draft chapters, or are you starting from scratch?",
+        assistant_text=(
+            "Where does the project stand right now - do you have an outline, some draft "
+            "chapters, or are you starting from scratch?"
+        ),
         state=_empty_state(),
     )
     statuses = [d for d in result.state_deltas if d.path == "project.manuscript_status"]
@@ -229,7 +239,10 @@ async def test_extracts_name_and_preferred_contact_from_compound_message():
     extractor = _make_live_extractor()
     result = await extractor.extract(
         user_text="My name is Jake Biddulph and I prefer email",
-        assistant_text="To connect you with the right specialist, what's your name and the best way to reach you?",
+        assistant_text=(
+            "To connect you with the right specialist, what's your name and the best way to reach "
+            "you?"
+        ),
         state=_empty_state(),
     )
     deltas_by_path = {d.path: d for d in result.state_deltas}
@@ -254,9 +267,9 @@ async def test_extracts_name_and_preferred_contact_from_compound_message():
 @pytest.mark.asyncio
 async def test_does_not_reextract_known_facts():
     """Once phone is in state, the extractor should not re-extract it."""
-    from bookcraft.domain.state import ThreadState
-    from bookcraft.domain.meta import FieldMeta
     from bookcraft.domain.enums import Source
+    from bookcraft.domain.meta import FieldMeta
+    from bookcraft.domain.state import ThreadState
 
     state = ThreadState()
     state.personal.phone = FieldMeta(

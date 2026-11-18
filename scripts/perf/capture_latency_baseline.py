@@ -13,9 +13,13 @@ to capture the production "before/after" numbers that the Phase-1 latency claims
 require:
 
     cd ai_chatbot
-    .venv/bin/python scripts/perf/capture_latency_baseline.py                       # mock, flags ON
-    .venv/bin/python scripts/perf/capture_latency_baseline.py --no-optimize         # mock, flags OFF
-    .venv/bin/python scripts/perf/capture_latency_baseline.py --mode live --turns 25 --label staging-on
+    # mock, flags ON
+    .venv/bin/python scripts/perf/capture_latency_baseline.py
+    # mock, flags OFF
+    .venv/bin/python scripts/perf/capture_latency_baseline.py --no-optimize
+    # live, labelled run
+    .venv/bin/python scripts/perf/capture_latency_baseline.py \
+        --mode live --turns 25 --label staging-on
 
 Sequential by design: per-stage attribution from a process-global histogram is
 only clean when one turn runs at a time. Use ``e2e_concurrent_validation.py`` for

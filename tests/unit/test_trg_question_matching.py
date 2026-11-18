@@ -103,9 +103,13 @@ class TestSlotMatching:
             user_text="I need editing.", assistant_text="What is your word count?",
         )
         second = await engine.update_after_turn(
-            thread_id=thread_id, turn_sequence=2,
-            user_text="hi", assistant_text="Hello!",
-            state_deltas=[_delta("project.word_count", 60000)],  # even with a delta, "hi" is guarded
+            thread_id=thread_id,
+            turn_sequence=2,
+            user_text="hi",
+            assistant_text="Hello!",
+            state_deltas=[
+                _delta("project.word_count", 60000)
+            ],  # even with a delta, "hi" is guarded
         )
         assert second.unresolved_question_count == 1
 

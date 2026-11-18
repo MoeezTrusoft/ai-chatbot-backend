@@ -22,23 +22,32 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 RESULTS: list[tuple[str, bool, str]] = []
 CLEANUP: dict[str, object] = {}
 
 
+def _require_http(url: str) -> str:
+    """Refuse anything but http(s) so urllib never opens file: or custom schemes."""
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(f"unsupported URL scheme {scheme!r}; only http and https are allowed")
+    return url
+
+
 def _post(url: str, payload: dict, bearer: str | None) -> tuple[int, dict]:
     data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
+    url = _require_http(url)
+    req = urllib.request.Request(url, data=data, method="POST")  # noqa: S310 - scheme validated above
     req.add_header("Content-Type", "application/json")
     if bearer:
         req.add_header("Authorization", f"Bearer {bearer}")
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
+        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310 - scheme validated above
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as e:
         return e.code, {"_error": e.read().decode()[:300]}
@@ -47,11 +56,12 @@ def _post(url: str, payload: dict, bearer: str | None) -> tuple[int, dict]:
 
 
 def _get(url: str, bearer: str | None) -> tuple[int, dict]:
-    req = urllib.request.Request(url, method="GET")
+    url = _require_http(url)
+    req = urllib.request.Request(url, method="GET")  # noqa: S310 - scheme validated above
     if bearer:
         req.add_header("Authorization", f"Bearer {bearer}")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - scheme validated above
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as e:
         return e.code, {"_error": e.read().decode()[:300]}
@@ -72,7 +82,6 @@ def main() -> int:
     args = ap.parse_args()
 
     turn_url = f"{args.bot_url.rstrip('/')}/api/v1/chat/turn"
-    stamp = time.strftime("%Y%m%d-%H%M%S")
     # Letter-prefixed tag so the email's digits are never mis-read as a phone number.
     test_email = f"e2e-smoke+t{time.strftime('%H%M%S')}@trusoft.pk"
     test_name = "E2E Smoke Test"
@@ -91,7 +100,9 @@ def main() -> int:
             stg = None
             pend = None
             if tid:
-                _, d = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
+                _, d = _get(
+                    f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer
+                )
                 stg = (d.get("consultation") or {}).get("stage")
                 pend = d.get("pending_confirmation")
             print(f"     · sent {message[:38]!r:<40} → stage={stg!r} events={evts} pending={pend}",
@@ -104,7 +115,11 @@ def main() -> int:
     print("=" * 74)
 
     # ── Reachability ──
-    s, _ = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/00000000-0000-0000-0000-000000000000", args.bearer)
+    s, _ = _get(
+        f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/"
+        "00000000-0000-0000-0000-000000000000",
+        args.bearer,
+    )
     check("bot reachable", s in (200, 404, 422), f"HTTP {s}")
     if s == 0:
         print("\nABORT: cannot reach the bot. Run this ON the server, or pass --bot-url.")
@@ -143,8 +158,10 @@ def main() -> int:
           sched is not None, str([e.get("type") for e in events]))
     if sched:
         CLEANUP["appointment_id"] = sched.get("appointment_id")
-        check("consultation has CSR assigned", bool(sched.get("csr_name")), str(sched.get("csr_name")))
-        check("consultation has start time", bool(sched.get("starts_at_utc")), str(sched.get("starts_at_utc")))
+        check("consultation has CSR assigned",
+              bool(sched.get("csr_name")), str(sched.get("csr_name")))
+        check("consultation has start time",
+              bool(sched.get("starts_at_utc")), str(sched.get("starts_at_utc")))
 
     # Final AI state should show the booking + contact.
     _, dbg2 = _get(f"{args.bot_url.rstrip('/')}/api/v1/chat/debug/state/{tid}", args.bearer)
@@ -157,9 +174,14 @@ def main() -> int:
     print("\n▶ CSR Node check (informational — not counted)")
     cs, cbody = _get(f"{args.csr_url.rstrip('/')}/api/consultations", args.bearer)
     if cs == 200:
-        rows = cbody if isinstance(cbody, list) else (cbody.get("data") or cbody.get("consultations") or [])
+        rows = (
+            cbody
+            if isinstance(cbody, list)
+            else (cbody.get("data") or cbody.get("consultations") or [])
+        )
         found = test_email in json.dumps(rows)
-        print(f"   {'✓' if found else '·'} consultation visible in CSR Node list ({len(rows) if isinstance(rows, list) else '?'} rows)")
+        print(f"   {'✓' if found else '·'} consultation visible in CSR Node list "
+              f"({len(rows) if isinstance(rows, list) else '?'} rows)")
     else:
         print(f"   · /api/consultations is not GET-readable (HTTP {cs}) — confirm the test "
               f"booking on the CSR dashboard for {test_email}")
@@ -173,8 +195,10 @@ def main() -> int:
     print(f"   • appointment_id : {CLEANUP.get('appointment_id')}")
     print(f"   • test email     : {test_email}  (delete the lead + consultation rows)")
     print("   SQL (adjust table/column names to your schema):")
-    print(f"     DELETE FROM sales_consultations WHERE customer_email = '{test_email}';")
-    print(f"     DELETE FROM sales_leads         WHERE email = '{test_email}';")
+    # Printed for the operator only, never executed; test_email is generated above
+    # from a fixed pattern (letters, digits, "+", "-", "@", "."), so no quoting risk.
+    print(f"     DELETE FROM sales_consultations WHERE customer_email = '{test_email}';")  # noqa: S608
+    print(f"     DELETE FROM sales_leads         WHERE email = '{test_email}';")  # noqa: S608
     print("   …and remove the matching consultation from the CSR Node DB / dashboard.")
     print("=" * 74)
     return 0 if passed == len(RESULTS) else 1

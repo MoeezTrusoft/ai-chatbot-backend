@@ -112,7 +112,11 @@ class TemporalRelationGraphEngine:
         with TRG_UPDATE_LATENCY.time():
             # Materialize once so helpers can iterate multiple times.
             delta_list = list(state_deltas)
-            graph = preloaded_graph if preloaded_graph is not None else await self.repository.load(thread_id)
+            graph = (
+                preloaded_graph
+                if preloaded_graph is not None
+                else await self.repository.load(thread_id)
+            )
             if graph is None:
                 graph = TemporalRelationGraph(thread_id=thread_id)
 

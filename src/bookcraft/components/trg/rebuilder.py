@@ -6,7 +6,6 @@ semantic facts alone are insufficient to reconstruct full conversation context
 """
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -15,7 +14,6 @@ import structlog
 
 from bookcraft.components.trg.engine import TemporalRelationGraphEngine
 from bookcraft.components.trg.schemas import TemporalRelationGraph
-
 
 logger = structlog.get_logger(__name__)
 
