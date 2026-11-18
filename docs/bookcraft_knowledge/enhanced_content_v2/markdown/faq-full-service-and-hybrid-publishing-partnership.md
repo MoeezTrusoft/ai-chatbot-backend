@@ -1,7 +1,9 @@
 ---
-source_id: publishing_partnership
+source_id: publishing_partnership_faq
 service_category: publishing_partnership
 title: "Publishing Partnership FAQ at BookCraft"
+section: faq
+content_version: v1
 ---
 
 __Full-Service & Hybrid Publishing Partnership__

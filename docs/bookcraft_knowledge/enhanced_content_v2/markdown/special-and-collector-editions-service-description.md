@@ -1,7 +1,9 @@
 ---
-source_id: special_collector_editions
+source_id: special_collector_editions_overview
 service_category: special_collector_editions
 title: "Special and Collector Editions Service at BookCraft"
+section: overview
+content_version: v1
 ---
 
 # Special & Collector Editions
