@@ -624,7 +624,7 @@ class ChatService:
                     except Exception as _sticky_exc:
                         # Best-effort: a version conflict just skips stickiness.
                         structlog.get_logger(__name__).debug(
-                            "blocked_turn_state_save_skipped", error=str(_sticky_exc)
+                            "redirect_turn_state_save_skipped", error=str(_sticky_exc)
                         )
                 elif thread_id in self.threads:
                     self.threads[thread_id].state = state
